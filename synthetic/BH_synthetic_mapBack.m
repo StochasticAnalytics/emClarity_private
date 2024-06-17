@@ -61,6 +61,7 @@ end
 
 cycleNumber = sprintf('cycle%0.3u', CYCLE);
 
+
 samplingRate = emc.('Ali_samplingRate');
 % used to determine the number of fiducials/patch for local area.
 MOL_MASS = emc.('particleMass');
@@ -598,6 +599,7 @@ for iTiltSeries = tiltStart:nTiltSeries
         
         iRefIDX = 1;
         iClassIDX = positionList(iSubTomo,26);
+        use_this_class = true
         if (nRefs > 1)
           % Assuming generally there are fewer classes seleceted as references than there are total classes
           % For those that aren't one of the select ones, we could try to track the best matched reference from the most recent
@@ -605,6 +607,11 @@ for iTiltSeries = tiltStart:nTiltSeries
           % FIXME: having a class occupancy factor would be better than just picking a random one.
           
           if ~(ismember(iClassIDX,classVector{1}) || ismember(iClassIDX,classVector{2}))
+            if (emc.only_use_reference_classes)
+              use_this_class = false;
+            end
+            % If the class is not in the list, pick a random one. This will be ignored if only_use_reference_classes is set.
+            % However, we want to assign it so the iRefIDX line below is okay.
             use_class = datasample(classVector{1},1);
           else
             use_class = iClassIDX;
@@ -626,8 +633,12 @@ for iTiltSeries = tiltStart:nTiltSeries
         [ indVAL, padVAL, shiftVAL ] =  BH_isWindowValid(reconstruction_size, sizeAvgVol, sizeAvgVol./5, subtomo_origin_in_sample);
         
                 
-        if ischar(indVAL)
-          fprintf('ignoring subTomo %d for out of bounds conditions.\n', iSubTomo);
+        if ischar(indVAL) || ~use_this_class
+          if ischar(indVal)
+            fprintf('ignoring subTomo %d for out of bounds conditions.\n', iSubTomo);
+          else
+            fprintf('ignoring subTomo %d for class %d because it is not one of the references.\n', iSubTomo, iClassIDX);
+          end
         else
           if positionList(iSubTomo,7) == 1
             iAvgResamp = BH_resample3d(refVol{1}{iRefIDX},subtomo_rot_matrix',shiftVAL,'Bah','GPU','forward');
@@ -1705,7 +1716,10 @@ for iTiltSeries = tiltStart:nTiltSeries
     tilt_script_name = sprintf('cache/mapBack%d/%s%s',mbOUT{2},tn2,tn3);
   end
 
+  % We'll make two copies, one that can be re-run from the local project directory
+  % and one that is run while mapBack is running.
   aliCom_name = sprintf('%smapBack%d/%s.align',mbOutAlt{1:3});
+  aliCom_name_rerun = sprintf('cache/mapBack%d/%s.align',mbOutAlt{2:3});
   aliCom = fopen(aliCom_name,'w');
 
   % Testing local alignment with optimized parameters using the new imod options for leave out
@@ -1742,7 +1756,46 @@ for iTiltSeries = tiltStart:nTiltSeries
                   emc.min_overlap,...
                   mbOutAlt{1:3},...
                   mbOutAlt{1:3});
+  fclose(aliCom);
 
+  aliCom_rerun = fopen(aliCom_name_rerun,'w');
+
+% Testing local alignment with optimized parameters using the new imod options for leave out
+fprintf(aliCom_rerun,[...
+                'mapBack%d/%s_fit-full.fid\n',... %1
+                'mapBack%d/%s%s.3dmod\n',... %2
+                'mapBack%d/%s%s.resid\n',... %3
+                'mapBack%d/%s%s.xyz\n',... %4
+                'mapBack%d/%s%s.tlt\n',... %5
+                'mapBack%d/%s%s.xtilt\n',... %6
+                'mapBack%d/%s%s.tltxf\n',... %7
+                '%s\n',... %8 input tilt file
+                '%3.3f\n',... KFactorScaling %9
+                'mapBack%d/%s%s.local\n',... OutputLocalFile %10
+                '%d\n%d\n', ...TargetPatchSizeXandY %11 12
+                '%d\n%d\n',... MinFidsTotalAndEachSurface %13 14
+                '%f\n%f\n',... MinSizeOrOverlapXandY %15 16
+                'mapBack%d/%s.align_ta.log\n',... output log file %17 
+                'mapBack%d/%s.align_ta_optimizer.log\n'],... output log file for optimizer %18
+                mbOutAlt{2:3},... % for ModelFile
+                mbOutAlt{2:3},outCTF,... %2
+                mbOutAlt{2:3},outCTF,... %3
+                mbOutAlt{2:3},outCTF,... %4
+                mbOutAlt{2:3},outCTF,... %5
+                mbOutAlt{2:3},outCTF,... %6
+                mbOutAlt{2:3},outCTF, ... %7
+                tilt_script_name,...
+                emc.k_factor_scaling, ...
+                mbOutAlt{2:3},outCTF, ...
+                targetPatchSize(1), ...
+                targetPatchSize(2),...
+                nFiducialsPerPatch, ...
+                floor(nFiducialsPerPatch/3),...
+                emc.min_overlap, ...
+                emc.min_overlap,...
+                mbOutAlt{2:3},...
+                mbOutAlt{2:3});
+  fclose(aliCom_rerun);
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   % % TODO: It looks like the output model file (3dmod) is the solved positions,
   % % but is saved at a pixel size of 1. Scaling by the sampling rate in all dimensions
@@ -1831,7 +1884,7 @@ for iTiltSeries = tiltStart:nTiltSeries
   % %        fprintf(aliCom,'\nawk ''{if(NR >3) print $5}'' ./mapBack%d/tmp.log > mapBack%d/%s.mag',mbOUT{1:3},mbOUT{1:3});
   
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  fclose(aliCom);
+
   % system(sprintf('chmod a=wrx %smapBack%d/%s.align',mbOUT{1:3}));
   
   if (is_first_run)
@@ -1846,13 +1899,14 @@ for iTiltSeries = tiltStart:nTiltSeries
     % end
 
     if ( multi_node_run )
+      % These will be aggregated in the main runAlignments.sh
       fOUT = fopen(sprintf('%smapBack%d/runAlignments_%d_%d.sh',mbOUT{1:2},tiltStart,nTiltSeries),'w');
     else
       fOUT = fopen(sprintf('%smapBack%d/runAlignments.sh',mbOUT{1:2}),'w');
       fprintf(fOUT,'#!/bin/bash\n\n');
     end
     % fprintf(fOUT,'cat %s | /scratch/etna/master_align.sh `xargs` &\n',aliCom_name);
-    fprintf(fOUT,'%s\n',aliCom_name);
+    fprintf(fOUT,'%s\n',aliCom_name_rerun);
 
     % Since we send to the background in a shell, makes sure the
     % function waits on children.
@@ -1870,7 +1924,7 @@ for iTiltSeries = tiltStart:nTiltSeries
     % fprintf(fOUT,['%smapBack%d/%s.align > ',...
     %   '%smapBack%d/%s.align_ta.log &\n'], ...
     %   mbOutAlt{1:3},mbOutAlt{1:3});
-    fprintf(fOUT,'%s\n',aliCom_name);
+    fprintf(fOUT,'%s\n',aliCom_name_rerun);
   
     % Since we send to the background in a shell, makes sure the
     % function waits on children.
@@ -1880,6 +1934,10 @@ for iTiltSeries = tiltStart:nTiltSeries
     fclose(fOUT);
   end
   
+  % if (emc.run_tomocpr_alignments)
+    
+  % end
+
   %system(sprintf('./mapBack/%s.align > ./mapBack/%s_ta.log',TN,TN));
   
   %%%%%%%%% There is still sometimes a shift in Z, fit slope of the X shifts
@@ -1896,13 +1954,10 @@ end % loop over tilts
 
 if ( flgRunAlignments )
 
-  mainFile = sprintf('%smapBack%d/runAlignments.sh',mbOUT{1:2});
-  altFiles = sprintf('%smapBack%d/runAlignments_*.sh',mbOUT{1:2});
-  
+  mainFile = sprintf('cache/mapBack%d/runAlignments.sh',mbOUT{2});
+  altFiles = sprintf('cache/mapBack%d/runAlignments_*.sh',mbOUT{2});
+  % Only possible as [cycle, 0, 0]
   if (multi_node_run)
-    % fOUT = fopen(mainFile,'w');
-    % fprintf(fOUT,'#!/bin/bash\n\n');
-    % fclose(fOUT);
     system(sprintf('rm %s && touch %s',mainFile,mainFile));
     fprintf('Combining Results from alt and main\n');
     system(sprintf('cat %s >> %s',altFiles,mainFile));
@@ -1914,7 +1969,9 @@ if ( flgRunAlignments )
   
   % system(sprintf('chmod a=wrx %smapBack%d/runAlignments.sh', mbOUT{1:2}));
   % system(sprintf('%smapBack%d/runAlignments.sh', mbOUT{1:2}));
-  system(sprintf('cat %smapBack%d/runAlignments.sh | parallel -j%d "cat {} | /scratch/etna/master_align.sh `xargs`"', mbOUT{1:2}, emc.nCpuCores))
+
+  % BH_multi_parallelWorkers will return at most nthreads 
+  system(sprintf("cat cache/mapBack%d/runAlignments.sh | parallel -j%d 'cat {} | /scratch/etna/master_align.sh `xargs`'", mbOUT{1:2}, floor(BH_multi_parallelWorkers(256)/2)))
 end
 
 if ( conserveDiskSpace )
@@ -1922,16 +1979,18 @@ if ( conserveDiskSpace )
 end
 
 
-
-if (tmpCache)
-  if (flgRunAlignments)
-    system(sprintf('mv %smapBack%d mapBack%d', mbOUT{1:2}, mbOUT{2}));
-  else
+if (flgRunAlignments)
+  system(sprintf('mv %smapBack%d mapBack%d', mbOUT{1:2}, mbOUT{2}));
+else 
+  if (multi_node_run)
     % This is an partial run
     system(sprintf('mkdir -p  cache/mapBack%d', mbOUT{2}));
     system(sprintf('mv %smapBack%d/* cache/mapBack%d', mbOUT{1:2}, mbOUT{2}));
+  else
+    error('This should not happen');
   end
 end
+
 
 % if (flgCleanCache)
 %   % Double check that this exists to avoid data loss.

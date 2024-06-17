@@ -291,18 +291,12 @@ end
 
 [ refIMG ] = BH_multi_combineLowResInfo( refIMG, imgCounts, emc.pixel_size_angstroms, maxGoldStandard );
 
-
-
 % optimize the fft for the given size. Padding to the next power of 2 is usually
 % slower given the dimensionalityl of the volume data.
 fftPlanner = rand(sizeCalc);
 fftw('planner', 'exhaustive');
 fftn(fftPlanner);
 clear fftPlanner
-
-
-
-
 
 
 stat_mask = [];
@@ -684,11 +678,14 @@ parfor iParProc = parVect
 
       for iPeak = 1:emc.nPeaks
         cccStorageBest{iPeak} = zeros(nSubTomos,10, 'single');
+        cccStorageBest{iPeak}(:,6) = -9999;
         cccStorageRefine{iPeak}= zeros(nSubTomos,10, 'single');
+        cccStorageRefine{iPeak}(:,6) = -9999;
         cccStorage2{iPeak} = zeros(nSubTomos,10, 'single', 'gpuArray');
+        cccStorage2{iPeak}(:,6) = -9999;
         cccInitial_arr{iPeak} = zeros(nSubTomos,10, 'single', 'gpuArray');
         cccInitial_arr{iPeak}(:,6) = -9999;
-        cccStorageRefine{iPeak}(:,6) = -9999;
+        
 
       end
       % reset for each tomogram

@@ -12,12 +12,20 @@ function []  = BH_templateSearch3d_2( PARAMETER_FILE,...
 test_half = false;
 
 ctf3dNoSubTomoMeta = true;
-if length(varargin) == 1
+if length(varargin) > 0
   % Allow for an override of the max number, useful when only a few tomos
   % have a strong feature like carbon that is hard to avoid.
   gpuIDX = EMC_str2double(varargin{1});
-elseif length(varargin) > 1
-  error('emClarity templateSearch paramN.m tiltN regionN referenceName symmetry(C1) <optional gpuIDX>');
+else
+  gpuIDX = 1;
+end
+if length(varargin) == 2
+  mapBackIter = EMC_str2double(varargin{2});
+else
+  mapBackIter = 0;
+end
+if length(varargin) > 2
+  error('emClarity templateSearch paramN.m tiltN regionN referenceName symmetry(C1) <optional gpuIDX> <optional mapBackITer>');
 end
 
 tomoIdx = EMC_str2double(tomoIdx);
@@ -40,18 +48,7 @@ emc = BH_parseParameterFile(PARAMETER_FILE);
 % Currently hardcoded to always expect a tomogram constructed with ctf correction
 % using emClarity ctf3d paramN.m templateSearch
 use_ctf3d_templateSearch=true;
-if ctf3dNoSubTomoMeta
-  mapBackIter = 0;
-else
-  try
-    load(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta');
-    mapBackIter = subTomoMeta.currentTomoCPR
-  catch
-    % TODO: is there a better check on whether we are using ctf3d templateSearch vs ctf 3d?
-    mapBackIter = 0;
-    shouldBeCTF = false;
-  end
-end
+
 samplingRate  = emc.('Tmp_samplingRate');
 
 try

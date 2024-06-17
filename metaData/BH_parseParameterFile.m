@@ -384,6 +384,11 @@ end
 emc = EMC_assert_deprecated_substitution(emc, false, 'save_mapback_classes', 'flgColorMap');
 EMC_assert_boolean(emc.save_mapback_classes);
 
+if isfield(emc, 'only_use_reference_classes')
+  EMC_assert_boolean(emc.only_use_reference_classes);
+else
+  emc.only_use_reference_classes = false;
+end
 
 % These seemed to be necessary at some point to translate between IMOD and emClarity 
 % coordinate systems, but the should probably be looked at again. TODO:
@@ -596,6 +601,15 @@ if isfield(emc, 'n_tilt_workers')
   EMC_assert_numeric(emc.n_tilt_workers, 1);
 else
   emc.n_tilt_workers = 4;
+end
+
+% Number of tiltalign processes to run in parallel in tomoCPR 
+% For now, default to zero and manually re-run while sorting out the
+% optimization process
+if isfield(emc, 'run_tomocpr_alignments')
+  EMC_assert_numeric(emc.run_tomocpr_alignments, 1);
+else
+  emc.run_tomocpr_alignments = 0;
 end
 
 if isfield(emc, 'max_ctf3dDepth')
