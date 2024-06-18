@@ -331,7 +331,7 @@ for iTiltSeries = tiltStart:nTiltSeries
     % This will be re-calculated once the tilt-series size is known.
     targetPatchSize = emc.tomoCPR_target_n_patches_x_y;
   else
-    targetPatchSize = ceil(max(500, ceil(2.*(particle_radius).*sqrt(nFiducialsPerPatch))));
+    targetPatchSize = [1,1].*ceil(max(500, ceil(2.*(particle_radius).*sqrt(nFiducialsPerPatch))));
   end
     
 
@@ -599,7 +599,7 @@ for iTiltSeries = tiltStart:nTiltSeries
         
         iRefIDX = 1;
         iClassIDX = positionList(iSubTomo,26);
-        use_this_class = true
+        use_this_class = true;
         if (nRefs > 1)
           % Assuming generally there are fewer classes seleceted as references than there are total classes
           % For those that aren't one of the select ones, we could try to track the best matched reference from the most recent
@@ -634,7 +634,7 @@ for iTiltSeries = tiltStart:nTiltSeries
         
                 
         if ischar(indVAL) || ~use_this_class
-          if ischar(indVal)
+          if ischar(indVAL)
             fprintf('ignoring subTomo %d for out of bounds conditions.\n', iSubTomo);
           else
             fprintf('ignoring subTomo %d for class %d because it is not one of the references.\n', iSubTomo, iClassIDX);
