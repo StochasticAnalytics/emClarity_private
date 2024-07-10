@@ -390,7 +390,8 @@ for iTiltSeries = tiltStart:nTiltSeries
     avgColor = zeros(reconstruction_size, 'int16');
   end
   
-  if (emc.save_mapback_classes)
+  save_mapback_masks = false;
+  if (emc.save_mapback_classes && save_mapback_masks)
     avgColor = zeros(reconstruction_size, 'int16');
   end
   
@@ -455,7 +456,7 @@ for iTiltSeries = tiltStart:nTiltSeries
   
 
   
-  if (emc.save_mapback_classes)
+  if (emc.save_mapback_classes && save_mapback_masks)
     avgColor = zeros(reconstruction_size, 'int16');
   end
   
@@ -663,15 +664,16 @@ for iTiltSeries = tiltStart:nTiltSeries
               iColorMap(iColorMap >= 0.05) = iRefIDX;
               iColorMap = gather(int16(iColorMap));
             end
-
-            avgColor(indVAL(1,1):indVAL(2,1), ...
-              indVAL(1,2):indVAL(2,2), ...
-              indVAL(1,3):indVAL(2,3)) = avgColor(indVAL(1,1):indVAL(2,1), ...
-              indVAL(1,2):indVAL(2,2), ...
-              indVAL(1,3):indVAL(2,3)) + ...
-              iColorMap(1+padVAL(1,1):end-padVAL(2,1),...
-              1+padVAL(1,2):end-padVAL(2,2),...
-              1+padVAL(1,3):end-padVAL(2,3));
+            if (save_mapback_masks)
+              avgColor(indVAL(1,1):indVAL(2,1), ...
+                indVAL(1,2):indVAL(2,2), ...
+                indVAL(1,3):indVAL(2,3)) = avgColor(indVAL(1,1):indVAL(2,1), ...
+                indVAL(1,2):indVAL(2,2), ...
+                indVAL(1,3):indVAL(2,3)) + ...
+                iColorMap(1+padVAL(1,1):end-padVAL(2,1),...
+                1+padVAL(1,2):end-padVAL(2,2),...
+                1+padVAL(1,3):end-padVAL(2,3));
+            end
             
           end
           
@@ -777,13 +779,13 @@ for iTiltSeries = tiltStart:nTiltSeries
     end
     clear avgTomo
     
-    if (emc.save_mapback_classes || flgClassAvg)
+    if ((emc.save_mapback_classes || flgClassAvg) && save_mapback_masks)
       SAVE_IMG(single(avgColor),{sprintf('%smapBack%d/%s.tmpTomoColor', mbOUT{1:3}),'half'},pixel_size);
       clear avgColor
     end
 
     tmpTomoBin = 1;
-    if (emc.save_mapback_classes || flgClassAvg && tmpTomoBin > 1)
+    if ((emc.save_mapback_classes || flgClassAvg && tmpTomoBin > 1) && save_mapback_masks)
       system(sprintf(['binvol -bin %d %smapBack%d/%s.tmpTomoColor ',...
         '%smapBack%d/%s.bin%dTomoColor.mrc'], ...
         tmpTomoBin,mbOUT{1:3},mbOUT{1:3},tmpTomoBin));
