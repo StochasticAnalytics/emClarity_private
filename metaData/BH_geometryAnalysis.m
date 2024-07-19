@@ -485,7 +485,28 @@ switch OPERATION
     file_out = sprintf('%s-cccCutoff.pdf', outputPrefix);
 
     saveas(gcf, file_out,'pdf')
+ 
     
+    case 'RemoveIgnoredParticles'
+      % Get distribution of CCC from given cycle rawAlignment
+      % Save histogram, also remove given bottom percentage and report CCC cutoff
+      printf('\n\t\nRemoving ignored particles from the meta data to save space, this must be run after alignment or after a call to emClarity skip, post classification\n\n.');
+      if ~(strcmpi(STAGEofALIGNMENT, 'RawAlignment'))
+        error('Can only remove fraction at RawAlignment Stage')
+      end
+      n_removed = 0;
+      n_total = 0;
+      for iTomo = 1:nTomograms
+        % Get the non ignored values
+        non_ignored = any(geometry.(tomoList{iTomo})(:,26:26*emc.nPeaks) ~= -9999, 2);
+        n_total = n_total + size(geometry.(tomoList{iTomo}),1);
+        n_removed = n_removed + sum(~non_ignored);
+        geometry.(tomoList{iTomo}) = geometry.(tomoList{iTomo})(non_ignored,:);
+      end   
+      
+      fprintf('Removed %d/%d particles\n',n_removed,n_total);
+      
+
   case 'ListPercentiles'
     cccVector = [];
     % Gather included scores

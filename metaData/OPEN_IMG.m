@@ -1,10 +1,13 @@
 function [ vol ] = OPEN_IMG(precision, filename, varargin)
 
-
     if isa(filename, 'MRCImage')
         vol = getVolume(filename, varargin{:});
     else 
-        vol = getVolume(MRCImage(filename), varargin{:});
+        if isfile(filename)
+            vol = getVolume(MRCImage(filename), varargin{:});
+        else
+            error('\n\nFile does not exist: %s\n\n', filename);
+        end
     end
 
     if strcmp(precision, 'single')
