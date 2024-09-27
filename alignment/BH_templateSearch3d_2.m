@@ -165,7 +165,7 @@ mapExt = '.rec';
 % [ recGeom, ~, ~, ~] = BH_multi_recGeom( sprintf('recon/%s_recon.coords',tomoName), mapBackIter);
 
 
-bp_vals(2) = 2.*max(latticeRadius);
+% bp_vals(2) = 2.*max(latticeRadius);
 statsRadiusAng = stats_diameter_fraction.*[2,2,2].*max(latticeRadius);
 statsRadius = ceil(statsRadiusAng./pixelSize); % Convert to binned pixels
 maskRadius  = ceil(0.5.*[1,1,1].*max(latticeRadius)./pixelSize);
@@ -176,7 +176,7 @@ latticeRadius = latticeRadius + mod(latticeRadius, 2);
 eraseMaskRadius = floor((eraseMaskRadius) ./ (pixelSize));
 eraseMaskRadius = eraseMaskRadius + mod(eraseMaskRadius,2);
 
-fprintf('EXPERIMENTAL setting the highpass to match the max particle diameter. %3.3f Ang\n\n', bp_vals(2));
+% fprintf('EXPERIMENTAL setting the highpass to match the max particle diameter. %3.3f Ang\n\n', bp_vals(2));
 
 fprintf('\ntomograms normalized in %f Angstrom cubic window\n',statsRadiusAng(1));
 

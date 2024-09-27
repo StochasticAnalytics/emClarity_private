@@ -132,10 +132,13 @@ for iGold = 1:1+flgGold
   %           length(relativeScale), nScaleSpace);
   %   end
   %
+  for iScale = 1:nScaleSpace
+    size(coeffsUNTRIMMED{iScale})
+  end
   if isa(coeffsUNTRIMMED, 'cell')
-    [nI,nJ] = size(coeffsUNTRIMMED{1});
+    [nI,nJ] = size(coeffsUNTRIMMED{1})
     for iScale = 1:nScaleSpace
-      nFeatures(iScale) = nnz(featureVector{iGold}(iScale,:));
+      nFeatures(iScale) = nnz(featureVector{iGold}(iScale,:))
     end
     coeffMat = zeros(sum(nFeatures), nJ, 'single');
     nAdded = 0;

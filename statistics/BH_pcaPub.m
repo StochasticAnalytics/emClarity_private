@@ -227,6 +227,7 @@ end
 
 
 [ useGPU ] = BH_multi_checkGPU( -1 );
+
 gDev = gpuDevice(useGPU);
 
 
@@ -248,11 +249,11 @@ maskSize=preMaskSize;
 cpuVols = struct;
 
 [ preSizeWindow, preSizeCalc, preSizeMask, prePadWindow, prePadCalc ] = ...
-  BH_multi_validArea(preMaskSize,preMaskRadius, emc.scale_calc_size )
+  BH_multi_validArea(preMaskSize,preMaskRadius, emc.scale_calc_size );
 
 
 [ sizeWindow, sizeCalc, sizeMask, padWindow, padCalc ] = ...
-  BH_multi_validArea( maskSize, maskRadius, emc.scale_calc_size )
+  BH_multi_validArea( maskSize, maskRadius, emc.scale_calc_size );
 
 
 if (test_multi_ref_diffmap)
@@ -276,15 +277,15 @@ refVector = cell(2,1);
 refGroup = cell(2,1);
 classVector{1}  = emc.('Raw_classes_odd')(1,:);
 classVector{2}  = emc.('Raw_classes_eve')(1,:);
-refVectorFull{1}= [emc.('Raw_classes_odd');classVector{1} ]
-refVectorFull{2}= [emc.('Raw_classes_eve');classVector{2} ]
+refVectorFull{1}= [emc.('Raw_classes_odd');classVector{1} ];
+refVectorFull{2}= [emc.('Raw_classes_eve');classVector{2} ];
 for iGold = 1:2
   % Sort low to high, because order is rearranged as such unstack
   refVectorFull{iGold} = sortrows(refVectorFull{iGold}', 1)';
   % class id corresponding to membership in ???_refName
-  refVector{iGold} = refVectorFull{iGold}(1,:)
+  refVector{iGold} = refVectorFull{iGold}(1,:);
   % reference id, so multiple classes can be merged into one
-  refGroup{iGold}  = refVectorFull{iGold}(3,:)
+  refGroup{iGold}  = refVectorFull{iGold}(3,:);
 end
 
 
@@ -610,8 +611,9 @@ for iGold = 1
   nTempPrev = cell(emc.n_scale_spaces,1);
   idxList = cell(emc.n_scale_spaces,1);
   peakList = cell(emc.n_scale_spaces,1);
+  is_validData = cell(emc.n_scale_spaces,1);
+  tomoIDXList = cell(emc.n_scale_spaces,1);
   reconCoords = cell(emc.n_scale_spaces,1);
-  nIgnored = cell(emc.n_scale_spaces,1);
   TLT = cell(emc.n_scale_spaces,1);
   geom = cell(emc.n_scale_spaces,1);
 
@@ -619,8 +621,9 @@ for iGold = 1
     nExtracted{iScale} = 1;
     nTemp{iScale} = 1;
     nTempPrev{iScale} = 0;
-    nIgnored{iScale} = 0;
     idxList{iScale} = zeros(1,nSUBSET);
+    tomoIDXList{iScale} = zeros(1,nSUBSET);
+    is_validData{iScale} = zeros(1,nSUBSET);
     peakList{iScale} = zeros(1,nSUBSET);
     reconCoords{iScale} = subTomoMeta.mapBackGeometry.tomoCoords;
     geom{iScale} = subTomoMeta.(cycleNumber).(geom_name);
@@ -646,11 +649,15 @@ for iGold = 1
   end
   fprintf('init with %d workers\n',nWorkers);
 
-  parfor iScaleSpace = 1:emc.n_scale_spaces
+  parVect = 1:emc.n_scale_spaces
+  nGPUs = emc.nGPUs;
+  parfor iScaleSpace = parVect
   % for iScaleSpace = 1:emc.n_scale_spaces
 
+    gpuIDXList = mod(parVect + nGPUs, nGPUs)+1;
+    iGPUidx = gpuIDXList(iScaleSpace);
+    gpuDevice(iGPUidx);
     % FIXME: need to check gpu idx that are available as in other parallel code
-    gpuDevice(iScaleSpace);
     fprintf('parProc %d/%d assigned to GPU %d\n',iScaleSpace,nWorkers,iScaleSpace);
 
     volMask = gpuArray(masks.('volMask').(sprintf('h%d',iGold)).(sprintf('s%d',iScaleSpace)));
@@ -667,13 +674,10 @@ for iGold = 1
 
   for iTomo = 1:nTomograms
     
-    
     tomoName = tomoList{iTomo};
 
     iGPU = 1;
 
-    
-    
     if (emc.flgCutOutVolumes)
       volumeData = [];
     else
@@ -687,47 +691,35 @@ for iGold = 1
     end
     
     
-    fprintf('Working on %d/%d volumes %s\n',iTomo,nTomograms,tomoName);
+    fprintf('Working on %d/%d volumes %s, iScaleSpace %d\n',iTomo,nTomograms,tomoName, iScaleSpace);
     % Load in the geometry for the tomogram, and get number of subTomos.
     positionList = geometry.(tomoList{iTomo});
-    
+
     % Loop over peaks inside each tomo to limit wedge mask xfer
     positionList = positionList(positionList(:,26) ~= -9999,:);
     nSubTomos = size(positionList,1);
-    
-    
 
-    
     % reset for each tomogram
     wdgIDX = 0;
     radialMask = '';
     if (flgNorm)
-      
-      
-      % bins = 1./[1000,800,600,400,300,200,150,100,80,60,50,40,35,30,28,26,24,22,20,18,16,14,12,10,8,6,4,2];
-      % bins = [0, bins];
-      
       [radialGrid,~,~,~,~,~] = BH_multi_gridCoordinates(size(d_avgMotif_FT),'Cartesian',...
         'GPU',{'none'},1,0,1);
-      
+
       bins = radialGrid(1:floor(size(d_avgMotif_FT,1)/2),1,1);
       bins = bins(bins < 0.5);
-      
+
       radialMask = cell(length(bins)-1,1);
-      
+
       for iBin = 1:length(bins)-1
         radialMask{iBin} = find(radialGrid >= bins(iBin) & radialGrid < bins(iBin+1));
       end
-      
+
       radialGrid = '';
-      
     end
     
     wdgBP = ifftshift(highPass);
     for iSubTomo = 1:nSubTomos
-      %%%%% %%%%%
-      
-      
       % Check that the given subTomo is not to be ignored - for now, treat
       % all peaks as included. The assumption is that using this will be
       % for initializing the project to get a good starting model. "True"
@@ -771,10 +763,14 @@ for iGold = 1
               BH_isWindowValid([volHeader.nX,volHeader.nY,volHeader.nZ], ...
               sizeWindow, maskRadius, center);
           end
+
+          % Skipping particles has created friction several times over the years, so I'm going to make this an error for now.
+          if ischar(indVAL)
+            error("invalid windowing, is your mask larger than the one used in emClarity avg? indVAL");
+          end
           
           shiftVAL = shiftVAL + aliParams(2,1:3)./samplingRate;
           
-          using_this_subtomo = true;
           if ~ischar(indVAL)
             % Read in and interpolate at single precision as the local values
             % in the interpolant suffer from any significant round off errors.
@@ -827,14 +823,11 @@ for iGold = 1
               padWindow(1,2)+1 : end - padWindow(2,2), ...
               padWindow(1,3)+1 : end - padWindow(2,3));
             
-            
-            
             if (test_multi_ref_diffmap)
               iPrt = iTrimParticle;
             else
               iPrt = EMC_convn(iTrimParticle , scaleMask);
             end
-            
 
             iPrt = BH_bandLimitCenterNormalize( ...
               iPrt .* ...
@@ -846,75 +839,42 @@ for iGold = 1
             [iWmd,~] = BH_diffMap(d_avgMotif_FT,iPrt,ifftshift(iWedge),...
               flgNorm,pixelSize,radialMask, padWdg);
             
-            
-            % using_this_subtomo is set true for each particle, but if we are not finite for ANY scale space, we want to skip this particle for all
-            % scale spaces.
-            if all(isfinite(iWmd(binaryMask)))
-              tempDataMatrix(:,nTemp{iScaleSpace}) = single(iWmd(binaryMask));
-            else
-              fprintf('inf or nan in subtomo %d scalePace %d',particleIDX, iScaleSpace);
-              using_this_subtomo = false;
-            end
            
-            iWmd = [];
-            iTrimParticle = [];
+
             
-            
-            
-            if (using_this_subtomo)
-              idxList{iScaleSpace}(1, nExtracted{iScaleSpace}) = particleIDX;
-              peakList{iScaleSpace}(1,nExtracted{iScaleSpace}) = iPeak+1;
-              nExtracted{iScaleSpace} = nExtracted{iScaleSpace} + 1;
-              nTemp{iScaleSpace} = nTemp{iScaleSpace} + 1;
+            if (all(isfinite(iWmd(binaryMask))))
+              tempDataMatrix(:,nTemp{iScaleSpace}) = single(iWmd(binaryMask));
+
+              is_validData{iScaleSpace}(1, nExtracted{iScaleSpace}) = 1;
+
               
               % pull data of the gpu every 1000 particls (adjust this to max mem)
-              if nTemp{iScaleSpace} - 1 == nParticlesOnGpuBeforeTransfer
-                dataMatrix{iScaleSpace}(:,1+nTempPrev{iScaleSpace}:nTemp{iScaleSpace}+nTempPrev{iScaleSpace}-1) = gather(tempDataMatrix(:,1:nTemp{iScaleSpace}-1));
+              if ( nTemp{iScaleSpace} == nParticlesOnGpuBeforeTransfer )
+                dataMatrix{iScaleSpace}(:,1+nTempPrev{iScaleSpace}:nTemp{iScaleSpace}+nTempPrev{iScaleSpace}) = gather(tempDataMatrix(:,1:nTemp{iScaleSpace}));
                 
-                nTempPrev{iScaleSpace} = nTempPrev{iScaleSpace} + nTemp{iScaleSpace} - 1;
+                nTempPrev{iScaleSpace} = nTempPrev{iScaleSpace} + nTemp{iScaleSpace} ;
                 nTemp{iScaleSpace} = 1;
               end
-            else
-              nIgnored{iScaleSpace} = nIgnored{iScaleSpace} + 1;
-              fprintf('Ignoring subtomo %d from %s\n',particleIDX, tomoList{iTomo});
-              eraseIDX = geom{iScaleSpace}.(tomoList{iTomo})(:,4) == particleIDX;
-              % Only update with the first worker
-              if (iScaleSpace == 1)
-                geom{iScaleSpace}.(tomoList{iTomo})(eraseIDX, 26+iPeak*26) = -9999;
-              end
-            end
-            
-            
-          else
-            nIgnored{iScaleSpace} = nIgnored{iScaleSpace} + 1;
-            fprintf('Ignoring inside subtomo %d from %s\n',particleIDX, tomoList{iTomo});
-            eraseIDX = geom{iScaleSpace}.(tomoList{iTomo})(:,4) == particleIDX;
-            % Only update with the first worker
-            if (iScaleSpace == 1)
-              geom{iScaleSpace}.(tomoList{iTomo})(eraseIDX, 26+iPeak*26) = -9999;
-            end
-            
-          end % end of update data matrix or if ignoring update metaData
-          
+            end % end of update data matrix or if ignoring due to non-finite processing post diffmap - update metaData
+
+            iWmd = [];
+            iTrimParticle = [];
+  
+          end % end of if condition on valid windowing
+          idxList{iScaleSpace}(1, nExtracted{iScaleSpace}) = particleIDX;
+          peakList{iScaleSpace}(1,nExtracted{iScaleSpace}) = iPeak + 1;
+          nExtracted{iScaleSpace} = nExtracted{iScaleSpace} + 1;
+          nTemp{iScaleSpace} = nTemp{iScaleSpace} + 1; 
+          tomoIDXList{iScaleSpace}(1,nExtracted{iScaleSpace}) = iTomo; 
         end % end of loop over peaks
-      else
-        nIgnored{iScaleSpace} = nIgnored{iScaleSpace} + 1;
-        if ~(emc.Pca_randSubset)
-          fprintf('Ignoring outside subtomo %d from %s\n',particleIDX, tomoList{iTomo});
-          eraseIDX = geom{iScaleSpace}.(tomoList{iTomo})(:,4) == particleIDX;
-          % Only update with the first worker
-          if (iScaleSpace == 1)
-            geom{iScaleSpace}.(tomoList{iTomo})(eraseIDX, 26) = -9999;
-          end
-        end
-      end % end of ignore if statment from extracted window out of bounds (ischar(indVAL))
+
+      end % end of ignore for partial data set
+
       if ~rem(iSubTomo,100)
-        fprintf('\nworking on %d/%d subTomo peak %d/%d from %d/%d Tomo\n', ...
-          iSubTomo, nSubTomos,iPeak+1,emc.nPeaks, iTomo,nTomograms);
-        
         if (iScaleSpace == 1)
+          fprintf('\nworking on %d/%d subTomo peak %d/%d from %d/%d Tomo\n', ...
+            iSubTomo, nSubTomos, iPeak+1, emc.nPeaks, iTomo, nTomograms);
           fprintf('Total nExtracted = %d\n', nExtracted{iScaleSpace}-1);
-          fprintf('Total nIgnored{iScaleSpace} = %d\n', nIgnored{iScaleSpace});
         end
       end
     end % end of the loop over subTomos
@@ -931,53 +891,81 @@ for iGold = 1
   end
   
   
-  subTomoMeta.(cycleNumber).('newIgnored_PCA').(halfSet) = gather(nIgnored{1});
+  % Get a count of all the valid particles - note if one peak is being ignored, this is not valid FIXME!
+  is_validData_bool = true(1,nSUBSET);
+  for iScale = 1:emc.n_scale_spaces
+    is_validData_bool = is_validData_bool & is_validData{iScale};
+  end
+
+  n_validData = sum(is_validData_bool)
+
+  % Sanity check that all the data idx are the same
+  for iScale = 1:emc.n_scale_spaces
+    idxList{iScale} = idxList{iScale} .* is_validData_bool;
+    peakList{iScale} = peakList{iScale} .* is_validData_bool;
+    if iScale > 1
+      if any(idxList{iScale} ~= idxList{1})
+        idxList{1}
+        idxList{iScale}
+        error('Error: found a difference in valid data idxList between scale spaces');
+      end   
+    end
+  end
+
+  idxList = idxList{1};
+  peakList = peakList{1};
+
+  % Remove any columns corresponding to an ignored particle and also update the geometry
+  clean_geometry = subTomoMeta.(cycleNumber).(geom_name);
+
+  for iScale = 1:emc.n_scale_spaces
+    fprintf('Cleaning geometry for scale space %d\n',iScale);
+    fprintf('nPixels x n_validData = %d x %d\n',nPixels(1,iScale),n_validData);
+    tempDataMatrix = zeros(nPixels(1,iScale), n_validData, 'single');
+    tempDataMatrix(:,1:n_validData) = dataMatrix{iScale}(:,is_validData_bool);
+    dataMatrix{iScale} = [];
+    dataMatrix{iScale} = tempDataMatrix;
+  end
+  dataMatrix
+  tempDataMatrix = [];
+
+  % Remove empty columns from the geometry
+  for iErase = 1:length(idxList)
+    if ~(is_validData_bool(1,iErase))
+      tomo_name = tomoList{tomoIDXList(1,iErase)};
+      eraseIDX = clean_geometry.(tomo_name)(:,4) == idxList(1,iErase);
+      if (sum(eraseIDX) > emc.nPeaks || sum(eraseIDX) == 0)
+        error('Error: found %d particles with the same index %d',sum(eraseIDX),idxList{iScale}(1,iErase));
+      end
+      clean_geometry.(tomo_name)(eraseIDX(1), 26:26:26*emc.nPeaks) = -9999;
+    end
+  end
+
+  % Now update the subtomo meta and save it
+  subTomoMeta.(cycleNumber).(geom_name) = clean_geometry;
   save(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta');
+
+  % Now shrink the idxList and peakList
+  idxList = idxList(1,is_validData_bool);
+  peakList = peakList(1,is_validData_bool);
+
   
   % FIXME: delete if removing the parallel loop
   % for iScale = 1:emc.n_scale_spaces
   %   dataMatrix{iScale}(:,1+nTempPrev:nTemp-1+nTempPrev) = ...
   %     gather(tempDataMatrix{iScale}(:,1:nTemp-1));
   % end
-  
-
-  % Check to make sure the values for each scale space match as they should
-  for iScale = 1:emc.n_scale_spaces
-    for val = 1:length(idxList{iScale})
-      if idxList{1}(val) ~= idxList{iScale}(val)
-        fprintf('WARNING: idxList is not being filled correctly, expected %f got %f\n',idxList{1}(val),idxList{iScale}(val));
-      end
-    end
-  end
-  idxList = idxList{1};
-  % Check to make sure the values for each scale space match as they should
-  for iScale = 1:emc.n_scale_spaces
-    for val = 1:length(peakList{iScale})
-      if peakList{1}(val) ~= peakList{iScale}(val)
-        fprintf('WARNING: peakList is not being filled correctly, expected %f got %f\n',peakList{1}(val),peakList{iScale}(val));
-      end
-    end
-  end
-  peakList = peakList{1};
 
 
-  % Get rid of any zero vals from newly ignored particles which are there due to
-  % pre-allocation. Assuming no zeros have found their way in anywhere else which
-  % would be a major problem.
-  cleanIDX = (idxList~=0)';
-  idxList = idxList(cleanIDX);
-  peakList = peakList(cleanIDX);
   
   for iScale = 1:emc.n_scale_spaces
-    dataMatrix{iScale} = dataMatrix{iScale}(:,1:size(idxList,2));
     % Center the rows
     for row = 1:size(dataMatrix{iScale},1)
       dataMatrix{iScale}(row,:) = dataMatrix{iScale}(row,:) -  mean(double(dataMatrix{iScale}(row,:)));
     end
   end
   
-  
-  
+  dataMatrix
   
   %save('preparpoolSave.mat');
   try
@@ -1024,7 +1012,9 @@ for iGold = 1
       U{iScale} = single(U{iScale});
       S{iScale} = single(S{iScale});
       V{iScale} = single(V{iScale});
-      
+      size(U{iScale})
+      size(S{iScale})
+      size(V{iScale})
       %             [U{iScale},S{iScale},V{iScale}] = svd(dataMatrix{iScale}, 0);
       
       sDiag{iScale} = diag(S{iScale});
@@ -1035,7 +1025,8 @@ for iGold = 1
       fprintf('Found %d / %d non-zero eigenvalues sum = %4.4f, in set %s.\n All singular values converged is t/f ( %d ) ', ...
         numNonZero, size(S{iScale}, 1), sum(sDiag{iScale}), halfSet, convergenceFlag);
       
-      coeffs{iScale} = S{iScale} * V{iScale}'
+      coeffs{iScale} = S{iScale} * V{iScale}';
+      size(coeffs{iScale})
       
       % Can be GB-TB if calculated full
       %varianceMap{iScale} = (U{iScale}*S{iScale}.^2*V{iScale} ./ numel(U{iScale}-1));

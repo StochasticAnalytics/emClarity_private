@@ -17,7 +17,8 @@ else
   for iGpu = 1:nGpus
     try
       gpuDev = gpuDevice(iGpu);
-      mostMem(iGpu,:) = [iGpu, gpuDev.AvailableMemory/gpuDev.TotalMemory];
+      % FIXME the min memory should be a global set somewhere else.
+      mostMem(iGpu,:) = [iGpu, gpuDev.AvailableMemory/gpuDev.TotalMemory * (gpuDev.AvailableMemory > 8e8)];
     catch
       fprintf('\n\nWarning: matlab failed to instantiate a gpuDevice for iGPU %d\n\n');
       mostMem(iGpu,:) = [iGpu, 0];

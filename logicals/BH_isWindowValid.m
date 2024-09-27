@@ -1,5 +1,5 @@
 function [ INDICES, PADVALUES, SHIFTS ] = ...
-        BH_isWindowValid( VOLUME_SIZE, WINDOW_SIZE, MASK_RADIUS, CENTER )
+        BH_isWindowValid( VOLUME_SIZE, WINDOW_SIZE, MASK_RADIUS, CENTER, varargin )
 %Address out of bounds conditions.
 %
 %
@@ -39,6 +39,12 @@ function [ INDICES, PADVALUES, SHIFTS ] = ...
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+use_noise_instead_of_ignoring = false;
+if nargin > 4
+  if strcmpi(varargin{1}, 'pca')
+        use_noise_instead_of_ignoring = true;
+  end
+end
 minSizeMask = (max(MASK_RADIUS)+6).*[2,2,2];
 winLowCorner = ceil((WINDOW_SIZE-1) ./ 2);
 % if window size is odd then there should be as many pixels to the left and to

@@ -490,7 +490,7 @@ switch OPERATION
     case 'RemoveIgnoredParticles'
       % Get distribution of CCC from given cycle rawAlignment
       % Save histogram, also remove given bottom percentage and report CCC cutoff
-      printf('\n\t\nRemoving ignored particles from the meta data to save space, this must be run after alignment or after a call to emClarity skip, post classification\n\n.');
+      fprintf('\n\t\nRemoving ignored particles from the meta data to save space, this must be run after alignment or after a call to emClarity skip, post classification\n\n.');
       if ~(strcmpi(STAGEofALIGNMENT, 'RawAlignment'))
         error('Can only remove fraction at RawAlignment Stage')
       end
@@ -540,7 +540,7 @@ switch OPERATION
     fprintf(fID,'%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t\n%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t\n',percentiles');
     fclose(fID);
   otherwise
-    error('OPERATION must be WriteCsv, RemoveClasses, ShiftAll, RemoveFraction not %s', OPERATION)
+    error('OPERATION must be WriteCsv, RemoveClasses, ShiftAll, RemoveFraction, RemoveIgnoredParticles, not %s', OPERATION)
 end 
 
 % Redundant for WriteCsv, otherwise update the new geometry, which was backed up

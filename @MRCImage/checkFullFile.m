@@ -8,4 +8,7 @@ function is_file_the_expected_size = checkFullFile(mrc_image_obj)
 
 
     is_file_the_expected_size = getFileNBytes(mrc_image_obj) == expected_size;
+    if ~is_file_the_expected_size
+        fprintf('File is not the expected size: %d instead is %d\n', expected_size, getFileNBytes(mrc_image_obj));
+    end
 end
