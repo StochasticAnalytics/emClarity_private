@@ -210,6 +210,7 @@ refIMG = cell(2,1);
 refWGT = cell(2,1);
 refWgtROT = cell(2,1);
 imgCounts = cell(2,1);
+ref_to_class_idx = cell(2,1);
 for iGold = 1:2
   
   if iGold == 1
@@ -224,7 +225,8 @@ for iGold = 1:2
   
   weightNAME = sprintf('class_%d_Locations_Ref_%s_Wgt', refName, halfSet);
   imgCounts{iGold} = subTomoMeta.(cycleNumber).(imgNAME){3};
-  
+  % Get the class index for each reference
+  ref_to_class_idx{iGold} = subTomoMeta.(cycleNumber).(imgNAME){3}(1,:);
   
   [ refTMP ] = BH_unStackMontage4d(1:nReferences(iGold), ...
     subTomoMeta.(cycleNumber).(imgNAME){1}, ...
@@ -567,6 +569,8 @@ if (emc.force_no_symmetry)
   particle_symmetry = 'C1';
 end
 parfor iParProc = parVect
+  % for iParProc = parVect
+
   symmetry = emc.symmetry;
 
   bestAngles_tmp = struct();
@@ -957,9 +961,19 @@ parfor iParProc = parVect
                         case 0
                           refToAlign = 1;
                         case 1
+                          % Align this particle against all possible refs
                           refToAlign = 1:max(nReferences(:));
                         case 2
-                          refToAlign = classIDX;
+                          ref_to_class_idx_value = find(ref_to_class_idx{iGold} == classIDX);
+                          if isempty(ref_to_class_idx_value)
+                            error("No reference class found for classIDX %d", classIDX);
+                          else
+                            if length(ref_to_class_idx_value) > 1
+                              error("Multiple reference classes found for classIDX %d", classIDX);
+                            end
+                          end
+                 
+                          refToAlign = ref_to_class_idx_value;
                         otherwise
                           error('emc.multi_reference_alignment is not 0,1,2')
                       end
