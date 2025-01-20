@@ -642,3 +642,15 @@ if isfield(emc, 'tmp_scan')
 else
   emc.tmp_scan = [1,1,0];
 end
+
+if isfield(emc, 'Tmp_bandpass')
+  EMC_assert_numeric(emc.Tmp_bandpass, 3);
+else
+  emc.Tmp_bandpass = [0.001, 1200, 28];
+end
+
+if isfield(emc, 'Pca_bandpass')
+  EMC_assert_numeric(emc.Pca_bandpass, 3);
+else
+  emc.Pca_bandpass = [0.001, 1200, 28];
+end

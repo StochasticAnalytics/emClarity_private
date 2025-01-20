@@ -268,6 +268,17 @@ switch OPERATION
     clear blankClassMont
     % montage is always square, and the first row is always full, so use this to
     % determine the size.
+
+    % if it is raw alignment, assume we are still deleting classes - hacked in to test, note cycle number is bogus
+    % if strcmpi(STAGEofALIGNMENT, 'RawAlignment')
+    %   imgNAME = sprintf('class_%d_Locations_%s_%s_NoWgt', className, 'Cls', halfSet);
+    %   imgNAMEStd = sprintf('class_%d_Locations_%s_%s_NoWgt', className, 'Cls', 'ODD');
+    %   try
+    %     locations= masterTM.('cycle005').(imgNAME){2};
+    %   catch
+    %     locations= masterTM.('cycle005').(imgNAMEStd){2};
+    %   end
+    % end
     sizeMontage = max(locations{end}(2),locations{end}(4))
     blankClassMont(sizeMontage, sizeMontage) = single(0);
     

@@ -624,14 +624,19 @@ switch varargin{1}
     
   case 'reconstruct'
     if emcProgramHelp || ...
-        length(varargin) ~= 6
+        length(varargin) ~= 6 && length(varargin) ~= 7
       fprintf(['paramterfile\n',...
         'cycle #\n',...
         'output prefix\n', ...
         'symmetry (C1)\n',...
-        'max exposure (e/A^2)\n']);
+        'max exposure (e/A^2)\n', ...
+        'mapBackIter']);
     else
-      BH_to_cisTEM_mapBack(varargin{2},varargin{3},varargin{4},varargin{5},varargin{6});
+      if (length(varargin) == 7)
+        BH_to_cisTEM_mapBack(varargin{2},varargin{3},varargin{4},varargin{5},varargin{6}, varargin{7});
+      else
+        BH_to_cisTEM_mapBack(varargin{2},varargin{3},varargin{4},varargin{5},varargin{6}, -1);
+      end
     end
   otherwise
     error('command --%s-- not recognized. Try "help" for a list.', varargin{1})

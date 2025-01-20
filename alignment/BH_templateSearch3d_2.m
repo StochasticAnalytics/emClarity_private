@@ -111,30 +111,11 @@ pixelSize =  emc.pixel_size_angstroms .* samplingRate;
 
 % For testing
 print_warning=false;
-try
-  wantedCut = emc.('lowResCut');
-  fprintf('lowResCut is deprecated and will be removed in future versions.\n')
-  fprintf('please switch to Tmp_bandpass\n\n');
-  bp_vals = [1e-3,600,wantedCut];
-  print_warning = true;
-catch
-  bp_vals = [1e-3,600,28];
-end
 
-try
-  bp_vals = emc.('Tmp_bandpass');
-  if numel(bp_vals) ~= 3
-    error('Tmp_bandpass is [filter at zero freq, res high-pass cutoff, res low-pass cutoff]');
-  end
-  if print_warning
-    fprintf('WARNING, you specified lowResCut (deprecated) and Tmp_bandpass!\n');
-  end
-  fprintf('You specified a bandpass with values [%2.2e,%3.2f,%3.2f]\n',bp_vals);
-catch
-  bp_vals = [1e-3,600,28];
-  fprintf('Using default bandpass with values [%2.2e,%3.2f,%3.2f]\n',bp_vals);
-  
-end
+
+
+bp_vals = emc.('Tmp_bandpass');
+
 try
   stats_diameter_fraction = emc.('diameter_fraction_for_local_stats')
 catch

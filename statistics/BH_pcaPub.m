@@ -104,7 +104,7 @@ PREVIOUS_PCA = EMC_str2double(PREVIOUS_PCA);
 
 global bh_global_binary_pcaMask_threshold;
 
-use_new_interpolator = true;
+
 % Previous_pca has two functions, when true and > 0 use the decomposition
 % calculated from a random subset of the data to project the full data set
 % onto each of the selected principle components. when true and < 0 run
@@ -348,6 +348,8 @@ for iGold = 1:2
   if ~(test_multi_ref_diffmap)
     averageMotif{iGold} = averageMotif{iGold}{1};
   end
+
+  % The same external mask is applied to all references, so only load once.
   if (flgLoadMask) && (iGold == 1)
     fprintf('\n\nLoading external mask\n');
     externalMask = OPEN_IMG('single',sprintf('%s-pcaMask',subTomoMeta.(cycleNumber).(imgNAME){1}));
@@ -437,20 +439,26 @@ if (flgVarianceMap)
 end
 
 
-if (PREVIOUS_PCA)
+if (PREVIOUS_PCA == 1)
   volumeMask = gpuArray(OPEN_IMG('single', sprintf('%s_pcaVolMask.mrc',outputPrefix)));
+  if (emc.Pca_constrain_symmetry)
+    volumeMask_symmetryConstraint = gpuArray(OPEN_IMG('single', sprintf('%s_pcaVolMask_symmetryConstraint.mrc',outputPrefix)));
+  end
 else
   
+  [ volumeMask ]    = BH_mask3d(maskType, sizeMask, maskRadius, maskCenter);
+
+  % Saving the symmetry mask separately to we can reconstitute the variance maps and eigen images for better 
+  % visual interp.
   if (emc.Pca_constrain_symmetry)
     gridSearch = eulerSearch(emc.symmetry,180,5,360,5,0.0,1,true);
-    [ volumeMask ]    = BH_mask3d(maskType, sizeMask, maskRadius, maskCenter, ...
+    [ volumeMask_symmetryConstraint ]    = BH_mask3d(maskType, sizeMask, maskRadius, maskCenter, ...
       '3d', gridSearch.number_of_asymmetric_units);
-  else
-    [ volumeMask ]    = BH_mask3d(maskType, sizeMask, maskRadius, maskCenter);
+   volumeMask = volumeMask .* volumeMask_symmetryConstraint;
   end
   
   if ( flgPcaShapeMask )
-    % For testing we won't handle this block
+    % For testing we won't handle this block as it would require a volume mask for every reference (which is fine, but not implemented)
     if (test_multi_ref_diffmap)
       error('test_multi_ref_diffmap is incompatible with flgPcaShapeMask')
     end
@@ -463,32 +471,31 @@ else
   end
   
   if (flgLoadMask)
-    % For testing we won't handle this block
-    if (test_multi_ref_diffmap)
-      error('test_multi_ref_diffmap is incompatible with flgLoadMask')
-    end
     volumeMask = volumeMask .* externalMask;
   end
   
-  SAVE_IMG(MRCImage(gather(volumeMask)),sprintf('%s_pcaVolMask.mrc',outputPrefix),pixelSize);
+  SAVE_IMG(volumeMask,sprintf('%s_pcaVolMask.mrc',outputPrefix),pixelSize);
+  if (emc.Pca_constrain_symmetry)
+    SAVE_IMG(volumeMask_symmetryConstraint,sprintf('%s_pcaVolMask_symmetryConstraint.mrc',outputPrefix),pixelSize);
+  end
 end
 
 volMask = struct();
 nPixels = zeros(2,emc.n_scale_spaces);
+if (emc.Pca_constrain_symmetry)
+  masks.('volMask_symmetryConstraint') = gather(volumeMask_symmetryConstraint);
+end
 for iScale = 1:emc.n_scale_spaces
   for iGold = 1:1+flgGold
     stHALF = sprintf('h%d',iGold);
     stSCALE = sprintf('s%d',iScale);
     if (flgVarianceMap)
-      if (test_multi_ref_diffmap)
-        error('test_multi_ref_diffmap is incompatible with flgVarianceMap')
-      end
       volTMP = gather(volumeMask.*prevVarianceMaps.(stHALF).(stSCALE));
     else
       volTMP = gather(volumeMask);
     end
-    
     masks.('volMask').(stHALF).(stSCALE) = (volTMP);
+    
     masks.('binary').(stHALF).(stSCALE)  = (volTMP >= bh_global_binary_pcaMask_threshold);
     masks.('binary').(stHALF).(stSCALE)  = ...
       masks.('binary').(stHALF).(stSCALE)(:);
@@ -559,7 +566,7 @@ end
 
 
 montOUT = BH_montage4d(avgFiltered(1,:),'');
-SAVE_IMG(MRCImage(montOUT), sprintf('%s_filt.mrc', outputPrefix),pixelSize);
+SAVE_IMG(montOUT, sprintf('%s_filt.mrc', outputPrefix),pixelSize);
 clear montOUT
 
 
@@ -636,8 +643,8 @@ for iGold = 1:1+flgGold
       gpuMasks.('scaleMask').(stSCALE) = gpuArray(masks.('scaleMask').(stSCALE));
     end
     
-    
-    gpuMasks.('highPass').(stSCALE) = BH_bandpass3d(sizeMask,1e-6,400,2.2*pixelSize,'GPU',pixelSize);
+    bp_vals = emc.Pca_bandpass;
+    gpuMasks.('highPass').(stSCALE) = BH_bandpass3d(sizeMask,bp_vals(1), bp_vals(2), bp_vals(3),'GPU',pixelSize);
   end
   
   % % %   for iGold_inner = 1:1+flgGold
@@ -804,24 +811,15 @@ for iGold = 1:1+flgGold
                 padVAL(2,1:3), 'GPU', 'single');
             end
             
-            if ( use_new_interpolator )
-              % Pulling in the newer interpolater from alignRaw3d_v2. There, I instantiate a new interpolator every subtomo, but it is generally
-              % being used many times, over the angle loop. It may be more efficient to do this outside the for subtomo loop here, but
-              % to start, just do it the same way.
-              use_only_once = true;
-              [ ~, iParticle ] = interpolator(gpuArray(iParticle),angles, shiftVAL, 'Bah', 'inv', emc.symmetry, use_only_once);
+            % Pulling in the newer interpolater from alignRaw3d_v2. There, I instantiate a new interpolator every subtomo, but it is generally
+            % being used many times, over the angle loop. It may be more efficient to do this outside the for subtomo loop here, but
+            % to start, just do it the same way.
+            use_only_once = true;
+            [ ~, iParticle ] = interpolator(gpuArray(iParticle),angles, shiftVAL, 'Bah', 'inv', emc.symmetry, use_only_once);
+            
+            [ ~, iWedge ] = interpolator(gpuArray(wedgeMask),angles,[0,0,0], 'Bah', 'inv', emc.symmetry, use_only_once);
               
-              [ ~, iWedge ] = interpolator(gpuArray(wedgeMask),angles,[0,0,0], 'Bah', 'inv', emc.symmetry, use_only_once);
-              
-            else
-              % Transform the particle, and then trim to motif size
-              
-              [ iParticle ] = BH_resample3d(iParticle, angles, shiftVAL, ...
-                'Bah', 'GPU', 'inv');
-              
-              [ iWedge ] = BH_resample3d(wedgeMask, angles, [0,0,0], ...
-                'Bah', 'GPU', 'inv');
-            end
+
             
             
             
@@ -962,6 +960,14 @@ for iGold = 1:1+flgGold
     EMC_parpool(nCores);
   end
   
+  fprintf('PCA decomposition complete\n');
+
+  rotConvention = 'Bah';
+  use_interpolator_once = true;
+  normalize_asymmetric_count = false;
+  symmetry_weight = [];
+
+
   if (previousPCA)
     % Read the matrix of eigenvectors from the prior PCA.
     oldPca = load(previousPCA);
@@ -1030,9 +1036,27 @@ for iGold = 1:1+flgGold
       
       tmpReshape = zeros(prod(sizeMask),1);
       tmpReshape(masks.('binary').(stHALF).(sprintf('s%d',iScale)) ) = varianceMap(:);
+      tmpReshape = reshape(single(tmpReshape), sizeMask);
+      symmetry_weight = [];
+      if (emc.Pca_constrain_symmetry)
+
+        % resample the tmpReshape to apply the symmetry
+        % Assuming we are not using helical here
+        SAVE_IMG(tmpReshape,sprintf('%s_reshape1_weight%d-%s-%d.mrc',outputPrefix, eigsFound, halfSet, iScale),pixelSize);
+
+        [~, tmpReshape] = interpolator(gpuArray(tmpReshape), [0,0,0], [0,0,0], rotConvention , 'inv', emc.symmetry, use_interpolator_once, normalize_asymmetric_count);
+        [~, symmetry_weight ] = interpolator(gpuArray(single(masks.('binary').(stHALF).(sprintf('s%d',iScale)))), [0,0,0], [0,0,0], rotConvention , 'inv', emc.symmetry, use_interpolator_once, normalize_asymmetric_count);
+        symmetry_weight(symmetry_weight < .01) = 1;
+  
+
+        SAVE_IMG(symmetry_weight,sprintf('%s_symmetry_weight%d-%s-%d.mrc',outputPrefix, eigsFound, halfSet, iScale),pixelSize);
+        SAVE_IMG(tmpReshape,sprintf('%s_reshape2_weight%d-%s-%d.mrc',outputPrefix, eigsFound, halfSet, iScale),pixelSize);
+
+        tmpReshape = tmpReshape ./ symmetry_weight;
+      end
       
       fname = sprintf('%s_varianceMap%d-%s-%d.mrc',outputPrefix, eigsFound, halfSet, iScale);
-      SAVE_IMG(MRCImage(single(gather(reshape(tmpReshape, sizeMask)))), fname,pixelSize);
+      SAVE_IMG(tmpReshape, fname,pixelSize);
       
       
       
@@ -1042,11 +1066,23 @@ for iGold = 1:1+flgGold
       for iEig = 1:eigsFound
         tmpReshape = zeros(prod(sizeMask),1);
         tmpReshape(masks.('binary').(stHALF).(sprintf('s%d',iScale)) ) = U{iScale}(:, iEig);
-        eigenImage = reshape(tmpReshape, sizeMask);
+        eigenImage = reshape(single(tmpReshape), sizeMask);
         eigenImage = eigenImage - mean(eigenImage(masks.('binaryApply').(stHALF).(sprintf('s%d',iScale))));
         eigenImage = eigenImage ./rms(eigenImage(masks.('binaryApply').(stHALF).(sprintf('s%d',iScale)))).* masks.('binary').(stHALF).(sprintf('s%d',iScale)) ;
+        if (emc.Pca_constrain_symmetry)
+          % resample the tmpReshape to apply the symmetry
+          % Assuming we are not using helical here
+
+          [~, eigenImage] = interpolator(gpuArray(eigenImage), [0,0,0], [0,0,0], rotConvention , 'inv', emc.symmetry, use_interpolator_once,normalize_asymmetric_count);
+          [~, eigenImage_sum ] = interpolator(gpuArray(avgFiltered{iGold, iScale}), [0,0,0], [0,0,0], rotConvention , 'inv', emc.symmetry, use_interpolator_once,normalize_asymmetric_count);
+          eigenImage_sum = (eigenImage_sum + eigenImage) ./ (2.*symmetry_weight);
+          eigenImage = eigenImage ./ symmetry_weight;
+          
+        else
+          eigenImage_sum = (eigenImage + avgFiltered{iGold, iScale} )./2;
+        end
         eigList{iEig,1} = gather(eigenImage);
-        eigList_SUM{iEig,1} = gather((eigenImage + avgFiltered{iGold, iScale} )./2);
+        eigList_SUM{iEig,1} = gather(gather(eigenImage_sum));
       end
       
       
@@ -1054,8 +1090,8 @@ for iGold = 1:1+flgGold
       [ eigMont_SUM ] = BH_montage4d(eigList_SUM, 'eigMont_SUM');
       fname = sprintf('%s_eigenImage%d-%s-mont_%d.mrc',outputPrefix, eigsFound, halfSet, iScale);
       fname_SUM = sprintf('%s_eigenImage%d-SUM-%s-mont_%d.mrc',outputPrefix, eigsFound, halfSet, iScale);
-      SAVE_IMG(MRCImage(single(gather(eigMont))), fname,pixelSize);
-      SAVE_IMG(MRCImage(single(gather(eigMont_SUM))), fname_SUM,pixelSize);
+      SAVE_IMG(eigMont, fname,pixelSize);
+      SAVE_IMG(eigMont_SUM, fname_SUM,pixelSize);
       
       
       % If requested, limit the number of principal components and coeffs saved

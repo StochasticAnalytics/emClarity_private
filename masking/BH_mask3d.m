@@ -207,14 +207,21 @@ if strcmpi(mShape, 'cylinder')
         0, 1, 0 );
     end
     
-    sectorMax = 2*pi/asymmetricRestriction * 1.025;
-    angles = (angles > (2*pi-sectorMax/2) | angles < sectorMax/2);
+    taper_kernel = EMC_gaussianKernel([1,9], 3, 'gpu', {});
+    dilate_kernel = EMC_gaussianKernel([1,5], 3, 'gpu', {});
+    sectorMax = 2*pi/asymmetricRestriction;
+
+    % Dilate the selection a bit. It is better to have some of the neighboring asym unit than to have some of our unit missing.
+    angles = (angles >= (2*pi-sectorMax/2) | angles <= sectorMax/2);
+    angles = EMC_convn(single(angles), dilate_kernel);
+    angles = angles > 0.0;
     % % %   gc = BH_multi_gaussian3d(-1.*size(angles),1.5);
     % % %   mWindow = real(ifftn(fftn(angles.*fullMask).*gc));
-    KERNEL = EMC_gaussianKernel([1,5], 1.5, 'gpu', {});
-    mWindow = EMC_convn(single(angles.*fullMask), KERNEL);
-    clear KERNEL
-    mWindow = mWindow ./ max(angles(:));
+ 
+    mWindow = EMC_convn(single(angles.*fullMask), taper_kernel);
+    
+    clear KERNEL taper_kernel dilate_kernel
+    mWindow = mWindow ./ max(mWindow(:));
     
   else
     

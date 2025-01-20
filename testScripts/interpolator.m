@@ -30,11 +30,27 @@ classdef interpolator < handle
       %UNTITLED Construct an instance of this classlt
       
       %   Detailed explanation goes here
+
+      % Check that the input is single and a gpuArray and cast if needed otherwise the mex call will fail silently
+      if ~isa(inputVol, 'single')
+        inputVol = single(inputVol);
+      end
+      if ~isa(inputVol, 'gpuArray')
+        inputVol = gpuArray(inputVol);
+      end
+
+ 
       
-      if (nargin == 7)
+      if (nargin >= 7)
         useOnlyOnce = varargin{1};
       else
         useOnlyOnce = false;
+      end
+
+      if (nargin == 8)
+        dividByAsymmetricCount = varargin{2};
+      else
+        dividByAsymmetricCount = true;
       end
       
       check_symmetry(obj, symmetry, convention);
@@ -62,7 +78,8 @@ classdef interpolator < handle
         
       end
       
-      if (obj.nSymMats > 1)
+      % There are cases where we just want the naive average, eg. re-symmetrizing a symmetry constraint mask for normalization
+      if (obj.nSymMats > 1 && dividByAsymmetricCount)
         resampledVol = resampledVol ./ obj.nSymMats;
       end
       

@@ -1,4 +1,4 @@
-function [ ] = BH_to_cisTEM_mapBack(PARAMETER_FILE, CYCLE, output_prefix, symmetry, MAX_EXPOSURE, varargin)
+function [ ] = BH_to_cisTEM_mapBack(PARAMETER_FILE, CYCLE, output_prefix, symmetry, MAX_EXPOSURE, mapBackIter)
 
 % Map back and align using the subtomograms as fiducial markers.
 
@@ -16,6 +16,7 @@ function [ ] = BH_to_cisTEM_mapBack(PARAMETER_FILE, CYCLE, output_prefix, symmet
 
 skip_to_end = false;
 emc = BH_parseParameterFile(PARAMETER_FILE);
+mapBackIter = EMC_str2double(mapBackIter);
 MAX_EXPOSURE = EMC_str2double(MAX_EXPOSURE)
 if isnan(MAX_EXPOSURE)
   error('MAX_EXPOSURE is nan - if running from an interactive matlab session, did you enter as a string?');
@@ -90,7 +91,10 @@ fprintf('Using %d workers as max of %d %d*nGPUs and %d nWorkers visible\n', ...
 
 
 load(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta');
-mapBackIter = subTomoMeta.currentTomoCPR;
+if (mapBackIter == -1)
+  mapBackIter = subTomoMeta.currentTomoCPR;
+end
+
 
 % TODO: use these to add an optional defocus fitting step
 % So translational, optional defocus, angles
@@ -274,6 +278,7 @@ for iTiltSeries = tiltStart:nTiltSeries
   maxZ = 0;
 
   % The 
+  tilt_filepath
   tiltHeader = getHeader(MRCImage(tilt_filepath, 0));
   tiltName = subTomoMeta.mapBackGeometry.tomoName.(tomoList{1}).tiltName;
   [ maxZ ] = emc_get_max_specimen_NZ( ... 
