@@ -266,11 +266,8 @@ cpuVols = struct;
   BH_multi_validArea( maskSize, maskRadius, emc.scale_calc_size )
 
 
-if (test_multi_ref_diffmap)
-  refName = emc.('Raw_className');
-else
-  refName = 0;
-end
+refName = emc.('Raw_className');
+
 
 % If emc.classification is negative combine the data for clustering, but don't set
 % any of the alignment changes to be persistant so that extracted class
@@ -519,7 +516,7 @@ if ~(test_multi_ref_diffmap)
     kernelSize = ceil(threeSigma(iScale).*3) + 3;
     kernelSize = kernelSize + (1-mod(kernelSize,2));
     % masks.('scaleMask').(sprintf('s%d',iScale))  = EMC_gaussianKernel([1,kernelSize],  threeSigma(iScale), 'cpu', {});
-    masks.('scaleMask').(sprintf('s%d',iScale))  = EMC_gaussianKernel([1,1,1].*kernelSize, 2*threeSigma(iScale), 'gpu', {});
+    masks.('scaleMask').(sprintf('s%d',iScale))  = EMC_gaussianKernel([1,1,1].*kernelSize, 2*threeSigma(iScale), 'cpu', {});
 
   
     % SAVE_IMG( masks.('scaleMask').(sprintf('s%d',iScale)), ...
@@ -529,6 +526,7 @@ if ~(test_multi_ref_diffmap)
   end
 end
 
+default_highpass = [1e-6,400,2.2*pixelSize];
 avgMotif_FT = cell(1+flgGold,emc.n_scale_spaces);
 avgFiltered = cell(1+flgGold,emc.n_scale_spaces);
 % Here always read in both, combine if flgGold = 0
@@ -542,6 +540,16 @@ for iGold = 1:1+flgGold
     end
     
     
+    if (test_multi_ref_diffmap)
+      % We don't want to apply this on top of the length scale blurring, so only use the default or user supplied bandpass
+      % when we have multiple references, and hence, no length scale blurring.
+      bp_vals = emc.Pca_bandpass;
+    else
+      bp_vals = default_highpass;
+    end
+    
+    masks.('highPass').(sprintf('s%d',iScale)) = gather(BH_bandpass3d(sizeMask,bp_vals(1), bp_vals(2), bp_vals(3),'GPU',pixelSize));
+    
     tmp_avg = tmp_avg - mean(tmp_avg(masks.('binaryApply').(sprintf('h%d',iGold)).(sprintf('s%d',iScale))));
     tmp_avg = tmp_avg ./ rms(tmp_avg(masks.('binaryApply').(sprintf('h%d',iGold)).(sprintf('s%d',iScale))));
     tmp_avg = tmp_avg .* masks.('volMask').(sprintf('h%d',iGold)).(sprintf('s%d',iScale));
@@ -551,7 +559,7 @@ for iGold = 1:1+flgGold
     end
     avgMotif_FT{iGold, iScale} = ...
       BH_bandLimitCenterNormalize(tmp_avg,...
-      BH_bandpass3d(sizeMask,1e-6,400,2.2*pixelSize,'GPU',pixelSize), ...
+      BH_bandpass3d(sizeMask,default_highpass(1),default_highpass(2),default_highpass(3),'GPU',pixelSize), ...
       masks.('binaryApply').(sprintf('h%d',iGold)).(sprintf('s%d',iScale)),...
       [0,0,0;0,0,0],'single');
 
@@ -642,11 +650,11 @@ for iGold = 1:1+flgGold
     if ~(test_multi_ref_diffmap)
       gpuMasks.('scaleMask').(stSCALE) = gpuArray(masks.('scaleMask').(stSCALE));
     end
+    gpuMasks.('highPass').(stSCALE) = gpuArray(masks.('highPass').(stSCALE));
     
-    bp_vals = emc.Pca_bandpass;
-    gpuMasks.('highPass').(stSCALE) = BH_bandpass3d(sizeMask,bp_vals(1), bp_vals(2), bp_vals(3),'GPU',pixelSize);
+
   end
-  
+
   % % %   for iGold_inner = 1:1+flgGold
   % % %     for iScale = 1:emc.n_scale_spaces
   % % %       avgMotif_FT{iGold_inner, iScale} = ...

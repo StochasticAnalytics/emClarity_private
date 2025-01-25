@@ -6,7 +6,7 @@ classdef interpolator < handle
     % Pointers to underlying cuda objects
     texObject = '';
     cuArray = '';
-    % Symmetry matrices
+        % Symmetry matrices
     nSymMats;
     symmetry_matrices;
     symmetry_type = '';
@@ -22,7 +22,7 @@ classdef interpolator < handle
     % keep it alive for symmetry ops, but delete after interp, and store
     % the input volume here.
     input_volume = '';
-    make_tex_persistent = false;
+        make_tex_persistent = false;
   end
   
   methods
@@ -57,7 +57,7 @@ classdef interpolator < handle
       [angles, shifts] = check_anglesAndShifts(obj,angles, shifts, convention, direction);
       boolDirection = check_inputs(obj,direction);
       
-      % Set the input size
+% Set the input size
       obj.input_size = uint64((size(inputVol)));
       obj.dummy_vol = inputVol(1:2,1:2,1:2);
       
@@ -75,8 +75,8 @@ classdef interpolator < handle
           shifts, ...
           boolDirection, ...
           obj.texObject);
-        
-      end
+
+              end
       
       % There are cases where we just want the naive average, eg. re-symmetrizing a symmetry constraint mask for normalization
       if (obj.nSymMats > 1 && dividByAsymmetricCount)
@@ -189,7 +189,7 @@ classdef interpolator < handle
     
     function [  ] = check_symmetry(obj, symmetry, convention)
       
-      if isempty(obj.symmetry_type |  ~strcmpi(symmetry, obj.symmetry_type))
+            if isempty(obj.symmetry_type |  ~strcmpi(symmetry, obj.symmetry_type))
         
         if (strcmpi(symmetry, obj.symmetry_type))
           return;
@@ -394,8 +394,8 @@ classdef interpolator < handle
             error('Only CX, DX, O, I(2) symmetry is implemented');
         end
         
-        
-        
+
+                
         
         
         
@@ -422,7 +422,7 @@ classdef interpolator < handle
         obj.texObject = '';
         obj.cuArray = '';
       end
-    end
+          end
     
   end
 end

@@ -186,7 +186,12 @@ if strcmpi(mShape, 'cylinder')
   ellipsoid = (G1./mRadius(1)).^2 + (G2./mRadius(2)).^2;
   
   if (flg3d)
-    fullMask = (ellipsoid <= 1) & (G3 <= mRadius(3));
+    if (asymmetricRestriction)
+      % Only deal with Z, letting the sector extend to the edge of XY and multiply that by the vol mask
+      fullMask = (G3 <= mRadius(3));
+    else
+      fullMask = (ellipsoid <= 1) & (G3 <= mRadius(3));
+    end
   else
     fullMask = (ellipsoid <= 1);
   end

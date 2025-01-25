@@ -25,7 +25,7 @@ const float cosine_edge_norm = 1.0f;// / 3.0f;
 __global__ void sf3dKernel(const cudaTextureObject_t tex_obj,
                            float *outputData,
                            float3 size_shift,
-                           uint3 dims,
+                           int3 dims,
                            float2 sinAcosA
                            ) {
 
@@ -44,9 +44,9 @@ __global__ void sf3dKernel(const cudaTextureObject_t tex_obj,
 
 
   // The centered coordinate in the 3d volume
-  float x_centered = (float)x - (float)dims.x/2;
+  float x_centered = float(x - dims.x/2);
   tw_pre = -x_centered * sinAcosA.x + size_shift.z;
-  float y_centered_normalized = ((float)y - (float)(dims.y/2) + size_shift.y) / (float)dims.y + 0.5f;
+  float y_centered_normalized = (float(y - dims.y/2) + size_shift.y) / float(dims.y) + 0.5f;
 
   for (int z = 0; z < dims.z; z++) {
 
@@ -54,15 +54,15 @@ __global__ void sf3dKernel(const cudaTextureObject_t tex_obj,
     tw = tw_pre + z_centered * sinAcosA.y;
 
     if (tw < -slice_thickness_pixel_radius || tw > slice_thickness_pixel_radius) {
-      continue;
+    continue;
     }
 
     // FIXME this should approximate a sinc
-    zWeight = (0.5 + 0.5*cosf(tw * cosine_edge_arg )) * cosine_edge_norm;
-
+    zWeight = (0.5 + 0.5*cosf(tw * cosine_edge_arg ));
+    
     tu =  x_centered*sinAcosA.y + z_centered*sinAcosA.x + size_shift.x; 
     tu /= (float)dims.x; // Normalized coords
-    tw /= (float)dims.z;
+    // tw /= (float)dims.z;
       
 
        
@@ -112,9 +112,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, mxArray const *prhs[])
 
   float * d_output_img = NULL;
   float * d_ctf_img = NULL;
-  uint3 dims;
-  uint2 ctf_dims;
-  uint2 o_ctf_dims;
+  int3 dims;
+  int2 ctf_dims;
+  int2 o_ctf_dims;
 
   float2 sinAcosA[*nTilts];
 
@@ -133,19 +133,19 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, mxArray const *prhs[])
   }
     
 
-  dims     = make_uint3(wantedSize[0],wantedSize[1],wantedSize[2]);
-  ctf_dims = make_uint2(wantedSize[0],wantedSize[1]);
+  dims     = make_int3(wantedSize[0],wantedSize[1],wantedSize[2]);
+  ctf_dims = make_int2(wantedSize[0],wantedSize[1]);
 
 
 
   if (*doHalfGrid )
   {
-    o_ctf_dims = make_uint2(0, ctf_dims.y/2);
+    o_ctf_dims = make_int2(0, ctf_dims.y/2);
     ctf_dims.x = ctf_dims.x/2 + 1;
   }
   else
   {
-    o_ctf_dims = make_uint2(ctf_dims.x/2, ctf_dims.y/2);
+    o_ctf_dims = make_int2(ctf_dims.x/2, ctf_dims.y/2);
   }
 
 
@@ -251,7 +251,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, mxArray const *prhs[])
         is_initialized = true;  
     }
     // Call the sf3d kernel
+    checkCudaErrors(cudaGetLastError());
     sf3dKernel<<<dimGrid, threads_per_block,0,cudaStreamPerThread >>>(tex_obj, d_output_img, size_shift, dims, sinAcosA[iAng]);
+    checkCudaErrors(cudaPeekAtLastError()); 
+    cudaError_t error = cudaStreamSynchronize(cudaStreamPerThread); 
+    checkCudaErrors(error);
 
   }
 

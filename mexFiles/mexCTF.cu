@@ -48,8 +48,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, mxArray const *prhs[])
                   *defocus1,  *defocus2, *defocusAst);
 
 //  mexPrintf("%f %f %f %f\n",*defocus1,*defocus2,b_ctf.defocus1,b_ctf.defocus2);
-  uint2 dims;
-  uint2 o_dims;
+  int2 dims;
+  int2 o_dims;
 
   
 
@@ -64,17 +64,17 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, mxArray const *prhs[])
   mwSize const   input_dims = 2;
   mxComplexity   output_type = mxREAL;
   mxClassID      output_class = mxSINGLE_CLASS;
-  dims = make_uint2(*nX,*nY);
+  dims = make_int2(*nX,*nY);
   mwSize  output_size[input_dims];
 
   if (*doHalfGrid )
   {
-    o_dims = make_uint2(0, *nY/2);
+    o_dims = make_int2(0, *nY/2);
     dims.x = dims.x/2 + 1;
   }
   else
   {
-    o_dims = make_uint2(*nX/2, *nY/2);
+    o_dims = make_int2(*nX/2, *nY/2);
 
   }
 

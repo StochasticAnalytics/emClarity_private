@@ -9,7 +9,7 @@ const float   expC = 2.81410f;
 const float   kvScale = 1.0f; //FIXME for other voltages (0.8 for 200)
 
 // createb_ctf
-__global__ void ctf(cufftReal* a, uint2 dims, uint2 o_dims, ctfParams b_ctf, float2 fourierVoxelSize, 
+__global__ void ctf(cufftReal* a, int2 dims, int2 o_dims, ctfParams b_ctf, float2 fourierVoxelSize, 
                     bool calc_centered) 
 {
 
@@ -65,7 +65,7 @@ __global__ void ctf(cufftReal* a, uint2 dims, uint2 o_dims, ctfParams b_ctf, flo
 }
 
 // createb_ctf
-__global__ void ctf(cufftReal* a, uint2 dims, uint2 o_dims, ctfParams b_ctf, float2 fourierVoxelSize, 
+__global__ void ctf(cufftReal* a, int2 dims, int2 o_dims, ctfParams b_ctf, float2 fourierVoxelSize, 
                     bool calc_centered, float radial_weight, float total_exposure, float wiener_constant) 
 {
 

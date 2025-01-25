@@ -635,7 +635,7 @@ switch varargin{1}
       if (length(varargin) == 7)
         BH_to_cisTEM_mapBack(varargin{2},varargin{3},varargin{4},varargin{5},varargin{6}, varargin{7});
       else
-        BH_to_cisTEM_mapBack(varargin{2},varargin{3},varargin{4},varargin{5},varargin{6}, -1);
+        BH_to_cisTEM_mapBack(varargin{2},varargin{3},varargin{4},varargin{5},varargin{6}, "-1");
       end
     end
   otherwise

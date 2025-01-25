@@ -344,7 +344,7 @@ const float EXTRAPVAL = 0.0f;
 //! @param outputData  output data in global memory
 ////////////////////////////////////////////////////////////////////////////////
 __global__ void transformKernel_FWD(float *outputData,
-                                uint2 dims,
+                                int2 dims,
                                 float2 rm_1,
                                 float2 rm_2,
                                 float2 shifts,
@@ -401,7 +401,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, mxArray const *prhs[])
   int iSpot = 1;
   float * d_output_img = NULL;
   float * d_input_img  = NULL;
-  uint2 dims;
+  int2 dims;
   float2 shifts;
   float2 rm_1;
   float2 rm_2;
@@ -450,7 +450,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, mxArray const *prhs[])
   mwSize const   numel_input = mxGPUGetNumberOfElements(inputArray);
   mxComplexity   input_data_type = mxGPUGetComplexity(inputArray);
 
-  dims = make_uint2(input_size[0],input_size[1]);
+  dims = make_int2(input_size[0],input_size[1]);
   
 
   size = dims.x * dims.y * sizeof(float);

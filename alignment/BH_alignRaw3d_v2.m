@@ -103,11 +103,11 @@ if ( emc.doHelical )
   rotConvention = 'Helical';
 end
 
-if (emc.classification)
-  refName      = emc.('Ref_className');
-else
+% if (emc.classification)
+%   refName      = emc.('Ref_className');
+% else
   refName = emc.('Raw_className');
-end
+% end
 
 outputPrefix = sprintf('%s_%s', cycleNumber, emc.('subTomoMeta'));
 
@@ -120,11 +120,12 @@ classVector{2}  = emc.('Raw_classes_eve')(1,:);
 
 
 % % % % if (emc.classification || emc.multi_reference_alignment)
-if (emc.classification)
-  geometry = subTomoMeta.(cycleNumber).ClassAlignment;
-  refVectorFull{1}= [emc.('Ref_references_odd');1]
-  refVectorFull{2}= [emc.('Ref_references_eve');1]
-elseif (emc.multi_reference_alignment)
+% if (emc.classification)
+%   geometry = subTomoMeta.(cycleNumber).ClassAlignment;
+%   refVectorFull{1}= [emc.('Ref_references_odd');1]
+%   refVectorFull{2}= [emc.('Ref_references_eve');1]
+% else if
+if (emc.multi_reference_alignment)
   geometry = subTomoMeta.(cycleNumber).ClusterRefGeom;
   refVectorFull{1}= [emc.('Raw_classes_odd');classVector{1} ]
   refVectorFull{2}= [emc.('Raw_classes_eve');classVector{2} ]
@@ -340,7 +341,9 @@ wCCC  = cell(nReferences(1),1);
 for iWccc = 1:length(nReferences(1));
   wCCC{iWccc} = 0;
 end
-if (emc.classification || emc.multi_reference_alignment)
+% if (emc.classification || emc.multi_reference_alignment)
+if ( emc.multi_reference_alignment)
+
   for iRef = 1:nReferences(1)
 
     fscINFO = subTomoMeta.(cycleNumber).('fitFSC').(sprintf('Ref%d',iRef));
@@ -1006,7 +1009,7 @@ parfor iParProc = parVect
                             
                             
                             
-                            % maybe I should be rotating peak mask here in case it has
+                            % maybe I should be rotating peak mask here in case it hastrack_stats
                             % an odd shape, since we are leaving the proper frame
                             
                             iRotRef = BH_bandLimitCenterNormalize(...
@@ -1395,6 +1398,8 @@ parfor iParProc = parVect
               
               % It is probably more useful see the shifts in the particle
               % reference frame vs. the avg which was the original
+              % Note: the final translation is with the ref rotated to the particles orientation, so the 
+              % shift is in the tomogram (lab) reference frame.
               if (emc.printShiftsInParticleBasis)
                 printShifts = zeros(3,3);
                 printShifts(1,:) = RotMat * reshape(cccInitial(1,end-2:end),3,1);

@@ -848,8 +848,8 @@ parfor iParProc = parVect
             [ iSF3D ] = BH_weightMaskMex(sizeCalc, samplingRate, TLT, center.*samplingRate, reconGeometry, emc.wiener_constant);
               make_sf3d = false;
             end
-            
-            
+              
+                        
             
             if (emc.flgQualityWeight)
               iCCC = positionList(iSubTomo,[1]+26*(iPeak-1));
