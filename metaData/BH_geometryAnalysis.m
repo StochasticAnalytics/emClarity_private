@@ -24,7 +24,8 @@ else
   try
     % should be a text file of only x,y,z (model2points imodModel classes.txt)
     % or
-    % a list of names of tomograms to remove
+    % a list of names of tomograms to remove 
+    % FIXME if any path this will not work.
     if ~(strcmp(VECTOR_OP,'tomoList.txt'))
       [~,modNAME,~] = fileparts(VECTOR_OP);
       system(sprintf('model2point %s %s.txt > /dev/null',VECTOR_OP,modNAME));
@@ -228,22 +229,21 @@ switch OPERATION
       system('rm cache/*.wgt*');
       system('rm cache/*.rec*');
     end
-    for iTomo = 1:nTomograms
-      STACK_PRFX = ...
-               masterTM.mapBackGeometry.tomoName.(tomoList{iTomo}).tiltName;
 
-      
+    [STACK_LIST, nTiltSeries] = BH_returnIncludedTilts( masterTM.mapBackGeometry );
 
-      newTLT = sprintf('fixedStacks/ctf/%s_ali%d_ctf.tlt', ...
-                                                  STACK_PRFX,mapBackIter+1); 
+    for iStack = 1:length(STACK_LIST)
+      STACK_PRFX = STACK_LIST{iStack};
+      tomo_names = masterTM.mapBackGeometry.(STACK_PRFX).tomoList;
+      for iTomo = 1:length(tomo_names)
+
+        newTLT = sprintf('fixedStacks/ctf/%s_ali%d_ctf.tlt', STACK_PRFX,mapBackIter+1); 
+        geometry.(tomo_names{iTomo}) = load(newTLT);
+        fprintf('Updating TLT %s\n', newTLT);
+      end
+    end
 
     
-      geometry.(tomoList{iTomo}) = load(newTLT);
-      fprintf('Updating TLT %s\n', newTLT);
-     
-
-      clear newTLT STACK_PRFX
-    end
     
   case 'WriteCsv'
     !mkdir -p csv
@@ -479,6 +479,8 @@ switch OPERATION
     end
     
     cccCutOff = sortCCC(cutIDX)
+    sortCCC(1)
+    sortCCC(end)
     
     nRemoved = 0;
     for iTomo = 1:nTomograms

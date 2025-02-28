@@ -88,6 +88,14 @@ parfor iGPU = 1:nGPUs
   for iTilt = 1:length(ITER_LIST{iGPU})
     
     STACK_PRFX = ITER_LIST{iGPU}{iTilt};
+
+    try
+      l = load(sprintf('fixedStacks/ctf/%s_ali3_ctf.tlt',STACK_PRFX));
+      fprintf('FOUND geometry for %s\n',STACK_PRFX);
+      continue;
+    catch
+      fprintf('reloading geometry for %s\n',STACK_PRFX);
+    end
     
     if (mapBackIter)
       mapBackPrfx = sprintf('mapBack%d/%s_ali%d_ctf',mapBackIter,STACK_PRFX,mapBackIter)
@@ -230,6 +238,7 @@ parfor iGPU = 1:nGPUs
     if (mapBackIter)
       fprintf('Combining tranformations\n\n');
       % Load in the mapBack alignment
+      skip = false;
       try
         mbEST = load(sprintf('%s.tltxf',mapBackPrfx));
       catch
@@ -237,6 +246,7 @@ parfor iGPU = 1:nGPUs
         system(sprintf('cp fixedStacks/ctf/%s_ali1_ctf.tlt fixedStacks/ctf/%s_ali%d_ctf.tlt',STACK_PRFX,STACK_PRFX,mapBackIter+1));
         continue;
       end
+
       mbTLT = load(sprintf('%s.tlt',mapBackPrfx));
       defShifts = sprintf('%s.defShifts',mapBackPrfx);
       if exist(defShifts,'file')
@@ -325,7 +335,7 @@ parfor iGPU = 1:nGPUs
         end
       end
     else
-      error('Why would we get here?')
+      error('ctf update should only be called after tomoCPR (mapBackIter > 0), you can change this with emClarity geometry paramX.m X SwitchCurrentTomoCPR [mapBackIter,0,0] STD');
     end
 
     

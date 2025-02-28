@@ -150,6 +150,10 @@ reconScaling = 1;
 %%% Put this in the param file later - the input values should be in angstrom
 %%% and are the relevant scale spaces for classification.
 
+use_notch_filter = true;
+if (emc.Pca_use_real_space_conv)
+  use_notch_filter = false;
+end
 
 samplingRate   = emc.('Cls_samplingRate');
 refSamplingRate= emc.('Ali_samplingRate');
@@ -247,12 +251,14 @@ nTomograms = length(tomoList);
 
 
 [ maskType, maskSize, maskRadius, maskCenter ] = ...
-  BH_multi_maskCheck(emc, 'Cls', pixelSize);
+  BH_multi_maskCheck(emc, 'Cls', pixelSize)
+
 
 [ preMaskType, preMaskSize, preMaskRadius, preMaskCenter ] = ...
   BH_multi_maskCheck(emc, 'Ali', refPixelSize);
 
-% This is prob not a good way to make sure the mask size matches::w
+% The size changes based on the radius, but we want the size to match the size from averaging,
+% so use the aliMask size with the clsMask radius
 maskSize=preMaskSize;
 
 % Make sure everthing matches the extracted average and wedge
@@ -509,14 +515,19 @@ clear volumeMask
 % radius, convert Ang to pix , denom = equiv stdv from normal to include, e.g.
 % for 95% use 1/sig = 1/2
 %stdDev = 1/2 .* (emc.pca_scale_spaces ./ pixelSize - 1)  .* 3.0./log(emc.pca_scale_spaces)
+
 if ~(test_multi_ref_diffmap)
   threeSigma = 1/3 .* (emc.pca_scale_spaces ./ pixelSize);
   for iScale = 1:emc.n_scale_spaces
     
-    kernelSize = ceil(threeSigma(iScale).*3) + 3;
-    kernelSize = kernelSize + (1-mod(kernelSize,2));
-    % masks.('scaleMask').(sprintf('s%d',iScale))  = EMC_gaussianKernel([1,kernelSize],  threeSigma(iScale), 'cpu', {});
-    masks.('scaleMask').(sprintf('s%d',iScale))  = EMC_gaussianKernel([1,1,1].*kernelSize, 2*threeSigma(iScale), 'cpu', {});
+    if (use_notch_filter)
+      masks.('scaleMask').(sprintf('s%d',iScale)) = gather(BH_bandpass3d(sizeMask,0.1, emc.pca_scale_spaces(iScale)*1.1, emc.pca_scale_spaces(iScale)*0.9,'GPU',pixelSize));
+    else
+      kernelSize = ceil(threeSigma(iScale).*3) + 3;
+      kernelSize = kernelSize + (1-mod(kernelSize,2));
+      % masks.('scaleMask').(sprintf('s%d',iScale))  = EMC_gaussianKernel([1,kernelSize],  threeSigma(iScale), 'cpu', {});
+      masks.('scaleMask').(sprintf('s%d',iScale))  = EMC_gaussianKernel([1,1,1].*kernelSize, 2*threeSigma(iScale), 'cpu', {});
+    end
 
   
     % SAVE_IMG( masks.('scaleMask').(sprintf('s%d',iScale)), ...
@@ -555,7 +566,11 @@ for iGold = 1:1+flgGold
     tmp_avg = tmp_avg .* masks.('volMask').(sprintf('h%d',iGold)).(sprintf('s%d',iScale));
     % FIXME: ideally we would do both, but for testing I am stealing scaleSpace for iRef
     if ~(test_multi_ref_diffmap)
-      tmp_avg = EMC_convn(single(gpuArray(tmp_avg)) , single(gpuArray(masks.('scaleMask').(sprintf('s%d',iScale))) ));
+      if (use_notch_filter)
+        tmp_avg = real(ifftn(fftn(single(gpuArray(tmp_avg))) .* single(gpuArray(masks.('scaleMask').(sprintf('s%d',iScale))) )));
+      else
+        tmp_avg = EMC_convn(single(gpuArray(tmp_avg)) , single(gpuArray(masks.('scaleMask').(sprintf('s%d',iScale))) ));
+      end
     end
     avgMotif_FT{iGold, iScale} = ...
       BH_bandLimitCenterNormalize(tmp_avg,...
@@ -576,6 +591,7 @@ end
 montOUT = BH_montage4d(avgFiltered(1,:),'');
 SAVE_IMG(montOUT, sprintf('%s_filt.mrc', outputPrefix),pixelSize);
 clear montOUT
+
 
 
 % If emc.Pca_randSubset is string with a previous matfile use this, without any
@@ -651,6 +667,9 @@ for iGold = 1:1+flgGold
       gpuMasks.('scaleMask').(stSCALE) = gpuArray(masks.('scaleMask').(stSCALE));
     end
     gpuMasks.('highPass').(stSCALE) = gpuArray(masks.('highPass').(stSCALE));
+    if (use_notch_filter)
+      gpuMasks.('highPass').(stSCALE) =  gpuMasks.('highPass').(stSCALE) .* gpuArray(masks.('scaleMask').(stSCALE));
+    end
     
 
   end
@@ -702,6 +721,9 @@ for iGold = 1:1+flgGold
     tiltGeometry = subTomoMeta.tiltGeometry.(tomoList{iTomo});
     
     fprintf('Working on %d/%d volumes %s\n',iTomo,nTomograms,tomoName);
+    if (iTomo ~= 3)
+      continue; %revertH68_1_label_101_2H68_1_label_101_2
+    end
     % Load in the geometry for the tomogram, and get number of subTomos.
     positionList = geometry.(tomoList{iTomo});
     
@@ -831,28 +853,27 @@ for iGold = 1:1+flgGold
             
             
             
-            iTrimParticle = iParticle(padWindow(1,1)+1 : end - padWindow(2,1), ...
-              padWindow(1,2)+1 : end - padWindow(2,2), ...
-              padWindow(1,3)+1 : end - padWindow(2,3));
+            iParticle = iParticle(padWindow(1,1)+1 : end - padWindow(2,1), ...
+                                      padWindow(1,2)+1 : end - padWindow(2,2), ...
+                                      padWindow(1,3)+1 : end - padWindow(2,3));
             
             
             
             
             for iScale = 1:emc.n_scale_spaces
-              if (test_multi_ref_diffmap)
-                iPrt = iTrimParticle;
-              else
-                iPrt = EMC_convn(iTrimParticle , gpuMasks.('scaleMask').(sprintf('s%d',iScale)));
+              iTrimParticle = iParticle;
+              if ~(test_multi_ref_diffmap) && ~(use_notch_filter)
+                iTrimParticle = EMC_convn(iTrimParticle , gpuMasks.('scaleMask').(sprintf('s%d',iScale)));
               end
-              
-              iPrt = BH_bandLimitCenterNormalize( ...
-                iPrt .* ...
+              % if using the notch filter, it is integrated with the highPass at this point
+              iTrimParticle = BH_bandLimitCenterNormalize( ...
+                iTrimParticle .* ...
                 gpuMasks.('volMask').(sprintf('s%d',iScale)), ...
                 gpuMasks.('highPass').(sprintf('s%d',iScale)),...
                 gpuMasks.('binary').(sprintf('s%d',iScale)),...
                 [0,0,0;0,0,0],'single');
               
-              [iWmd,~] = BH_diffMap(avgMotif_FT{iGold, iScale},iPrt,ifftshift(iWedge),...
+              [iWmd,~] = BH_diffMap(avgMotif_FT{iGold, iScale},iTrimParticle,ifftshift(iWedge),...
                 flgNorm,pixelSize,radialMask, padWdg);
               
               
@@ -866,7 +887,7 @@ for iGold = 1:1+flgGold
               end
               
             end % loop on scale spaces
-            clear iAvg iWmd  iTrimParticle
+            clear iAvg iWmd  
             
             
             

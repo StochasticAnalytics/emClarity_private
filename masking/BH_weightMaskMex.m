@@ -20,6 +20,8 @@ tomo_origin_in_tomo_frame = emc_get_origin_index([reconGeometry.NX, ...
                                                   reconGeometry.NY, ...
                                                   reconGeometry.NZ]);
 
+% Using the nomenclature that in frame means from that frames lower left
+% wrt origin means from that frames center, a bit confusing, 
 subtomo_origin_in_specimen_frame = subtomo_origin_in_tomo_frame - tomo_origin_in_tomo_frame + tomo_origin_wrt_tilt_origin;
 
 iCs = single(TLT(:,17).*10^3);

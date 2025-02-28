@@ -142,7 +142,9 @@ ctfInc = emc.('tomo_cpr_defocus_step')*10^10;
 calcCTF = emc.('tomo_cpr_defocus_refine');
 
 
-[tiltNameList, nTiltSeries] = BH_returnIncludedTilts( subTomoMeta.mapBackGeometry );
+[tiltNameList, nTiltSeries] = BH_returnIncludedTilts( subTomoMeta.mapBackGeometry )
+
+
 
 % if (multi_node_run)
 %   [ nParProcesses, iterList] = BH_multi_parallelJobs(nTiltSeries, nGPUs, sizeCalc(1), emc.nCpuCores, [cycle_numerator,cycle_denominator]);
@@ -237,14 +239,17 @@ is_first_run = true;
 mbOUT = {[tmpCache],[mapBackIter+1],'dummy'};
 
 for iTiltSeries = tiltStart:nTiltSeries
+  skip_this_tilt_series_bc_alignments_are_bonkers = false;
   if (skip_to_the_end_and_run)
     continue;
   end
 
 
+
+
   
-  mapBackRePrjSize = min(64,subTomoMeta.mapBackGeometry.(tiltNameList{iTiltSeries}).('tomoCprRePrjSize'))
-  
+  % mapBackRePrjSize = min(64,subTomoMeta.mapBackGeometry.(tiltNameList{iTiltSeries}).('tomoCprRePrjSize'))
+  mapBackRePrjSize = 512
   % % %   iViewGroup = subTomoMeta.mapBackGeometry.viewGroups.(tiltNameList{iTiltSeries});
   nTomograms = subTomoMeta.mapBackGeometry.(tiltNameList{iTiltSeries}).nTomos
   if nTomograms == 0
@@ -360,7 +365,8 @@ for iTiltSeries = tiltStart:nTiltSeries
     EMC_parpool(nWorkers);
   else
     EMC_parpool(nWorkers);
-  end
+  end 
+  
   fprintf('init with %d workers\n',nWorkers);
   
    
@@ -475,6 +481,32 @@ for iTiltSeries = tiltStart:nTiltSeries
   
   % Track the number of fiducials in order to scale the K-factor to more or less
   % aggressivley downweight outliers in the alignment
+
+  % In-case we want to restrict the number of fiducials, we need to look at all the tomograms ahead of time
+  positionList= cell(nTomograms,1);
+  n_possible_particles = 0;
+  for iTomo = 1:nTomograms
+    positionList{iTomo} = geometry.(tomoList{iTomo});
+    positionList{iTomo} = positionList{iTomo}(positionList{iTomo}(:,26) ~= -9999,:);
+    n_possible_particles = n_possible_particles + size(positionList{iTomo},1);
+  end
+    
+  % Now check to see if we need to limit the number of fiducials
+  if (emc.tomoCPR_random_subset == -1 || emc.tomoCPR_random_subset > n_possible_particles)
+    fprintf('Using all of the %d available fiducials\n',size(positionList{iTomo},1));
+  else
+    fprintf('Using a random subset of %d fiducials from the %d available\n',...
+      emc.tomoCPR_random_subset, n_possible_particles);
+
+      for iTomo = 1:nTomograms
+        % Limit the number in each tomo proportional to the number of 
+        n_to_keep = floor(size(positionList{iTomo},1) *  emc.tomoCPR_random_subset ./ n_possible_particles) + 1;
+        keepFids = datasample(1:size(positionList{iTomo},1),n_to_keep,'Replace',false);
+        positionList{iTomo} = positionList{iTomo}(keepFids,:);
+      end
+  end
+
+
   nFidsTotal = 0;
   fidIDX = 0;
   for iTomo = 1:nTomograms
@@ -518,10 +550,11 @@ for iTiltSeries = tiltStart:nTiltSeries
     fprintf(iXF,'%f %f %f %f %f %f\n',xfTLT');
     fclose(iXF);
     
-    positionList = geometry.(tomoList{iTomo});
+
     
-    positionList = positionList(positionList(:,26) ~= -9999,:);
-    nFidsTotal = nFidsTotal + size(positionList,1);
+ 
+
+    nFidsTotal = nFidsTotal + size(positionList{iTomo},1);
     
     % Need to store tilt name/path explicity in meta deta
     tiltName    = tilt_binned_filename;
@@ -552,7 +585,7 @@ for iTiltSeries = tiltStart:nTiltSeries
                                                       reconGeometry.NY, ...
                                                       reconGeometry.NZ]); 
     nPrjs = size(TLT,1);
-    nSubTomos = size(positionList,1);
+    nSubTomos = size(positionList{iTomo},1)
 
     if (nSubTomos == 0)
       % No points were saved after template matching so skip this tilt series
@@ -594,12 +627,12 @@ for iTiltSeries = tiltStart:nTiltSeries
       
       for iSubTomo = 1:nSubTomos
 
-        subtomo_rot_matrix = reshape(positionList(iSubTomo,17:25),3,3);
-        subtomo_origin_in_tomo_frame = positionList(iSubTomo,11:13);
+        subtomo_rot_matrix = reshape(positionList{iTomo}(iSubTomo,17:25),3,3);
+        subtomo_origin_in_tomo_frame = positionList{iTomo}(iSubTomo,11:13);
         subtomo_origin_wrt_tilt_origin = subtomo_origin_in_tomo_frame - tomo_origin_in_tomo_frame + tomo_origin_wrt_tilt_origin;
         
         iRefIDX = 1;
-        iClassIDX = positionList(iSubTomo,26);
+        iClassIDX = positionList{iTomo}(iSubTomo,26);
         use_this_class = true;
         if (nRefs > 1)
           % Assuming generally there are fewer classes seleceted as references than there are total classes
@@ -641,12 +674,12 @@ for iTiltSeries = tiltStart:nTiltSeries
             fprintf('ignoring subTomo %d for class %d because it is not one of the references.\n', iSubTomo, iClassIDX);
           end
         else
-          if positionList(iSubTomo,7) == 1
+          if positionList{iTomo}(iSubTomo,7) == 1
             iAvgResamp = BH_resample3d(refVol{1}{iRefIDX},subtomo_rot_matrix',shiftVAL,'Bah','GPU','forward');
-          elseif positionList(iSubTomo,7) ==2
+          elseif positionList{iTomo}(iSubTomo,7) ==2
             iAvgResamp = BH_resample3d(refVol{2}{iRefIDX},subtomo_rot_matrix',shiftVAL,'Bah','GPU','forward');
           else
-            error('positionList iSubtomo %d col 7 is %d',iSubTomo,positionList(iSubTomo,7));
+            error('positionList iSubtomo %d col 7 is %d',iSubTomo,positionList{iTomo}(iSubTomo,7));
           end
           iMaskResamp = BH_resample3d(particleMask{iRefIDX},subtomo_rot_matrix',shiftVAL,'Bah','GPU','forward');
           
@@ -729,7 +762,7 @@ for iTiltSeries = tiltStart:nTiltSeries
             d2 = TLT(iPrj_nat,12)*10^9; % half astigmatism value
             
             fprintf(coordSTART,'%d %d %d %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %d\n', ...
-                                fidIDX, tomoIdx,positionList(iSubTomo,4),d1,d2,180./pi.*TLT(iPrj_nat,13),reshape(subtomo_rot_matrix,1,9) , preExposure(iPrj_nat), postExposure(iPrj_nat),positionList(iSubTomo,7));
+                                fidIDX, tomoIdx,positionList{iTomo}(iSubTomo,4),d1,d2,180./pi.*TLT(iPrj_nat,13),reshape(subtomo_rot_matrix,1,9) , preExposure(iPrj_nat), postExposure(iPrj_nat),positionList{iTomo}(iSubTomo,7));
             
             % These shifts are a record of transformation from the raw data, but here
             % we are comparing with [CTF] corrected data, from which the
@@ -866,6 +899,10 @@ for iTiltSeries = tiltStart:nTiltSeries
       outputStackName = sprintf('%smapBack%d/%s_%d_mapBack.st',mbOUT{1:3},iSave);
       
       while (keepItRunning)
+
+        if (skip_this_tilt_series_bc_alignments_are_bonkers)
+          break;
+        end
         
         inc = 0:mapBackRePrjSize:sTY-1;
         if inc(end) < sTY-1
@@ -984,10 +1021,13 @@ for iTiltSeries = tiltStart:nTiltSeries
               case 8
                 mapBackRePrjSize = 4;
               case 4
-                system(sprintf('%s > failReProj.log',rePrjFileName))
-                error(['mapBackRePrjSize = 4 is still too much for the'],...
-                  ['GPU which probably means your local alignments'],...
-                  ['are too large'])
+                system(sprintf('%s >> failReProj.log',rePrjFileName))
+                system(sprintf('echo "reprojection for %s failed, which probably means the local alignments are bonkers" >> failReProj_name.log %s\n ', tilt_binned_filename));
+                skip_this_tilt_series_bc_alignments_are_bonkers = true;
+            end
+
+            if (skip_this_tilt_series_bc_alignments_are_bonkers)
+              break;
             end
             % Update the stored size
             subTomoMeta.mapBackGeometry.(tiltNameList{iTiltSeries}).('tomoCprRePrjSize') = mapBackRePrjSize;
@@ -997,8 +1037,8 @@ for iTiltSeries = tiltStart:nTiltSeries
             system(sprintf('rm %s.tmp %s',rePrjFileName,rePrjFileName));
                           system(sprintf('%s',rePrjFileName));
             
-            Break out to next iter of while loop, recalculating the
-            chunk size at reduced depth.
+            % Break out to next iter of while loop, recalculating the
+            % chunk size at reduced depth.
             
             break
             
@@ -1014,7 +1054,10 @@ for iTiltSeries = tiltStart:nTiltSeries
       end % end of while loop
     end % loop over error and masked tomo
     
-    
+    if (skip_this_tilt_series_bc_alignments_are_bonkers)
+      continue;
+    end
+
     fprintf(reModFile,['#!/bin/bash\n\n',...
       'tilt -StandardInput << EOF\n',...
       'input %s\n', ...
@@ -1169,16 +1212,16 @@ for iTiltSeries = tiltStart:nTiltSeries
   nUniqueFids = numel(unique(fidList(:,2))); % I think the max val of this column should also be okay (+1)
   nFidsTotal = nUniqueFids;
   %     nFidsTotal =  sum(fidList(:,5) == 1 );
-  if emc.tomoCPR_random_subset == -1 || emc.tomoCPR_random_subset > nUniqueFids
-    fprintf('Using all of the %d available fiducials\n',nUniqueFids);
-  else
-    fprintf('Using a random subset of %d fiducials from the %d available\n',...
-      emc.tomoCPR_random_subset, nUniqueFids);
+  % if emc.tomoCPR_random_subset == -1 || emc.tomoCPR_random_subset > nUniqueFids
+  %   fprintf('Using all of the %d available fiducials\n',nUniqueFids);
+  % else
+  %   fprintf('Using a random subset of %d fiducials from the %d available\n',...
+  %     emc.tomoCPR_random_subset, nUniqueFids);
     
-    keepFids = datasample(0:nUniqueFids-1,emc.tomoCPR_random_subset,'Replace',false);
-    fidList(~ismember(fidList(:,2),keepFids),2) = -9999;
-    nFidsTotal = emc.tomoCPR_random_subset;
-  end
+  %   keepFids = datasample(0:nUniqueFids-1,emc.tomoCPR_random_subset,'Replace',false);
+  %   fidList(~ismember(fidList(:,2),keepFids),2) = -9999;
+  %   nFidsTotal = emc.tomoCPR_random_subset;
+  % end
   
   
   for iPrj = 1:nPrjs

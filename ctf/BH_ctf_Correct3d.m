@@ -21,7 +21,7 @@ resTarget = 15;
 
 % TODO remove thise params
 tiltWeight = [0.2,0];
-shiftDefocusOrigin = 1;
+shiftDefocusOrigin = emc.set_defocus_origin_using_subtomos;
 tiltStart = 1;
 
 try
@@ -47,6 +47,10 @@ else
   super_sample = '';
 end
   
+
+
+flip_defocus_offset = emc.test_flip_defocus_offset
+flip_tilt_offset = emc.test_flip_tilt_offset
 
 expand_lines = emc.('expand_lines');
 if isempty(super_sample) || expand_lines == false
@@ -128,11 +132,8 @@ end
 
 % This will be set false if the reconstruction is for template matching or
 % for tomoCPR
-try
-  useSurfaceFit = emc.('useSurfaceFit')
-catch
-  useSurfaceFit = 1;
-end
+useSurfaceFit = emc.('useSurfaceFit')
+
 
 try
   % Not for normal use, pass the total dose less first frame to flip values.
@@ -288,10 +289,7 @@ iterList = cell(nGPUs,1);
 % If there is only one tilt, things break in a weird way
 nGPUs = min(nGPUs, nTilts);
 
-% For now, limit the number of processes to avoid memory issues
-% TODO: determine something more precise
-n_cores_wanted = min(emc.nCpuCores, floor(emc.pixel_size_angstroms*0.7)*nGPUs);
-[ nParProcesses, iterList] = BH_multi_parallelJobs(nTilts, nGPUs, 256, n_cores_wanted);
+[ nParProcesses, iterList] = BH_multi_parallelJobs(nTilts, nGPUs, 256, emc.nCpuCores);
 
 try
   EMC_parpool(nParProcesses)
@@ -301,14 +299,14 @@ catch
 end
 
 
-
 parfor iParProc = 1:nParProcesses
-% for iParProc = 1:nParProcesses %%revert
+% for iParProc = 1:nParProcesses % revert
   % iGPU = mod(iParProc,nGPUs);
   for iTilt = iterList{iParProc}
     nTomos = 0;
     alreadyMade = 0;
     
+
     % For now, since the tilt geometry is not necessarily updated (it is manual)
     % in the subTomoMeta, check that newer (possible perTilt refined) data is
     % not present.
@@ -352,9 +350,12 @@ parfor iParProc = 1:nParProcesses
       
       if alreadyMade == nTomos
         fprintf('All tomos 1-%d found to exist for tilt-series %s\n',nTomos,tiltList{iTilt});
+        % remove the value form the iter list
+        iterList{iParProc} = iterList{iParProc}(iterList{iParProc} ~= iTilt);
         continue
       end
     end
+
     
     preBinStacks(TLT, ...
                 tiltList{iTilt}, ...
@@ -550,7 +551,9 @@ parfor iParProc = 1:nParProcesses
                                               useSurfaceFit,invertDose,...
                                               bh_global_turn_on_phase_plate,...
                                               filterProjectionsForTomoCPRBackground,...
-                                              emc.whitenPS);
+                                              emc.whitenPS, ...
+                                              flip_defocus_offset, ...
+                                              flip_tilt_offset);
       end
       % Write out the stack to the cache directory as a tmp file
       
@@ -962,7 +965,9 @@ function [correctedStack] = ctfMultiply_tilt(n_slabs_to_reconstruct,iSection,ctf
                                             useSurfaceFit,invertDose, ...
                                             phakePhasePlate, ...
                                             filterProjectionsForTomoCPRBackground,...
-                                            flgWhitenPS)
+                                            flgWhitenPS, ...
+                                            flip_defocus_offset, ...
+                                            flip_tilt_offset)
 % Correct in strips which is more expensive but (hopefully) more accurate.
 
 
@@ -992,6 +997,8 @@ correctedStack = zeros(d1,d2,nPrjs,'single');
 if (useSurfaceFit)
   defocusOffset = 0;
 else
+  % FIXME: this should probably be ctf3dDepth/2 
+  % FIXME: this should be renamed as it is an offset in Z (opposite sign to defocus)
   defocusOffset = (((n_slabs_to_reconstruct-1)/-2+(iSection-1))*ctf3dDepth);
   fprintf('Not using surface fit, so using offset %3.3e nm for section %d with COM offset %3.3e nm with ctf3dDepth %3.3e\n', defocusOffset*10^9, iSection, avgZ*10^9, ctf3dDepth*10^9);
   % Assuming the majority of the fit defocus came from the subtomograms, then the estimated defocus value needs to be moved from
@@ -999,6 +1006,9 @@ else
   defocusOffset = (defocusOffset + avgZ); % The average height of the particles is factored into the surface fit
 end
 
+if (flip_defocus_offset)
+  defocusOffset = -defocusOffset;
+end
 
 
 if ( flgDampenAliasedFrequencies )
@@ -1086,23 +1096,27 @@ for iPrj = 1:nPrjs
     rZ = zeros([d1,d2],'single','gpuArray');
   end
   
-  defocus_adj = D0 - (defocusOffset.*cosd(TLT(iPrj,4)));
+  if (flip_tilt_offset)
+    defocus_adj = D0 + (defocusOffset.*cosd(TLT(iPrj,4)));
+  else
+    defocus_adj = D0 - (defocusOffset.*cosd(TLT(iPrj,4)));
+  end
+
   % For a positive angle, this will rotate the positive X axis farther from the focal plane (more underfocus)
   rA =  BH_defineMatrix(TLT(iPrj,4),'TILT','fwdVector') ;
 
   % Transform the specimen plane
   tX = round(rA(1).*rX + rA(4).*rY + rA(7).*rZ + oX);
   tY = round(rA(2).*rX + rA(5).*rY + rA(8).*rZ + oY);
-  % undefocus is positive, but we have stored the negative value (so we just add this to the positional offset)
+  % undefocus is positive, so we subtract the offset in Z
   tZ = defocus_adj - (pixel_size_angstroms*10^-10).*(rA(3).*rX + rA(6).*rY + rA(9).*rZ);
 
   % Some edge pixels can be out of bounds depending on the orientation of
-  % the plan fit. Setting to zero will will ignore them (assuming defocus
-  % is always < 0)
+  % the plan fit. Setting to zero will will ignore them 
   tZ( tX < 1 | tY < 1 | tX > d1 | tY > d2) = 1;
   
   minDefocus = min(tZ(:));
-  maxDefocus = max(tZ(tZ < 1));
+  maxDefocus = max(tZ(tZ < 1)); %tZ is in angstrom so always << 1
   % To track sampling in case I put in overlap
   samplingMask = zeros([d1,d2],'single','gpuArray');
   
@@ -1140,6 +1154,7 @@ for iPrj = 1:nPrjs
       tmpCorrection = BH_padZeros3d(real(ifftn(iProjectionFT.*Hqz)),trimVal(1,:),trimVal(2,:),'GPU','single');
     end
 
+    % Each loop we increment by ctf3dDepth
         tmpMask = (tZ > iDefocus - ctf3dDepth/2 & tZ <= iDefocus + ctf3dDepth/2);
     
     linearIDX =  unique(sub2ind([d1,d2],tX(tmpMask),tY(tmpMask)));

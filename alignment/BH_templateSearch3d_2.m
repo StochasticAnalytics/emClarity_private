@@ -483,8 +483,7 @@ for  iX = 1:nIters(1)
       
       tomoChunk = gather(tomoChunk .*validCalcMask);
       
-      tmp_sum = sum(tomoChunk(validCalcMask > 0.1)); % REVERT
-      % tmp_sum = sum(tomoChunk(:));
+      tmp_sum = sum(tomoChunk(:));
       
       fullX = fullX + gather(tmp_sum);
       fullX2 = fullX2 + gather(tmp_sum.^2);
@@ -500,10 +499,10 @@ for  iX = 1:nIters(1)
       tomoCoords(tomoIDX,:) = [cutX,cutY,cutZ];
       tomoIDX = tomoIDX + 1;
       
-      
     end % end of loop over Z chunks
   end % end of loop over Y chunks
 end % end of loop over X chunks
+
 
 % Normalize the global variance
 globalVariance = (fullX2/fullnX) - (fullX/fullnX)^2;

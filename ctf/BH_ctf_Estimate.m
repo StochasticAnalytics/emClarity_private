@@ -125,60 +125,33 @@ flgImodErase = 0
 % Assuming that the first CTF zero is always less than this value
 FIXED_FIRSTZERO =  emc.pixel_size_si / (70*10^-10) ;
 highCutoff = emc.pixel_size_si/emc.('defCutOff');
-% I still use the def for underfocus < 0 as this places the origin at the
-% focal plan in the microscope rather than on the specimen. Which makes
-% more sense to me.
+
 defEST = emc.('defEstimate').*10^6
 defWIN =  emc.('defWindow').*10^6
 tiltRange = [-1];
 
 backGroundBuffer = 0.9985;
 
-try
-  deltaZTolerance = emc.('deltaZTolerance');
-catch
-  deltaZTolerance = 100e-9;
-end
 
-try
-  zShift = abs(emc.('zShift'));
-catch
-  zShift = 150e-9;
-end
 
-if abs(zShift) > 100e-7
-  error('make sure your zShift values are of reasonable amounts (50-200nm)');
-end
 
-try
-  maxNumberOfTiles = emc.('ctfMaxNumberOfTiles');
-catch
-  
-  maxNumberOfTiles = 10000;
-  
-end
 
 % Starting at +/- 100nm
-deltaZTolerance = deltaZTolerance / emc.pixel_size_si;
+emc.deltaZTolerance = emc.deltaZTolerance / emc.pixel_size_si;
 % Use to check for proper gradient.
-zShift = zShift / emc.pixel_size_si;
+emc.zShift = emc.zShift / emc.pixel_size_si;
 
 % Tile size & overlap
-try
-  tileSize = emc.('ctfTileSize');
-catch
-  tileSize = floor(680e-10 / emc.pixel_size_si);
-end
+
 tileOverlap = 2;
 
-tileSize = tileSize + mod(tileSize,2);
-% tileSize = max(tileSize, 384);
-if (tileSize > 512)
+% emc.ctf_tile_size = max(emc.ctf_tile_size, 384);
+if (emc.ctf_tile_size > 512)
   tileOverlap = tileOverlap * 2;
 end
-fprintf('Using a tile size of %d\n',tileSize);
+fprintf('Using a tile size of %d\n',emc.ctf_tile_size);
 
-overlap = floor(tileSize ./ tileOverlap);
+overlap = floor(emc.ctf_tile_size ./ tileOverlap);
 
 % Size to padTile to should be even, large, and preferably a power of 2
 try
@@ -187,7 +160,7 @@ catch
   paddedSize = 768;
 end
 
-padVAL = BH_multi_padVal([tileSize,tileSize], [paddedSize,paddedSize]);
+padVAL = BH_multi_padVal([emc.ctf_tile_size,emc.ctf_tile_size], [paddedSize,paddedSize]);
 
 
 
@@ -470,19 +443,24 @@ if ~(flgSkip)
     iEvalMask = BH_multi_gridCoordinates([d1C,1,1],'Cartesian','GPU',{'none'},0,1,0);
     
     % Convert to the z-height in the projection
+    % A positive tilt angle (looking down Y at the origin) is CCW and rotates the positive X axis down in Z farther from focus
+    % that is the reason for the negative sign
     iEvalMask = iEvalMask.*(-1.*tand(TLT(tiltIDX,4)));
     
-    iEvalPos = iEvalMask;
-    iEvalNeg = iEvalMask;
+    iEval_farther_from_focus = iEvalMask;
+    iEval_closer_to_focus = iEvalMask;
     
-    % Shift by any amount wanted
-    iEvalPos = iEvalPos - zShift;
-    iEvalNeg = iEvalNeg + zShift;
+    % zShift is in SI in parameter file, but converted to pixels here.
     
-    % Select region limited by tolerance
-    iEvalPos = ( iEvalPos > gpuArray(-deltaZTolerance) & iEvalPos < gpuArray(deltaZTolerance));
-    iEvalNeg = ( iEvalNeg > gpuArray(-deltaZTolerance) & iEvalNeg < gpuArray(deltaZTolerance));
-    iEvalMask = ( iEvalMask > gpuArray(-deltaZTolerance) & iEvalMask < gpuArray(deltaZTolerance));
+    % Select region that is at a smaller Z coordinate (farther from focus)
+    iEval_farther_from_focus = iEval_farther_from_focus - emc.zShift;
+    % Select region that is at a larger Z coordinate (closer to focus)
+    iEval_closer_to_focus = iEval_closer_to_focus + emc.zShift;
+    
+    % Select region limited by defocus tolerance
+    iEvalMask = ( iEvalMask > gpuArray(-emc.deltaZTolerance) & iEvalMask < gpuArray(emc.deltaZTolerance));
+    iEval_farther_from_focus = ( iEval_farther_from_focus > gpuArray(-emc.deltaZTolerance) & iEval_farther_from_focus < gpuArray(emc.deltaZTolerance));
+    iEval_closer_to_focus = ( iEval_closer_to_focus > gpuArray(-emc.deltaZTolerance) & iEval_closer_to_focus < gpuArray(emc.deltaZTolerance));
     
     
     tmpTile = zeros([halfX,paddedSize,3],'single','gpuArray');
@@ -496,21 +474,34 @@ if ~(flgSkip)
     end
     
     iProjection = iProjection - ...
-      BH_movingAverage(iProjection,[tileSize,tileSize]);
+      BH_movingAverage(iProjection,[emc.ctf_tile_size,emc.ctf_tile_size]);
     
     iProjection = iProjection ./ ...
-      BH_movingRMS(iProjection,[tileSize,tileSize]);
+      BH_movingRMS(iProjection,[emc.ctf_tile_size,emc.ctf_tile_size]);
     
-    for i = 1+tileSize/2:overlap:d1C-tileSize/2
-      if min([nT,nT2,nT3])< maxNumberOfTiles && (iEvalMask(i) || iEvalPos(i) || iEvalNeg(i))
-        for j = 1+tileSize/2:overlap:d2C-tileSize/2
+    reduced_x = floor(emc.ctf_tile_size*cosd(TLT(k,4)));
+    % ---------------+---------------
+    % 000000---------+---------000000
+    tile_origin_x = emc_get_origin_index(emc.ctf_tile_size);
+    reduced_origin_x = emc_get_origin_index(reduced_x);
+    zeroed_coords = [1:1+(tile_origin_x-reduced_origin_x),(tile_origin_x+reduced_origin_x):emc.ctf_tile_size];
+
+    
+    for i = 1+emc.ctf_tile_size/2:overlap:d1C-emc.ctf_tile_size/2
+      if min([nT,nT2,nT3])< emc.ctfMaxNumberOfTiles && (iEvalMask(i) || iEval_farther_from_focus(i) || iEval_closer_to_focus(i))
+        for j = 1+emc.ctf_tile_size/2:overlap:d2C-emc.ctf_tile_size/2
           
+          thisTile = iProjection( i-emc.ctf_tile_size/2+1:i+emc.ctf_tile_size/2,...
+                                  j-emc.ctf_tile_size/2+1:j+emc.ctf_tile_size/2);
+                              
+          thisTile = thisTile - mean(thisTile(:));
+          thisTile = thisTile ./ rms(thisTile(:));
+          thisTile(zeroed_coords,:) = 0;
+
           thisTile = abs(bhF2.fwdFFT(BH_padZeros3d(...
-            (iProjection( ...
-            i-tileSize/2+1:i+tileSize/2,...
-            j-tileSize/2+1:j+tileSize/2)),...
-            padVAL(1,:),padVAL(2,:),...
-            'GPU','singleTaper')));
+                                                    thisTile,...
+                                                    padVAL(1,:),padVAL(2,:),...
+                                                    'GPU','singleTaper')));
 
           tmpTile(:,:,1) = tmpTile(:,:,1) + thisTile;
           
@@ -518,11 +509,11 @@ if ~(flgSkip)
             nT = nT+1;
             tmpTile(:,:,1) = tmpTile(:,:,1) + thisTile;
           end
-          if ( iEvalPos(i) )
+          if ( iEval_farther_from_focus(i) )
             nT2 = nT2+1;
             tmpTile(:,:,2) = tmpTile(:,:,2) + thisTile;
           end
-          if (iEvalNeg(i) )
+          if (iEval_closer_to_focus(i) )
             nT3 = nT3+1;
             tmpTile(:,:,3) = tmpTile(:,:,3) + thisTile;
           end
@@ -542,7 +533,7 @@ if ~(flgSkip)
   
   rotAvgPowerSpec = zeros([paddedSize,paddedSize,3],'single','gpuArray');
   for iTile = 1:3
-    tmp =  bhF2.swapIndexFWD(psTile(:,:,iTile));
+    % tmp =  bhF2.swapIndexFWD(psTile(:,:,iTile));
     psTile(:,:,iTile) = bhF2.swapIndexFWD(psTile(:,:,iTile));
     rotAvgPowerSpec(:,:,iTile) = BH_multi_makeHermitian(psTile(:,:,iTile),[paddedSize,paddedSize],1);
   end
@@ -820,7 +811,7 @@ if ~(flgSkip)
       radialForCTF = {fftshift(radialForCTF{1}),1,fftshift(radialForCTF{3})};
       currentDefocusEst = maxDef;
       currentDefocusWin = (defWIN*.25);
-      measuredVsExpected(1,:) = [maxDef + zShift*emc.pixel_size_si*10^6, maxDef, maxDef - zShift*emc.pixel_size_si*10^6];
+      measuredVsExpected(1,:) = [maxDef + emc.zShift*emc.pixel_size_si*10^6, maxDef, maxDef - emc.zShift*emc.pixel_size_si*10^6];
       measuredVsExpected(2,2) = maxDef;
       % Add the determined defocus, and write out with mic paramters as well.
       TLT(:,15) = repmat(maxDef*10^-6,size(TLT,1),1);
@@ -860,7 +851,7 @@ if ~(flgSkip)
   end
   
   fprintf('\n******************************************************\n\n');
-  fprintf('\nCloser to focus |\tAt focus |\tFarther from focus\n\n');
+  fprintf('\Farther from focus |\tAt focus |\Closer to focus\n\n');
   fprintf('Expected defocus %3.2f %3.2f %3.2f\n\n', abs(measuredVsExpected(1,:)));
   fprintf('Measured defocus %3.2f %3.2f %3.2f\n\n' ,abs(measuredVsExpected(2,:)));
   if ( warnInvertedHand )

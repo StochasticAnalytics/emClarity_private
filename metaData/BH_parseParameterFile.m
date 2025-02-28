@@ -182,6 +182,17 @@ else
   emc.filterDefocus = [0.0, 0.0];
 end
 
+if isfield(emc, 'refine_defocus_cisTEM')
+  EMC_assert_boolean(emc.refine_defocus_cisTEM)
+else
+  emc.refine_defocus_cisTEM = false;
+end
+if isfield(emc, 'rerun_refinement_cisTEM')
+  EMC_assert_boolean(emc.rerun_refinement_cisTEM)
+else
+  emc.rerun_refinement_cisTEM = false;
+end
+
 if isfield(emc,'flgCutOutVolumes')
   EMC_assert_boolean(emc.flgCutOutVolumes)
 else
@@ -220,29 +231,52 @@ end
 % TODO: these should maybe be two different orthogonal parameters
   % if > 1 keep this many subtomos
   % if < 1 keep this fraction
-emc = EMC_assert_deprecated_substitution(emc, 0.0, 'ccc_cutoff', 'flgCCCcutoff');
-EMC_assert_numeric(emc.ccc_cutoff,1)
-
+emc = EMC_assert_deprecated_substitution(emc, 'ccc_cutoff', 'flgCCCcutoff');
+if isfield(emc, 'ccc_cutoff')
+  EMC_assert_numeric(emc.ccc_cutoff, 1)
+else
+  emc.('ccc_cutoff') = 0.0;
+end
 
 % TOOD: DOC
-emc = EMC_assert_deprecated_substitution(emc, false, 'projectVolumes', 'flgProjectVolumes');
-EMC_assert_boolean(emc.projectVolumes);
+emc = EMC_assert_deprecated_substitution(emc, 'projectVolumes', 'flgProjectVolumes');
+if isfield(emc, 'projectVolumes')
+  EMC_assert_boolean(emc.projectVolumes);
+else
+  emc.('projectVolumes') = false;
+end
 
 % Whether the cycle is expected to be used for classification or alignment.
 % Eventually, the distinction should not matter.
-emc = EMC_assert_deprecated_substitution(emc, false, 'classification', 'flgClassify');
-EMC_assert_boolean(emc.classification);
+emc = EMC_assert_deprecated_substitution(emc, 'classification', 'flgClassify');
+if isfield(emc, 'classification')
+  EMC_assert_boolean(emc.classification);
+else
+  emc.('classification') = false;
+end
 
 
-emc = EMC_assert_deprecated_substitution(emc, 0, 'multi_reference_alignment', 'flgMultiRefAlignment');
-EMC_assert_numeric(emc.multi_reference_alignment, 1, [0, 2]);
+emc = EMC_assert_deprecated_substitution(emc, 'multi_reference_alignment', 'flgMultiRefAlignment');
+if isfield(emc, 'multi_reference_alignment')
+  EMC_assert_numeric(emc.multi_reference_alignment, 1, [0, 2]);
+else
+  emc.('multi_reference_alignment') = 0;
+end
 
 % Zero padding of the volumes before alignment/other FFT ops
-emc = EMC_assert_deprecated_substitution(emc, 1.5, 'scale_calc_size', 'scaleCalcSize');
-EMC_assert_numeric(emc.scale_calc_size, 1, [1.0, 2.0]);
+emc = EMC_assert_deprecated_substitution(emc, 'scale_calc_size', 'scaleCalcSize');
+if isfield(emc, 'scale_calc_size')
+  EMC_assert_numeric(emc.scale_calc_size, 1, [1.0, 2.0]);
+else
+  emc.('scale_calc_size') = 1.5;
+end
 
-emc = EMC_assert_deprecated_substitution(emc, false, 'limit_to_one_core', 'flgLimitToOneProcess');
-EMC_assert_boolean(emc.limit_to_one_core);
+emc = EMC_assert_deprecated_substitution(emc, 'limit_to_one_core', 'flgLimitToOneProcess');
+if isfield(emc, 'limit_to_one_core')
+  EMC_assert_boolean(emc.limit_to_one_core);
+else
+  emc.('limit_to_one_core') = false;
+end
 
 if (emc.limit_to_one_core)
   emc.nCpuCores = 1;
@@ -267,14 +301,26 @@ else
   emc.Pca_constrain_symmetry = false;
 end
 
-emc = EMC_assert_deprecated_substitution(emc, false, 'fsc_with_chimera', 'fscWithChimera');
-EMC_assert_boolean(emc.fsc_with_chimera);
+emc = EMC_assert_deprecated_substitution(emc, 'fsc_with_chimera', 'fscWithChimera');
+if isfield(emc, 'fsc_with_chimera')
+  EMC_assert_boolean(emc.fsc_with_chimera);
+else
+  emc.fsc_with_chimera = false;
+end
 
-emc = EMC_assert_deprecated_substitution(emc, 0.1, 'minimum_particle_for_fsc_weighting', 'minimumparticleVolume');
-EMC_assert_numeric(emc.minimum_particle_for_fsc_weighting, 1, [0.01, 1.0]);
+emc = EMC_assert_deprecated_substitution(emc, 'minimum_particle_for_fsc_weighting', 'minimumparticleVolume');
+if isfield(emc, 'minimum_particle_for_fsc_weighting')
+  EMC_assert_numeric(emc.minimum_particle_for_fsc_weighting, 1, [0.01, 1.0]);
+else
+  emc.('minimum_particle_for_fsc_weighting') = 0.1;
+end
 
-emc = EMC_assert_deprecated_substitution(emc, 1.0, 'fsc_shape_mask', 'flgFscShapeMask');
-EMC_assert_numeric(emc.fsc_shape_mask, 1, [0.0, 2.0]);
+emc = EMC_assert_deprecated_substitution(emc, 'fsc_shape_mask', 'flgFscShapeMask');
+if isfield(emc, 'fsc_shape_mask')
+  EMC_assert_numeric(emc.fsc_shape_mask, 1, [0.0, 2.0]);
+else
+  emc.fsc_shape_mask = 1.0;
+end
 
 if isfield(emc, 'shape_mask_lowpass')
   EMC_assert_numeric(emc.shape_mask_lowpass, 1, [10, 100]);
@@ -294,8 +340,12 @@ else
   emc.shape_mask_test = false;
 end
 
-emc = EMC_assert_deprecated_substitution(emc, 22.0, 'pca_scale_spaces', 'pcaScaleSpace');
-EMC_assert_numeric(emc.pca_scale_spaces);
+emc = EMC_assert_deprecated_substitution(emc, 'pca_scale_spaces', 'pcaScaleSpace');
+if isfield(emc, 'pca_scale_spaces')
+  EMC_assert_numeric(emc.pca_scale_spaces);
+else
+  emc.pca_scale_spaces = 22.0;
+end
 emc.('n_scale_spaces') = numel(emc.pca_scale_spaces);
 
 if isfield(emc, 'Pca_maxEigs')
@@ -337,6 +387,11 @@ else
   emc.Pca_flattenEigs = true;
 end
 
+if isfield(emc, 'Pca_use_real_space_conv')
+  EMC_assert_boolean(emc.Pca_use_real_space_conv);
+else
+  emc.Pca_use_real_space_conv = false;
+end
 
 if isfield(emc, 'Pca_som_coverSteps')
   EMC_assert_numeric(emc.Pca_som_coverSteps, 1, [1, 1000]);
@@ -362,15 +417,24 @@ else
 end
 
 
-emc = EMC_assert_deprecated_substitution(emc, false, 'update_class_by_ccc', 'updateClassByBestReferenceScore');
-EMC_assert_boolean(emc.update_class_by_ccc);
+emc = EMC_assert_deprecated_substitution(emc, 'update_class_by_ccc', 'updateClassByBestReferenceScore');
+if isfield(emc, 'update_class_by_ccc')
+  EMC_assert_boolean(emc.update_class_by_ccc);
+else
+  emc.('update_class_by_ccc') = true;
+end
+
 if (~emc.multi_reference_alignment)
   % update by ccc only makes sense for multi reference alignment
   emc.update_class_by_ccc = false;
 end
 
-emc = EMC_assert_deprecated_substitution(emc, true, 'move_reference_by_com', 'flgCenterRefCOM');
-EMC_assert_boolean(emc.move_reference_by_com);
+emc = EMC_assert_deprecated_substitution(emc, 'move_reference_by_com', 'flgCenterRefCOM');
+if isfield(emc, 'move_reference_by_com')
+  EMC_assert_boolean(emc.move_reference_by_com);
+else
+  emc.('move_reference_by_com') = true;
+end
 
 if isfield(emc, 'use_new_grid_search')
   EMC_assert_boolean(emc.use_new_grid_search);
@@ -381,8 +445,12 @@ end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%% tomoCPR params, mostly experimental
 
-emc = EMC_assert_deprecated_substitution(emc, false, 'save_mapback_classes', 'flgColorMap');
-EMC_assert_boolean(emc.save_mapback_classes);
+emc = EMC_assert_deprecated_substitution(emc, 'save_mapback_classes', 'flgColorMap');
+if isfield(emc, 'save_mapback_classes')
+  EMC_assert_boolean(emc.save_mapback_classes);
+else
+  emc.('save_mapback_classes') = false;
+end
 
 if isfield(emc, 'only_use_reference_classes')
   EMC_assert_boolean(emc.only_use_reference_classes);
@@ -443,7 +511,7 @@ end
 if isfield(emc, 'tomoCPR_target_n_patches_x_y')
   EMC_assert_numeric(emc.tomoCPR_target_n_patches_x_y, 2, [0, 100]);
 else
-  emc.tomoCPR_target_n_patches_x_y = [0,0];
+  emc.tomoCPR_target_n_patches_x_y = [2,2];
 end
 % I think this has been removed
 if isfield(emc, 'probabilityPeakiness')
@@ -557,14 +625,26 @@ else
   emc.shift_z_to_to_centroid = true;
 end
 
-emc = EMC_assert_deprecated_substitution(emc, 500e-9, 'tomo_cpr_defocus_range', 'tomoCprDefocusRange');
-EMC_assert_numeric(emc.tomo_cpr_defocus_range, 1, [0.0, 10000e-9]);
+emc = EMC_assert_deprecated_substitution(emc, 'tomo_cpr_defocus_range', 'tomoCprDefocusRange');
+if isfield(emc, 'tomo_cpr_defocus_range')
+  EMC_assert_numeric(emc.tomo_cpr_defocus_range, 1, [0.0, 10000e-9]);
+else
+  emc.tomo_cpr_defocus_range = 500e-9;
+end
 
-emc = EMC_assert_deprecated_substitution(emc, 100e-9, 'tomo_cpr_defocus_step', 'tomoCprDefocusStep');
-EMC_assert_numeric(emc.tomo_cpr_defocus_step, 1, [1.0e-9, 10000e-9]);
+emc = EMC_assert_deprecated_substitution(emc, 'tomo_cpr_defocus_step', 'tomoCprDefocusStep');
+if isfield(emc, 'tomo_cpr_defocus_step')
+  EMC_assert_numeric(emc.tomo_cpr_defocus_step, 1, [1.0e-9, 10000e-9]);
+else
+  emc.tomo_cpr_defocus_step = 100e-9;
+end
 
-emc = EMC_assert_deprecated_substitution(emc, false, 'tomo_cpr_defocus_refine', 'calcCTF');
-EMC_assert_boolean(emc.tomo_cpr_defocus_refine);
+emc = EMC_assert_deprecated_substitution(emc, 'tomo_cpr_defocus_refine', 'calcCTF');
+if isfield(emc, 'tomo_cpr_defocus_refine')
+  EMC_assert_boolean(emc.tomo_cpr_defocus_refine);
+else
+  emc.tomo_cpr_defocus_refine = false;
+end
 
 if isfield(emc, 'print_alignment_stats')
   EMC_assert_boolean(emc.print_alignment_stats);
@@ -603,6 +683,25 @@ else
   emc.n_tilt_workers = 4;
 end
 
+if isfield(emc,'useSurfaceFit')
+  EMC_assert_boolean(emc.useSurfaceFit)
+else
+  emc.useSurfaceFit = false;
+end
+
+if isfield(emc, 'test_flip_defocus_offset')
+  EMC_assert_boolean(emc.test_flip_defocus_offset)
+else
+  emc.test_flip_defocus_offset = false;
+end
+
+if isfield(emc, 'test_flip_tilt_offset')
+  EMC_assert_boolean(emc.test_flip_tilt_offset)
+else
+  emc.test_flip_tilt_offset = false;
+end
+
+
 % Number of tiltalign processes to run in parallel in tomoCPR 
 % For now, default to zero and manually re-run while sorting out the
 % optimization process
@@ -610,6 +709,15 @@ if isfield(emc, 'run_tomocpr_alignments')
   EMC_assert_numeric(emc.run_tomocpr_alignments, 1);
 else
   emc.run_tomocpr_alignments = 0;
+end
+
+% Generally useful for single particle like projects. If there is substantial density not related to the specimen,
+% this will not be so useful as the measure defocus will come largely from those. 
+% Since most people are using other software for high-res in vitro work, default this to false now.
+if isfield(emc, 'set_defocus_origin_using_subtomos')
+  EMC_assert_boolean(emc.set_defocus_origin_using_subtomos)
+else
+  emc.set_defocus_origin_using_subtomos = false;
 end
 
 if isfield(emc, 'max_ctf3dDepth')
@@ -653,4 +761,36 @@ if isfield(emc, 'Pca_bandpass')
   EMC_assert_numeric(emc.Pca_bandpass, 3);
 else
   emc.Pca_bandpass = [0.001, 1200, 28];
+end
+
+if isfield(emc, 'autoAli_switchAxes')
+  EMC_assert_boolean(emc.autoAli_switchAxes);
+else
+  emc.autoAli_switchAxes = true;
+end
+
+if isfield(emc, 'ctf_tile_size')
+  EMC_assert_numeric(emc.ctf_tile_size, 1);
+else
+  emc.ctf_tile_size = floor(680e-10 / emc.pixel_size_si);
+end
+emc.ctf_tile_size = emc.ctf_tile_size + mod(emc.ctf_tile_size,2);
+
+
+if isfield(emc, 'deltaZTolerance')
+  EMC_assert_numeric(emc.deltaZTolerance, 1, [10e-9, 300e-9]);
+else
+  emc.deltaZTolerance = 100e-9;
+end
+
+if isfield(emc, 'zShift')
+  EMC_assert_numeric(emc.zShift, 1, [100e-9, 300e-9]);
+else
+  emc.zShift = 150e-9;
+end
+
+if isfield(emc, 'ctfMaxNumberOfTiles')
+  EMC_assert_numeric(emc.ctfMaxNumberOfTiles, 1);
+else
+  emc.('ctfMaxNumberOfTiles') = 10000;
 end

@@ -14,13 +14,17 @@ function [ ] = BH_to_cisTEM_mapBack(PARAMETER_FILE, CYCLE, output_prefix, symmet
 % directlyCT
 % by the users (private methods-ish)
 
-skip_to_end = false;
+
 emc = BH_parseParameterFile(PARAMETER_FILE);
 mapBackIter = EMC_str2double(mapBackIter);
 MAX_EXPOSURE = EMC_str2double(MAX_EXPOSURE)
 if isnan(MAX_EXPOSURE)
   error('MAX_EXPOSURE is nan - if running from an interactive matlab session, did you enter as a string?');
 end
+
+% to re-run using the existing intial star and particle stack. To avoid an overwrite, provide a new basename to the call 
+% to emClarity reconstruct and then link the star/stack
+skip_to_end = emc.('rerun_refinement_cisTEM');
 
 % For trouble shooting on tilted images.
 MIN_EXPOSURE = 0;
@@ -434,28 +438,27 @@ for iTiltSeries = tiltStart:nTiltSeries
       nPrjsIncluded = 0;
       for iPrj = 1:nPrjs
         
-        iPrj_nat = find(TLT(:,1) == iPrj);
-        if (MIN_EXPOSURE < abs(TLT(iPrj_nat,11)) && abs(TLT(iPrj_nat,11)) <= MAX_EXPOSURE)
+        iPrj_index_in_TLT = find(TLT(:,1) == iPrj);
+        if (MIN_EXPOSURE < abs(TLT(iPrj_index_in_TLT,11)) && abs(TLT(iPrj_index_in_TLT,11)) <= MAX_EXPOSURE)
           nPrjsIncluded = nPrjsIncluded + 1;
           
-          % imod is indexing from zero
-          zCoord = iPrj_nat;
+         
           % For a positive angle, this will rotate the positive X axis farther from the focal plane (more underfocus)
-          % rTilt = BH_defineMatrix([0,TLT(iPrj_nat,4),0],'SPIDER','inv');
-          rTilt = BH_defineMatrix(TLT(iPrj_nat,4),'TILT','fwdVector') ;
+          % rTilt = BH_defineMatrix([0,TLT(iPrj_index_in_TLT,4),0],'SPIDER','inv');
+          rTilt = BH_defineMatrix(TLT(iPrj_index_in_TLT,4),'TILT','fwdVector') ;
 
           
           prjCoords = rTilt*subtomo_origin_wrt_specimen_origin';
           
           % I think this is for comparison with the values obtained from projecting using IMOD: FIXME
-          fprintf(defOUT,'%d %d %6.6e\n', fidIDX, zCoord, abs(TLT(iPrj_nat,15)) - prjCoords(3).*pixel_size.*10^-10);
+          fprintf(defOUT,'%d %d %6.6e\n', fidIDX, iPrj, abs(TLT(iPrj_index_in_TLT,15)) - prjCoords(3).*pixel_size.*10^-10);
           
           % Defocus value adjusted for Z coordinate in the tomogram. nm
-          d1 = (abs(TLT(iPrj_nat,15)) - subtomo_origin_wrt_specimen_origin(3).*pixel_size.*10^-10) * 10^9;
-          d2 = TLT(iPrj_nat,12)*10^9; % half astigmatism value
+          d1 = (abs(TLT(iPrj_index_in_TLT,15)) - subtomo_origin_wrt_specimen_origin(3).*pixel_size.*10^-10) * 10^9;
+          d2 = TLT(iPrj_index_in_TLT,12)*10^9; % half astigmatism value
           
           fprintf(coordSTART,'%d %d %d %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %d\n', ...
-                                fidIDX, tomoIdx, positionList(iSubTomo,4), d1, d2, 180./pi.*TLT(iPrj_nat,13), reshape(subtomo_rot_matrix,1,9), preExposure(iPrj_nat), postExposure(iPrj_nat), positionList(iSubTomo,7));
+                                fidIDX, tomoIdx, positionList(iSubTomo,4), d1, d2, 180./pi.*TLT(iPrj_index_in_TLT,13), reshape(subtomo_rot_matrix,1,9), preExposure(iPrj_index_in_TLT), postExposure(iPrj_index_in_TLT), positionList(iSubTomo,7));
         else
           fprintf(coordSTART,'%d %d %d %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %d\n',-9999, -9999,-9999,1.0,1.0,1.0,1,1,1,1,1,1,1,1,1,0,0,1);
         end
@@ -760,7 +763,7 @@ for iTiltSeries = tiltStart:nTiltSeries
         % df1 = ( wrkPar(iFid,4) + wrkPar(iFid,5)) * 10;
         % df2 = ( wrkPar(iFid,4) - wrkPar(iFid,5)) * 10;
         % dfA = wrkPar(iFid,6)
-        % fidIDX, tomoIdx, positionList(iSubTomo,4), d1, d2, 180./pi.*TLT(iPrj_nat,13), reshape(subtomo_rot_matrix,1,9), preExposure(iPrj_nat), postExposure(iPrj_nat), positionList(iSubTomo,7));
+        % fidIDX, tomoIdx, positionList(iSubTomo,4), d1, d2, 180./pi.*TLT(iPrj_index_in_TLT,13), reshape(subtomo_rot_matrix,1,9), preExposure(iPrj_index_in_TLT), postExposure(iPrj_index_in_TLT), positionList(iSubTomo,7));
 
         df1 = (wrkDefAngTilt(iFid,1) + wrkPar(iFid,5)) * 10;
         df2 = (wrkDefAngTilt(iFid,1) - wrkPar(iFid,5)) * 10;
@@ -806,7 +809,7 @@ fclose(fh);
 system(sprintf('cat %s >> %s', newstack_file, newstack_file_with_n_stacks));
 system(sprintf('newstack -FileOfInputs %s %s.mrc > /dev/null', newstack_file_with_n_stacks, output_prefix));
 
-end % skip to here
+end % skip to here skip_to_end
 % SAVE_IMG(cat(3,output_cell{:}),sprintf('%s.mrc',output_prefix),pixelSize);
 
 outputHeader = getHeader(MRCImage(sprintf('%s.mrc',output_prefix),0));
@@ -837,7 +840,6 @@ if length(stack_boundaries) == n_recon_procs
 else
   stack_boundaries(end) = outputNumberOfSlices+1;
 end
-
 
 
 % %%%%%%%%%%%%%%%%%%%%%%%%%
@@ -879,12 +881,12 @@ fprintf(recScript,[ ...
   'No\n', ...Apply likelihood blurring [No]                     :
   'No\n', ...Threshold input reconstruction [No]                :
   'Yes\n', ...Dump intermediate arrays (merge later) [No]        :
-  '%s/dump_1_%d.dat\n', ...Output dump filename for odd particle [dump_file_1.dat]                                  :
-  '%s/dump_2_%d.dat\n', ...Output dump filename for even particle [dump_file_2.dat]                                  :
+  '%s/%sdump_1_%d.dat\n', ...Output dump filename for odd particle [dump_file_1.dat]                                  :
+  '%s/%sdump_2_%d.dat\n', ...Output dump filename for even particle [dump_file_2.dat]                                  :
   '%d\n', ... Max. threads to use for calculation [36]           :
   ], getenv('EMC_RECONSTRUCT3D'),output_prefix, output_prefix, output_prefix, output_prefix, output_prefix, output_prefix, ...
   symmetry,stack_boundaries(iProc),stack_boundaries(iProc+1)-1 ,emc.pixel_size_angstroms, ...
-  emc.('particleMass')*10^3, 0.0, mean(emc.('Ali_mRadius')), tmpCache, iProc,tmpCache,iProc, n_threads_per_proc(iProc));
+  emc.('particleMass')*10^3, 0.0, mean(emc.('Ali_mRadius')), tmpCache,output_prefix, iProc,tmpCache,output_prefix,iProc, n_threads_per_proc(iProc));
 
 fprintf(recScript, 'eof\n');
 
@@ -897,6 +899,28 @@ else
   system(sprintf('./%s_rec_%d.sh && wait',output_prefix, iProc));
 end
 
+end
+
+% sometimes we get to merge 3d before the reconstructions are done?
+n_pauses = 0;
+max_pauses = 6;
+while (n_pauses < max_pauses)
+  all_found = true;
+  for iProc = 1:n_recon_procs
+    fname1 = sprintf('%s/%sdump_1_%d.dat',tmpCache,output_prefix,iProc);
+    fname2 = sprintf('%s/%sdump_2_%d.dat',tmpCache,output_prefix,iProc);
+    if ~(exist(fname1, 'file') && exist(fname2, 'file'))
+      all_found = false;
+      break;
+    end
+  end
+  if all_found
+    break;
+  else
+    fprintf('Waiting for reconstructions to finish...\n');
+    pause(10);
+  end
+  n_pauses = n_pauses + 1;
 end
 
 
@@ -915,14 +939,14 @@ fprintf(merge3dScript,[ ...
   '%4.4f\n', ... molecularMass'
   '%3.3f\n', ... inermask ang
   '%3.3f\n', ... outermas ang
-  '%s/dump_1_.dat\n', ...
-  '%s/dump_2_.dat\n', ...
+  '%s/%sdump_1_.dat\n', ...
+  '%s/%sdump_2_.dat\n', ...
   '%d\n'], ... Number of dump files [8]                           :
   getenv('EMC_MERGE3D'), ...
   output_prefix, output_prefix, output_prefix, output_prefix, ...
   emc.('particleMass')*10^3, ...
   0.0, mean(emc.('Ali_mRadius')), ...
-  tmpCache, tmpCache, n_recon_procs);
+  tmpCache,output_prefix, tmpCache, output_prefix,n_recon_procs);
 
 
 fprintf(merge3dScript, 'eof\n');
@@ -931,11 +955,11 @@ system(sprintf('chmod a=wrx %s',merge3d_name));
 pause(1)
 system(sprintf('./%s',merge3d_name));
 % clean up dumps
-system(sprintf('rm %s/dump_?_*.dat',tmpCache));
+system(sprintf('rm %s/%sdump_?_*.dat',tmpCache,output_prefix));
 
 % Get the FSC cutoff for refinement
 fsc = importdata(sprintf('%s_stats.txt',output_prefix),' ',12);
-fsc_cutoff = fsc.data(find(fsc.data(:,5) < 0.5,1),2)
+fsc_cutoff = 0.5 * (fsc.data(find(fsc.data(:,5) < 0.5,1),2) + fsc.data(find(fsc.data(:,4) < 0.5,1),2))
 
 %%%%%%%%%%%%%%%%%%%%%%%%%
 % Refine
@@ -1047,12 +1071,12 @@ for iProc = 1:n_recon_procs
     'No\n', ...Apply likelihood blurring [No]                     :
     'No\n', ...Threshold input reconstruction [No]                :
     'Yes\n', ...Dump intermediate arrays (merge later) [No]        :
-    '%s/dump_1_%d.dat\n', ...Output dump filename for odd particle [dump_file_1.dat]                                  :
-    '%s/dump_2_%d.dat\n', ...Output dump filename for even particle [dump_file_2.dat]                                  :
+    '%s/%sdump_1_%d.dat\n', ...Output dump filename for odd particle [%sdump_file_1.dat]                                  :
+    '%s/%sdump_2_%d.dat\n', ...Output dump filename for even particle [%sdump_file_2.dat]                                  :
     '%d\n', ... Max. threads to use for calculation [36]           :
     ], getenv('EMC_RECONSTRUCT3D'),output_prefix, output_prefix, output_prefix, output_prefix, output_prefix, output_prefix, ...
     symmetry,stack_boundaries(iProc),stack_boundaries(iProc+1)-1 ,emc.pixel_size_angstroms, ...
-    emc.('particleMass')*10^3, 0.0, mean(emc.('Ali_mRadius')),tmpCache, iProc,tmpCache,iProc, n_threads_per_proc(iProc));
+    emc.('particleMass')*10^3, 0.0, mean(emc.('Ali_mRadius')),tmpCache, output_prefix, iProc, tmpCache, output_prefix, iProc, n_threads_per_proc(iProc));
   
   fprintf(recScript, 'eof\n');
   
@@ -1067,6 +1091,27 @@ for iProc = 1:n_recon_procs
   
 end
   
+% sometimes we get to merge 3d before the reconstructions are done?
+n_pauses = 0;
+max_pauses = 6;
+while (n_pauses < max_pauses)
+  all_found = true;
+  for iProc = 1:n_recon_procs
+    fname1 = sprintf('%s/%sdump_1_%d.dat',tmpCache,output_prefix,iProc);
+    fname2 = sprintf('%s/%sdump_2_%d.dat',tmpCache,output_prefix,iProc);
+    if ~(exist(fname1, 'file') && exist(fname2, 'file'))
+      all_found = false;
+      break;
+    end
+  end
+  if all_found
+    break;
+  else
+    fprintf('Waiting for reconstructions to finish...\n');
+    pause(10);
+  end
+  n_pauses = n_pauses + 1;
+end
 
 merge3d_name = sprintf('%s_merge3d.sh',output_prefix);
 system(sprintf('rm -f %s',merge3d_name));
@@ -1082,14 +1127,14 @@ fprintf(merge3dScript,[ ...
   '%4.4f\n', ... molecularMass'
   '%3.3f\n', ... inermask ang
   '%3.3f\n', ... outermas ang
-  '%s/dump_1_.dat\n', ...
-  '%s/dump_2_.dat\n', ...
+  '%s/%sdump_1_.dat\n', ...
+  '%s/%sdump_2_.dat\n', ...
   '%d\n'], ... Number of dump files [8]                           :
   getenv('EMC_MERGE3D'), ...
   output_prefix, output_prefix, output_prefix, output_prefix, ...
   emc.('particleMass')*10^3, ...
   0.0, mean(emc.('Ali_mRadius')), ...
-  tmpCache, tmpCache, n_recon_procs);
+  tmpCache,output_prefix, tmpCache,output_prefix, n_recon_procs);
 
 
 fprintf(merge3dScript, 'eof\n');
@@ -1098,11 +1143,13 @@ system(sprintf('chmod a=wrx %s',merge3d_name));
 pause(1)
 system(sprintf('./%s',merge3d_name));
 
-system(sprintf('rm %s/dump_?_*.dat',tmpCache));
+system(sprintf('rm %s/%sdump_?_*.dat',tmpCache,output_prefix));
 
 % Get the FSC cutoff for refinement
 fsc = importdata(sprintf('%s_stats_refined.txt',output_prefix),' ',12);
-fsc_cutoff = fsc.data(find(fsc.data(:,5) < 0.5,1),2)
+fsc_cutoff = 0.5 * (fsc.data(find(fsc.data(:,5) < 0.5,1),2) + fsc.data(find(fsc.data(:,4) < 0.5,1),2))
+% Use to decide whether to do more angular refinement
+fsc_last = fsc_cutoff 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%
 % Refine
@@ -1214,12 +1261,12 @@ for iProc = 1:n_recon_procs
     'No\n', ...Apply likelihood blurring [No]                     :
     'No\n', ...Threshold input reconstruction [No]                :
     'Yes\n', ...Dump intermediate arrays (merge later) [No]        :
-    '%s/dump_1_%d.dat\n', ...Output dump filename for odd particle [dump_file_1.dat]                                  :
-    '%s/dump_2_%d.dat\n', ...Output dump filename for even particle [dump_file_2.dat]                                  :
+    '%s/%sdump_1_%d.dat\n', ...Output dump filename for odd particle [%sdump_file_1.dat]                                  :
+    '%s/%sdump_2_%d.dat\n', ...Output dump filename for even particle [%sdump_file_2.dat]                                  :
     '%d\n', ... Max. threads to use for calculation [36]           :
     ], getenv('EMC_RECONSTRUCT3D'),output_prefix, output_prefix, output_prefix, output_prefix, output_prefix, output_prefix, ...
     symmetry,stack_boundaries(iProc),stack_boundaries(iProc+1)-1 ,emc.pixel_size_angstroms, ...
-    emc.('particleMass')*10^3, 0.0, mean(emc.('Ali_mRadius')), tmpCache, iProc,tmpCache,iProc, n_threads_per_proc(iProc));
+    emc.('particleMass')*10^3, 0.0, mean(emc.('Ali_mRadius')), tmpCache, output_prefix,iProc,tmpCache,output_prefix,iProc, n_threads_per_proc(iProc));
   
   fprintf(recScript, 'eof\n');
   
@@ -1234,6 +1281,27 @@ for iProc = 1:n_recon_procs
   
 end
   
+% sometimes we get to merge 3d before the reconstructions are done?
+n_pauses = 0;
+max_pauses = 6;
+while (n_pauses < max_pauses)
+  all_found = true;
+  for iProc = 1:n_recon_procs
+    fname1 = sprintf('%s/%sdump_1_%d.dat',tmpCache,output_prefix,iProc);
+    fname2 = sprintf('%s/%sdump_2_%d.dat',tmpCache,output_prefix,iProc);
+    if ~(exist(fname1, 'file') && exist(fname2, 'file'))
+      all_found = false;
+      break;
+    end
+  end
+  if all_found
+    break;
+  else
+    fprintf('Waiting for reconstructions to finish...\n');
+    pause(10);
+  end
+  n_pauses = n_pauses + 1;
+end
 
 merge3d_name = sprintf('%s_merge3d.sh',output_prefix);
 system(sprintf('rm -f %s',merge3d_name));
@@ -1249,14 +1317,14 @@ fprintf(merge3dScript,[ ...
   '%4.4f\n', ... molecularMass'
   '%3.3f\n', ... inermask ang
   '%3.3f\n', ... outermas ang
-  '%s/dump_1_.dat\n', ...
-  '%s/dump_2_.dat\n', ...
+  '%s/%sdump_1_.dat\n', ...
+  '%s/%sdump_2_.dat\n', ...
   '%d\n'], ... Number of dump files [8]                           :
   getenv('EMC_MERGE3D'), ...
   output_prefix, output_prefix, output_prefix, output_prefix, ...
   emc.('particleMass')*10^3, ...
   0.0, mean(emc.('Ali_mRadius')), ...
-  tmpCache, tmpCache, n_recon_procs);
+  tmpCache,output_prefix, tmpCache,output_prefix, n_recon_procs);
 
 
 fprintf(merge3dScript, 'eof\n');
@@ -1265,33 +1333,59 @@ system(sprintf('chmod a=wrx %s',merge3d_name));
 pause(1)
 system(sprintf('./%s',merge3d_name));
 
-system(sprintf('rm %s/dump_?_*.dat',tmpCache));
+system(sprintf('rm %s/%sdump_?_*.dat',tmpCache,output_prefix));
+
+ 
+
 
 % Get the FSC cutoff for refinement
 fsc = importdata(sprintf('%s_stats_refined2.txt',output_prefix),' ',12);
-fsc_cutoff = fsc.data(find(fsc.data(:,5) < 0.5,1),2)
+fsc_cutoff = 0.5 * (fsc.data(find(fsc.data(:,5) < 0.5,1),2) + fsc.data(find(fsc.data(:,4) < 0.5,1),2))
 fsc_res = fsc.data(find(fsc.data(:,5) < 0.143,1),2)
 
-% TODO dfocus refine if res high enough
-% if (fsc_cutoff < 6.0)
-if (false)
+if ~(do_initial)
+  fsc_last = fsc_cutoff / 0.94; 
+end
+n_max_refinements = 7;
+i_refine = 2;
+
+do_refine_defocus_loop = emc.('refine_defocus_cisTEM')
+
+while ( fsc_cutoff / fsc_last < 0.9501 && i_refine < n_max_refinements)
+
+refine_angles_and_shifts = "yes";
+refine_defocus = "no";
+use_cutoff = fsc_cutoff;
+if (do_refine_defocus_loop)
+  refine_angles_and_shifts = "no";
+  refine_defocus = "yes";
+  use_cutoff = fsc_res - 0.8
+  do_refine_defocus_loop = false;
+end
+
+i_refine = i_refine + 1;
+fsc_last = fsc_cutoff;
+
+fprintf('Refinement %d, fsc cutoff %f\n',i_refine,fsc_cutoff);
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%
 % Refine
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%r
-refine_def = sprintf('%s_ref_def.sh',output_prefix);
-system(sprintf('rm -f %s',refine_def));
-refineScript = fopen(sprintf('%s',refine_def), 'w');
+refine_angles = sprintf('%s_ref_angles_%d.sh',output_prefix, i_refine);
+system(sprintf('rm -f %s',refine_angles));
+refineScript = fopen(sprintf('%s',refine_angles), 'w');
 fprintf(refineScript,[ ...
   '#!/bin/bash\n\n', ...
   '%s << eof\n', ...
   '%s.mrc\n', ... sprintf('%s.mrc',output_prefix)
   '%s.star\n', ... sprintf('%s.star',output_prefix)
-  '%s_recFilt_refined.mrc\n',...
-  '%s_stats_refined.txt\n',...
+  '%s_recFilt_refined%d.mrc\n',...
+  '%s_stats_refined%d.txt\n',...
   'yes\n',... Use statistics [Yes]                               :
   'my_projection_stack.mrc\n',... not going to be used                       :
-  '%s_refined3.star\n', ...
-  '%s_changes3.star\n', ...Output parameter changes
+  '%s_refined%d.star\n', ...
+  '%s_changes%d.star\n', ...Output parameter changes
   '%s\n',... Particle symmetry [C1]                             :
   '1\n', ...First particle to refine (0 = first in stack) [1]  :
   '0\n', ...Last particle to refine (0 = last in stack) [0]    :
@@ -1314,36 +1408,40 @@ fprintf(refineScript,[ ...
   '100.0\n',...2D mask Y coordinate (A) [100.0]                   :
   '100.0\n',...2D mask Z coordinate (A) [100.0]                   :
   '100.0\n',...2D mask radius (A) [100.0]                         :
-  '5000.0\n',...Defocus search range (A) [500.0]                   :
+  '1000.0\n',...Defocus search range (A) [500.0]                   :
   '50.0\n',...Defocus step (A) [50.0]                            :
   '1.0\n',...Tuning parameters: padding factor [1.0]            :
   'no\n',...Global search [No]                                 :
   'yes\n',...  Local refinement [Yes]                             :
-  'no\n',...Refine Psi [no]                                    :
-  'no\n',...Refine Theta [no]                                  :
-  'no\n',...Refine Phi [no]                                    :
-  'no\n',...Refine ShiftX [Yes]                                :
-  'no\n',...Refine ShiftY [Yes]                                :
+  '%s\n',...Refine Psi [no]                                    :
+  '%s\n',...Refine Theta [no]                                  :
+  '%s\n',...Refine Phi [no]                                    :
+  '%s\n',...Refine ShiftX [Yes]                                :
+  '%s\n',...Refine ShiftY [Yes]                                :
   'no\n',...Calculate matching projections [No]                :
   'no\n',...Apply 2D masking [No]                              :
-  'yes\n',...Refine defocus [No]                                :
+  '%s\n',...Refine defocus [No]                                :
   'yes\n',...Normalize particles [Yes]                          :
   'no\n',...Invert particle contrast [No]                      :
   'yes\n',...Exclude images with blank edges [Yes]              :
   'yes\n',...Normalize input reconstruction [Yes]               :
   'no\n',...Threshold input reconstruction [No]                :
   '%2.2d\n', ...Max. threads to use for calculation [36]           :
-  ],  getenv('EMC_REFINE3D'),output_prefix, output_prefix, output_prefix, output_prefix, output_prefix, output_prefix, ...
-  symmetry,emc.pixel_size_angstroms, ...
+  ],  getenv('EMC_REFINE3D'), output_prefix, output_prefix, ...
+  output_prefix, i_refine - 1, output_prefix, i_refine - 1, ...
+  output_prefix, i_refine, output_prefix, i_refine, ...
+  symmetry, emc.pixel_size_angstroms, ...
   emc.('particleMass')*10^3, 0.0, mean(emc.('Ali_mRadius')), ...
-    fsc_cutoff,fsc_cutoff,maxThreads);
+    use_cutoff,use_cutoff, ...
+  refine_angles_and_shifts, refine_angles_and_shifts, refine_angles_and_shifts, refine_angles_and_shifts, refine_angles_and_shifts, ...
+  refine_defocus, maxThreads);
 
 fprintf(refineScript, '\neof\n');
 fclose(refineScript);
 pause(1);
-system(sprintf('chmod a=wrx %s',refine_def));
+system(sprintf('chmod a=wrx %s',refine_angles));
 pause(1);
-system(sprintf('./%s',refine_def));
+system(sprintf('./%s',refine_angles));
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Reconstruct refined
@@ -1356,12 +1454,12 @@ for iProc = 1:n_recon_procs
     '#!/bin/bash\n\n', ...
     '%s << eof\n', ...
     '%s.mrc\n', ... sprintf('%s.mrc',output_prefix)
-    '%s_refined3.star\n', ... sprintf('%s.star',output_prefix)
+    '%s_refined%d.star\n', ... sprintf('%s.star',output_prefix)
     'none.mrc\n', ...
     '%s_rec1.mrc\n',...
     '%s_rec2.mrc\n',...
-    '%s_recFilt_refined3.mrc\n',...
-    '%s_stats_refined3.txt\n',...
+    '%s_recFilt_refined%d.mrc\n',...
+    '%s_stats_refined%d.txt\n',...
     '%s\n', ...
     '%d\n', ...
     '%d\n', ...
@@ -1385,12 +1483,14 @@ for iProc = 1:n_recon_procs
     'No\n', ...Apply likelihood blurring [No]                     :
     'No\n', ...Threshold input reconstruction [No]                :
     'Yes\n', ...Dump intermediate arrays (merge later) [No]        :
-    '%s/dump_1_%d.dat\n', ...Output dump filename for odd particle [dump_file_1.dat]                                  :
-    '%s/dump_2_%d.dat\n', ...Output dump filename for even particle [dump_file_2.dat]                                  :
+    '%s/%sdump_1_%d.dat\n', ...Output dump filename for odd particle [%sdump_file_1.dat]                                  :
+    '%s/%sdump_2_%d.dat\n', ...Output dump filename for even particle [%sdump_file_2.dat]                                  :
     '%d\n', ... Max. threads to use for calculation [36]           :
-    ], getenv('EMC_RECONSTRUCT3D'),output_prefix, output_prefix, output_prefix, output_prefix, output_prefix, output_prefix, ...
+    ], getenv('EMC_RECONSTRUCT3D'),output_prefix, ...
+    output_prefix, i_refine, output_prefix, output_prefix, ...
+    output_prefix, i_refine, output_prefix, i_refine, ...
     symmetry,stack_boundaries(iProc),stack_boundaries(iProc+1)-1 ,emc.pixel_size_angstroms, ...
-    emc.('particleMass')*10^3, 0.0, mean(emc.('Ali_mRadius')), tmpCache, iProc,tmpCache,iProc, n_threads_per_proc(iProc));
+    emc.('particleMass')*10^3, 0.0, mean(emc.('Ali_mRadius')), tmpCache,output_prefix, iProc,tmpCache,output_prefix,iProc, n_threads_per_proc(iProc));
   
   fprintf(recScript, 'eof\n');
   
@@ -1405,6 +1505,27 @@ for iProc = 1:n_recon_procs
   
 end
   
+% sometimes we get to merge 3d before the reconstructions are done?
+n_pauses = 0;
+max_pauses = 6;
+while (n_pauses < max_pauses)
+  all_found = true;
+  for iProc = 1:n_recon_procs
+    fname1 = sprintf('%s/%sdump_1_%d.dat',tmpCache,output_prefix,iProc);
+    fname2 = sprintf('%s/%sdump_2_%d.dat',tmpCache,output_prefix,iProc);
+    if ~(exist(fname1, 'file') && exist(fname2, 'file'))
+      all_found = false;
+      break;
+    end
+  end
+  if all_found
+    break;
+  else
+    fprintf('Waiting for reconstructions to finish...\n');
+    pause(10);
+  end
+  n_pauses = n_pauses + 1;
+end
 
 merge3d_name = sprintf('%s_merge3d.sh',output_prefix);
 system(sprintf('rm -f %s',merge3d_name));
@@ -1415,19 +1536,20 @@ fprintf(merge3dScript,[ ...
   '%s << eof\n', ...
   '%s_rec1.mrc\n',...
   '%s_rec2.mrc\n',...
-  '%s_recFilt_refined3.mrc\n',...
-  '%s_stats_refined3.txt\n',...
+  '%s_recFilt_refined%d.mrc\n',...
+  '%s_stats_refined%d.txt\n',...
   '%4.4f\n', ... molecularMass'
   '%3.3f\n', ... inermask ang
   '%3.3f\n', ... outermas ang
-  '%s/dump_1_.dat\n', ...
-  '%s/dump_2_.dat\n', ...
+  '%s/%sdump_1_.dat\n', ...
+  '%s/%sdump_2_.dat\n', ...
   '%d\n'], ... Number of dump files [8]                           :
   getenv('EMC_MERGE3D'), ...
-  output_prefix, output_prefix, output_prefix, output_prefix, ...
+  output_prefix, output_prefix, ...
+  output_prefix, i_refine, output_prefix, i_refine, ...
   emc.('particleMass')*10^3, ...
   0.0, mean(emc.('Ali_mRadius')), ...
-  tmpCache, tmpCache, n_recon_procs);
+  tmpCache,output_prefix, tmpCache,output_prefix, n_recon_procs);
 
 
 fprintf(merge3dScript, 'eof\n');
@@ -1436,12 +1558,208 @@ system(sprintf('chmod a=wrx %s',merge3d_name));
 pause(1)
 system(sprintf('./%s',merge3d_name));
 
-system(sprintf('rm %s/dump_?_*.dat',tmpCache));
+system(sprintf('rm %s/%sdump_?_*.dat',tmpCache, output_prefix));
 
-fsc = importdata(sprintf('%s_stats_refined3.txt',output_prefix),' ',12);
-fsc_cutoff = fsc.data(find(fsc.data(:,5) < 0.5,1),2)
+% Get the FSC cutoff for refinement
+fsc = importdata(sprintf('%s_stats_refined%d.txt',output_prefix, i_refine),' ',12);
+fsc_cutoff = 0.5 * (fsc.data(find(fsc.data(:,5) < 0.5,1),2) + fsc.data(find(fsc.data(:,4) < 0.5,1),2))
 fsc_res = fsc.data(find(fsc.data(:,5) < 0.143,1),2)
+
+
+end % while loop on extra refinements
+
+
+% TODO dfocus refine if res high enough
+% if (fsc_cutoff < 6.0)
+if (false)
+  %%%%%%%%%%%%%%%%%%%%%%%%%
+  % Refine
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%r
+  refine_def = sprintf('%s_ref_def.sh',output_prefix);
+  system(sprintf('rm -f %s',refine_def));
+  refineScript = fopen(sprintf('%s',refine_def), 'w');
+  fprintf(refineScript,[ ...
+    '#!/bin/bash\n\n', ...
+    '%s << eof\n', ...
+    '%s.mrc\n', ... sprintf('%s.mrc',output_prefix)
+    '%s.star\n', ... sprintf('%s.star',output_prefix)
+    '%s_recFilt_refined.mrc\n',...
+    '%s_stats_refined.txt\n',...
+    'yes\n',... Use statistics [Yes]                               :
+    'my_projection_stack.mrc\n',... not going to be used                       :
+    '%s_refined3.star\n', ...
+    '%s_changes3.star\n', ...Output parameter changes
+    '%s\n',... Particle symmetry [C1]                             :
+    '1\n', ...First particle to refine (0 = first in stack) [1]  :
+    '0\n', ...Last particle to refine (0 = last in stack) [0]    :
+    '1.0\n',...Percent of particles to use (1 = all) [1.0]        :
+    '%3.3f\n', ... pixel size
+    '%4.4f\n', ... molecularMass'
+    '%3.3f\n', ... inermask ang
+    '%3.3f\n', ... outermas ang
+    '300.0\n',...Low resolution limit (A) [300.0]                   :
+    '%3.3f\n',...High resolution limit (A) [8.0]                    :
+    '0.0\n',...Resolution limit for signed CC (A) (0.0 = max [0.0]                                              :
+    '0.0\n',...Res limit for classification (A) (0.0 = max) [0.0] :
+    '0.0\n',...Mask radius for global search (A) (0.0 = max)[100.0]                                            :
+    '%3.3f\n',...Approx. resolution limit for search (A) [8]        :
+    '0.0\n',...Angular step (0.0 = set automatically) [0.0]       :
+    '20\n',...Number of top hits to refine [20]                  :
+    '10\n',...Search range in X (A) (0.0 = 0.5 * mask radius)[12]                                               :
+    '10\n',...[12]                                               :
+    '100.0\n',...2D mask X coordinate (A) [100.0]                   :
+    '100.0\n',...2D mask Y coordinate (A) [100.0]                   :
+    '100.0\n',...2D mask Z coordinate (A) [100.0]                   :
+    '100.0\n',...2D mask radius (A) [100.0]                         :
+    '5000.0\n',...Defocus search range (A) [500.0]                   :
+    '50.0\n',...Defocus step (A) [50.0]                            :
+    '1.0\n',...Tuning parameters: padding factor [1.0]            :
+    'no\n',...Global search [No]                                 :
+    'yes\n',...  Local refinement [Yes]                             :
+    'no\n',...Refine Psi [no]                                    :
+    'no\n',...Refine Theta [no]                                  :
+    'no\n',...Refine Phi [no]                                    :
+    'no\n',...Refine ShiftX [Yes]                                :
+    'no\n',...Refine ShiftY [Yes]                                :
+    'no\n',...Calculate matching projections [No]                :
+    'no\n',...Apply 2D masking [No]                              :
+    'yes\n',...Refine defocus [No]                                :
+    'yes\n',...Normalize particles [Yes]                          :
+    'no\n',...Invert particle contrast [No]                      :
+    'yes\n',...Exclude images with blank edges [Yes]              :
+    'yes\n',...Normalize input reconstruction [Yes]               :
+    'no\n',...Threshold input reconstruction [No]                :
+    '%2.2d\n', ...Max. threads to use for calculation [36]           :
+    ],  getenv('EMC_REFINE3D'),output_prefix, output_prefix, output_prefix, output_prefix, output_prefix, output_prefix, ...
+    symmetry,emc.pixel_size_angstroms, ...
+    emc.('particleMass')*10^3, 0.0, mean(emc.('Ali_mRadius')), ...
+      fsc_cutoff,fsc_cutoff,maxThreads);
+
+  fprintf(refineScript, '\neof\n');
+  fclose(refineScript);
+  pause(1);
+  system(sprintf('chmod a=wrx %s',refine_def));
+  pause(1);
+  system(sprintf('./%s',refine_def));
+
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  % Reconstruct refined
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  for iProc = 1:n_recon_procs
+    system(sprintf('rm -f %s_rec_%d.sh',output_prefix, iProc));
+    recScript = fopen(sprintf('%s_rec_%d.sh',output_prefix, iProc), 'w');
+    fprintf(recScript,[ ...
+      '#!/bin/bash\n\n', ...
+      '%s << eof\n', ...
+      '%s.mrc\n', ... sprintf('%s.mrc',output_prefix)
+      '%s_refined3.star\n', ... sprintf('%s.star',output_prefix)
+      'none.mrc\n', ...
+      '%s_rec1.mrc\n',...
+      '%s_rec2.mrc\n',...
+      '%s_recFilt_refined3.mrc\n',...
+      '%s_stats_refined3.txt\n',...
+      '%s\n', ...
+      '%d\n', ...
+      '%d\n', ...
+      '%3.3f\n', ... pixel size
+      '%4.4f\n', ... molecularMass'
+      '%3.3f\n', ... inermask ang
+      '%3.3f\n', ... outermas ang
+      '0.0\n', ... rec res limit
+      '0.0\n', ... ref res limit
+      '5.0\n', ... Particle weighting factor (A^2) [5.0]
+      '1.0\n', ... Score threshold (<= 1 = percentage) [1.0]
+      '1.0\n', ...Tuning parameter: smoothing factor [1.0]           :
+      '1.0\n', ...Tuning parameters: padding factor [1.0]            :
+      'Yes\n', ...Normalize particles [Yes]                          :
+      'No\n', ...Adjust scores for defocus dependence [no]          :
+      'No\n', ...Invert particle contrast [No]                      :
+      'Yes\n', ...Exclude images with blank edges [yes]              :
+      'No\n', ...Crop particle images [no]                          :
+      'Yes\n', ...FSC calculation with even/odd particles [Yes]      :
+      'No\n', ...Center mass [No]                                   :
+      'No\n', ...Apply likelihood blurring [No]                     :
+      'No\n', ...Threshold input reconstruction [No]                :
+      'Yes\n', ...Dump intermediate arrays (merge later) [No]        :
+      '%s/%sdump_1_%d.dat\n', ...Output dump filename for odd particle [%sdump_file_1.dat]                                  :
+      '%s/%sdump_2_%d.dat\n', ...Output dump filename for even particle [%sdump_file_2.dat]                                  :
+      '%d\n', ... Max. threads to use for calculation [36]           :
+      ], getenv('EMC_RECONSTRUCT3D'),output_prefix, output_prefix, output_prefix, output_prefix, output_prefix, output_prefix, ...
+      symmetry,stack_boundaries(iProc),stack_boundaries(iProc+1)-1 ,emc.pixel_size_angstroms, ...
+      emc.('particleMass')*10^3, 0.0, mean(emc.('Ali_mRadius')), tmpCache,output_prefix, iProc,tmpCache,output_prefix,iProc, n_threads_per_proc(iProc));
+    
+    fprintf(recScript, 'eof\n');
+    
+    fclose(recScript);
+    system(sprintf('chmod a=wrx %s_rec_%d.sh',output_prefix, iProc));
+    pause(1);
+    if (iProc < n_recon_procs)
+      system(sprintf('./%s_rec_%d.sh  2>&1 > /dev/null &',output_prefix, iProc));
+    else
+      system(sprintf('./%s_rec_%d.sh && wait',output_prefix, iProc));
+    end
+    
+  end
+  
+% sometimes we get to merge 3d before the reconstructions are done?
+n_pauses = 0;
+max_pauses = 6;
+while (n_pauses < max_pauses)
+  all_found = true;
+  for iProc = 1:n_recon_procs
+    fname1 = sprintf('%s/%sdump_1_%d.dat',tmpCache,output_prefix,iProc);
+    fname2 = sprintf('%s/%sdump_2_%d.dat',tmpCache,output_prefix,iProc);
+    if ~(exist(fname1, 'file') && exist(fname2, 'file'))
+      all_found = false;
+      break;
+    end
+  end
+  if all_found
+    break;
+  else
+    fprintf('Waiting for reconstructions to finish...\n');
+    pause(10);
+  end
+  n_pauses = n_pauses + 1;
 end
+
+  merge3d_name = sprintf('%s_merge3d.sh',output_prefix);
+  system(sprintf('rm -f %s',merge3d_name));
+  merge3dScript = fopen(sprintf('%s',merge3d_name), 'w');
+
+  fprintf(merge3dScript,[ ...
+    '#!/bin/bash\n\n', ...
+    '%s << eof\n', ...
+    '%s_rec1.mrc\n',...
+    '%s_rec2.mrc\n',...
+    '%s_recFilt_refined3.mrc\n',...
+    '%s_stats_refined3.txt\n',...
+    '%4.4f\n', ... molecularMass'
+    '%3.3f\n', ... inermask ang
+    '%3.3f\n', ... outermas ang
+    '%s/%sdump_1_.dat\n', ...
+    '%s/%sdump_2_.dat\n', ...
+    '%d\n'], ... Number of dump files [8]                           :
+    getenv('EMC_MERGE3D'), ...
+    output_prefix, output_prefix, output_prefix, output_prefix, ...
+    emc.('particleMass')*10^3, ...
+    0.0, mean(emc.('Ali_mRadius')), ...
+    tmpCache, output_prefix,tmpCache, output_prefix,n_recon_procs);
+
+
+  fprintf(merge3dScript, 'eof\n');
+  fclose(merge3dScript);
+  system(sprintf('chmod a=wrx %s',merge3d_name));
+  pause(1)
+  system(sprintf('./%s',merge3d_name));
+
+  system(sprintf('rm %s/%sdump_?_*.dat',tmpCache,output_prefix));
+
+  fsc = importdata(sprintf('%s_stats_refined3.txt',output_prefix),' ',12);
+  fsc_cutoff = 0.5 * (fsc.data(find(fsc.data(:,5) < 0.5,1),2) + fsc.data(find(fsc.data(:,4) < 0.5,1),2))
+  fsc_res = fsc.data(find(fsc.data(:,5) < 0.143,1),2)
+end % defocus refine loop
 
 end
 

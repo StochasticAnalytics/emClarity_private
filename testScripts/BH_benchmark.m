@@ -71,7 +71,7 @@ for memLevel = [0,1,2]
   nTrials = 10;
   parContainer = cell(nWorkers,1);
   parfor iProc = 1:nWorkers
-    
+    volMem = 0;
     g = gpuDevice(1);
     
     % Create the volume to operate on

@@ -306,6 +306,7 @@ echo $iEcho && iEcho=$(($iEcho+1))
         -AngleOffset ${tiltAngleOffset} > tiltAlign.log
     else
       # run without local until an intial stable global solution is found
+      echo "${EMC_TILTALIGN} -ModelFile	${pName}.fid -ImageFile	${pName}.preali -ImagesAreBinned	${iBin} -OutputModelFile	${pName}.3dmod -OutputResidualFile	${pName}.resid -OutputFidXYZFile	${pName}fid.xyz -OutputTiltFile	${pName}.tlt -OutputTransformFile	${pName}.tltxf_nonScaled -RotationAngle	0.0 -TiltFile	${pName}.rawtlt -AngleOffset ${tiltAngleOffset} -RotOption	1 -RotDefaultGrouping	3 -TiltOption	${TILT_OPTION} -TiltDefaultGrouping	3 -MagOption	${MAG_OPTION} -MagDefaultGrouping	3 -BeamTiltOption	0 -ResidualReportCriterion	1.0 -SurfacesToAnalyze	1 -MetroFactor	0.25 -MaximumCycles	1000 -KFactorScaling	1.0 -NoSeparateTiltGroups	2 -AxisZShift	1000  > tiltAlign.log" > ./.${inp}_tilalign.sh
       tiltalign \
           -ModelFile	${pName}.fid \
           -ImageFile	${pName}.preali \

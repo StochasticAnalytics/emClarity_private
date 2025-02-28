@@ -634,7 +634,8 @@ end
 parVect = 1:nParProcesses;
 parfor iParProc = parVect
   % for iParProc = parVect % r
-  
+  % to avoid unitialized temporaries warnings
+  iSF3D = [];
   % Get the gpuIDX assigned to this process
   gpuIDXList = mod(parVect+emc.nGPUs,emc.nGPUs)+1;
   iGPUidx = gpuIDXList(iParProc);
@@ -667,8 +668,8 @@ parfor iParProc = parVect
       {'none'},1,0,1);
     cccWeight = (cccWeight ./ emc.pixel_size_angstroms).^2;
     
-    
-    
+  else
+    cccWeight = 1; 
   end
   
   if (eachTomo)
@@ -678,6 +679,10 @@ parfor iParProc = parVect
       tomoAvgStack{iTomo} = zeros(sizeMask, 'single');
       tomoWgtStack{iTomo} = zeros(sizeMask, 'single');
     end
+  else
+    % To avoid unitialized temporaries warnings
+    tomoAvgStack = [];
+    tomoWgtStack = [];
   end
   
   nTomos = 1;
@@ -703,6 +708,11 @@ parfor iParProc = parVect
     if (eachTomo)
       tomoAvg = zeros(sizeMask, 'single', 'gpuArray');
       tomoWgt = zeros(sizeCalc , 'single', 'gpuArray');
+      tomoCount = 0;
+    else
+      % To avoid unitialized temporaries warnings
+      tomoAvg = [];
+      tomoWgt = [];
       tomoCount = 0;
     end
     
@@ -731,6 +741,7 @@ parfor iParProc = parVect
 
     if (emc.flgCutOutVolumes && ~volumesNeedToBeExtracted)
       volumeData = [];
+      volHeader = [];
     else
 
       reconScaling = 1;
@@ -797,6 +808,8 @@ parfor iParProc = parVect
         
         
         for iSubTomo = particleIndex'
+          % fprintf('gpu %d working on subtomo %d volumes\n',iParProc,iSubTomo);
+
           iParticle = [];
           iCCCweight = [];
           iWedgeMask = [];
@@ -849,6 +862,7 @@ parfor iParProc = parVect
               make_sf3d = false;
             end
               
+         
                         
             
             if (emc.flgQualityWeight)
@@ -1005,7 +1019,7 @@ parfor iParProc = parVect
                 iWedgeMask = iWedgeMask .* fftshift(iCCCweight);
               end
               
-              
+    
               
               
               trimAvg =  mean(iParticle(:));
@@ -1245,13 +1259,7 @@ end
 
 for iClassPos = 1:maxClasses
   
-  if (doNotTrim) && (emc.classification)
-    % % % % % % %       m = BH_mask3d('sphere',sizeMask,floor(sizeMask./2-6),pcaMaskCenter);
-    [ m ]  = EMC_maskShape('sphere', sizeMask,floor(sizeMask./2-6), 'gpu', {'shift', pcaMaskCenter});
-  else
-    m = 1;
-  end
-  
+
   % Re-weight both halves whether flgGold or not.
   
   for iGold = 1:2-flgFinalAvg

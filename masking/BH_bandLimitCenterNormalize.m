@@ -24,10 +24,12 @@ function [ IMG ] = BH_bandLimitCenterNormalize( IMG, BANDPASS, MASK, ...
 %
 %   use double precision to calculate the mean, and after masking.
 
-applyBandpass = 0;
+applyBandpass = false;
 applyShift = 0;
 if isnumeric(BANDPASS)
-  applyBandpass = 1;
+  if numel(BANDPASS) > 1
+    applyBandpass = true;
+  end
 elseif strcmpi(BANDPASS, 'shift')
   % use the mask to shift the image prior to fft as needed for fourier
   % interp.

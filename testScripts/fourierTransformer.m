@@ -44,11 +44,11 @@ OddSizeOversampled = 0;
       
       if nargin > 1
         if (ischar(varargin{1}))
-if (strcmpi(varargin{1},'OddSizeOversampled'))
+          if (strcmpi(varargin{1},'OddSizeOversampled'))
             obj.OddSizeOversampled = 1;
           else
             error('Did not recognize the extra argument when intializing the fourierTransformer');      
-end
+          end
         else
           if (isnumeric(varargin{1}))
             if (numel(varargin{1}) == 6)
@@ -283,7 +283,6 @@ end
         obj.indexCenterFWD = EMC_maskIndex('fftshift', obj.inputSize, 'GPU', {'half',true});
         
       end
-      
       inputVol = inputVol(obj.indexCenterFWD);
       
     end
@@ -344,13 +343,13 @@ end
           bpValsNew(3),...
           'GPU', ...
           bpValsNew(4));
-        switch ndims(obj.bandpass)
-          case 3
-            obj.bandpass = obj.bandpass(1:obj.halfDimSize,:,:);
-          case 2
-            obj.bandpass = obj.bandpass(1:obj.halfDimSize,:);
-          case 1
-            obj.bandpass = obj.bandpass(1:obj.halfDimSize);
+   switch ndims(obj.bandpass)
+        case 3
+        obj.bandpass = obj.bandpass(1:obj.halfDimSize,:,:);
+        case 2
+        obj.bandpass = obj.bandpass(1:obj.halfDimSize,:);
+        case 1
+        obj.bandpass = obj.bandpass(1:obj.halfDimSize);
         end
         
         % Update the properties

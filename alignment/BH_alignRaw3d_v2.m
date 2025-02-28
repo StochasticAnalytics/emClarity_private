@@ -367,6 +367,7 @@ else
   
   
   for iRef = 1
+    
     fscINFO = subTomoMeta.(cycleNumber).('fitFSC').('Ref1');
     [radialGrid,~,~,~,~,~ ] = BH_multi_gridCoordinates(sizeCalc, 'Cartesian', ...
       'GPU', {'none'}, 1, 0, 1 );
@@ -433,8 +434,8 @@ for iGold = 1:2
     % and rely on the normalization during the CCC calc. TODO
     ref_FT1{iGold}{iRef} = gather(conj(BH_bandLimitCenterNormalize(...
       refTMP.*volMask, bandpassFiltREF{iRef}, (volMask>0.01), padCalc, flgPrecision)));
-    
-    
+
+        
     
     
     ref_FT2{iGold}{iRef} = gather(refTMP_2);
@@ -488,8 +489,8 @@ if (emc.use_new_grid_search)
   gridSearch = eulerSearch(emc.symmetry, angleSearch(1),...
     angleSearch(2),angleSearch(3),angleSearch(4), 0, 0, true);
   nAngles = sum(gridSearch.number_of_angles_at_each_theta);
-  inPlaneSearch = gridSearch.parameter_map.psi
-  
+    inPlaneSearch = gridSearch.parameter_map.psi
+
   try
     symmetry_constrained_search = emc.('symmetry_constrained_search');
     fprintf('Using symmetry constrained search\n');
@@ -509,14 +510,13 @@ if (emc.use_new_grid_search)
     end
   end
   
-  flgRefine=false;
-  
-  for i = 1:length(gridSearch.parameter_map.phi)
-    if gridSearch.parameter_map.phi{i} > 0
-      flgRefine=true;
-      break;
-    end
-  end
+  flgRefine= gridSearch.number_of_out_of_plane_angles > 1;
+  % for i = 1:gridSearch.number_of_out_of_plane_angles
+  %   if gridSearch.parameter_map.phi{i} > 0
+  %     flgRefine=true;
+  %     break;
+  %   end
+  % end
   
   
   angleStep = [];
@@ -539,7 +539,6 @@ end
 % [subTomoMeta] = BH_recordAngularSampling( subTomoMeta, cycleNumber, angleStep, inPlaneSearch);
 
 nCount = 1;
-
 
 
 firstLoop = true;
@@ -573,6 +572,25 @@ if (emc.force_no_symmetry)
 end
 parfor iParProc = parVect
   % for iParProc = parVect
+
+  % To avoid unitialized temporary warnings
+  iMaxWedgeIfft = [];
+  imgWdgInterpolator = '';
+  refInterpolator = '';
+  refWdgInterpolator = '';
+  particleInterpolator = '';
+  phiInc = [];
+  thetaInc = [];
+  psiInc = [];
+  estPeakCoords = [];
+  iTrimParticle = [];
+  iTrimInitial = [];
+  iWedgeInitial = [];
+  iWedgeMask = [];
+  refToAlign = '';
+  iRotRef = [];
+  iRotWdg = [];
+  iRotWdgMask = [];
 
   symmetry = emc.symmetry;
 
@@ -629,9 +647,12 @@ parfor iParProc = parVect
       peakMaskInterpolator  = '';
       peakMaskInterpolator = interpolator(gpuArray(peakMask),[0,0,0],[0,0,0], rotConvention , 'forward', 'C1', false);
       
+      mip = struct();
       if (emc.track_stats)
-        mip = struct();
         mip.('mask') = gpuArray(stat_mask);
+      else
+        % to avoid uninitialized temporaries warnings
+        mip.('mask') = [];
       end
       
       
@@ -742,6 +763,8 @@ parfor iParProc = parVect
             mip.('x') = {};
             mip.('x2') = {};
             mip.('N') = 0;
+          else
+            measure_noise = false;
           end
           if (breakPeak)
             continue;
@@ -907,8 +930,7 @@ parfor iParProc = parVect
                   for iInPlane = inPlaneSearch
                     psi    = iInPlane;
                     %[phi,theta,psi-phi];
-                    
-                    
+           
                     RotMat = BH_defineMatrix([phi, theta, psi - phi],rotConvention, 'inv');
                     RotMat = reshape(angles,3,3) * RotMat;
                     

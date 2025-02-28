@@ -92,18 +92,18 @@ switch OPERATION
     % needs more memory, so a smaller size here means more transfers, but this
     % should be balanced by the finer angles (more comp)
     if all(SIZES(1,:) == 256)
-      nextBest = [128,144,160,168,192,216,224,256];
+    nextBest = [128,144,160,168,192,216,224,256];
     elseif all(SIZES(1,:) == 384)
-      nextBest = [128,144,160,168,192,216,224,256,...
-        288,300,320,336,360,384];
+    nextBest = [128,144,160,168,192,216,224,256,...
+    288,300,320,336,360,384];
     elseif all(SIZES(1,:) == 432)
-      nextBest = [128,144,160,168,192,216,224,256,...
-        288,300,320,336,360,384,400,432];
+    nextBest = [128,144,160,168,192,216,224,256,...
+    288,300,320,336,360,384,400,432];
     elseif all(SIZES(1,:) == 512)
-      nextBest = [128,144,160,168,192,216,224,256,...
-        288,300,320,336,360,384,400,432,480,512];
+    nextBest = [128,144,160,168,192,216,224,256,...
+    288,300,320,336,360,384,400,432,480,512];
     elseif all(SIZES(1,:) > 512)
-      nextBest = [128,144,160,168,192,216,224,256,...
+        nextBest = [128,144,160,168,192,216,224,256,...
         288,300,320,336,360,384,400,432,480,512,...
         540,576,640,648,720,756,768,810,864,896,960,972,1008,1024];
     end
@@ -115,7 +115,7 @@ switch OPERATION
     borderSizeCalc = floor((sizeTemplate + APODIZATION)./2);
     borderSizeKeep = borderSizeCalc + 2.*sizeParticle;
     
-    abs(sum(sizeImage - sizeTemplate))
+abs(sum(sizeImage - sizeTemplate))
     sum(0.1.*sizeImage)
     if abs(sum(sizeImage - sizeTemplate)) < sum(0.1.*sizeImage)
       
@@ -137,7 +137,7 @@ switch OPERATION
     % searched is the same size as the reference
     
     score(:,2:4) = repmat(nextBest',1,3) ./ postPad .* (minIter >= 0)
-    
+
     [~, cX] = max(score(:,2)) ;
     [~, cY] = max(score(:,3)) ;
     [~, cZ] = max(score(:,4))  ;

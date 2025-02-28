@@ -136,7 +136,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, mxArray const *prhs[]) {
         mexFP16_DEBUG_PRINT("Copying single to host\n");
         checkCudaErrors(cudaMallocHost(&temporary_single, *n_elements * sizeof(float)));
         checkCudaErrors(cudaMemcpy(temporary_single, input_single, *n_elements  * sizeof(float), cudaMemcpyDeviceToHost));
-        checkCudaErrors(cudaStreamSynchronize(cudaStreamPerThread));
+checkCudaErrors(cudaStreamSynchronize(cudaStreamPerThread));
       } 
       else 
         temporary_single = input_single;
@@ -170,7 +170,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, mxArray const *prhs[]) {
       if (!half_array_is_on_gpu)
         checkCudaErrors(cudaFreeAsync(temporary_uint16, cudaStreamPerThread));
 
-     checkCudaErrors(cudaStreamSynchronize(cudaStreamPerThread));
+checkCudaErrors(cudaStreamSynchronize(cudaStreamPerThread));
     }
     else {
       mexFP16_DEBUG_PRINT("Casting to single that is on host already\n");

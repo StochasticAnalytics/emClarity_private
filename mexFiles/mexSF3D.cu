@@ -45,7 +45,7 @@ __global__ void sf3dKernel(const cudaTextureObject_t tex_obj,
 
   // The centered coordinate in the 3d volume
   float x_centered = float(x - dims.x/2);
-  tw_pre = -x_centered * sinAcosA.x + size_shift.z;
+  tw_pre = x_centered * -sinAcosA.x + size_shift.z;
   float y_centered_normalized = (float(y - dims.y/2) + size_shift.y) / float(dims.y) + 0.5f;
 
   for (int z = 0; z < dims.z; z++) {
