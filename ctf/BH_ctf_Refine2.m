@@ -72,7 +72,7 @@ catch
 end
 
 % Tile size & overlap
-tileOverlap = 4;
+tileOverlap = emc.('ctf_tile_overlap');
 
 emc.ctf_tile_size = BH_multi_iterator(emc.ctf_tile_size.*[1,1],'fourier2d');
 emc.ctf_tile_size = emc.ctf_tile_size(1);
@@ -309,10 +309,11 @@ tiltOrigin = ceil((size(iProjection,1)+1)./2);
 
 oXprj = ceil((size(iProjection,1)+1)./2);
 % Don't worry about extending the edges for thickness
+half_width = (size(iProjection,1)/2);
 halfX = emc_get_origin_index(paddedSize);
 
 maxEval = (fraction_of_extra_tilt_data + ...
-  cosd(TLT(iPrj,4)).*(1-fraction_of_extra_tilt_data)) .* halfX;
+  cosd(TLT(iPrj,4)).*(1-fraction_of_extra_tilt_data)) .* half_width;
 
 iEvalMask = floor(oXprj-maxEval):ceil(oXprj+maxEval);
 % iEvalMask = BH_multi_gridCoordinates([size(iProjection,1),1,1],'Cartesian','GPU',{'none'},0,1,0);
@@ -413,7 +414,7 @@ for tilt_sign = [-1,1]
 
 
         iTile = gpuArray(iProjection(iOuter-tileSize/2+1:iOuter+tileSize/2,y-tileSize/2+1:y+tileSize/2));
-        % iTile(zeroed_coords,:) = 0;
+        iTile(zeroed_coords,:) = 0;
         iTile = iTile - mean(iTile(:));
         iTile = iTile ./ rms(iTile(:));
   

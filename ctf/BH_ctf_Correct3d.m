@@ -69,31 +69,31 @@ use_existing_tmpCache='';
 recon_for_tomoCPR = false;
 recon_for_templateMatching = false;
 recon_for_subTomo = false;
-if nargin > 2
-  if isempty(EMC_str2double(varargin{1}))
-    error('Extra argument to ctf 3d should be a vector [THICKNESS, BINNING] tiltN, or a string templateSearch');
-  else
-    reconstructionParameters = EMC_str2double(varargin{1});
-    if length(varargin) > 2
-      recon_for_tomoCPR = true;
-      % Full recon for tomoCPR
-      bh_global_turn_on_phase_plate = varargin{3};
-      filterProjectionsForTomoCPRBackground = varargin{4};
-      if length(varargin) > 4
-        use_existing_tmpCache = varargin{5};
-      end
-    else
-      error('This block should ont be reached.');
-    end
-  end
-elseif nargin > 1
+
+recon_subset=[1,-1];
+
+if nargin > 1
   if strcmpi(varargin{1},'templateSearch')
     recon_for_templateMatching = true;
     if (bh_global_turn_on_phase_plate(1))
       fprintf('WARNING: the filtered tomogram should only be used for viz, not template matching.');
     end
   else
-    error('Extra argument to ctf 3d should be a vector [THICKNESS, BINNING] tiltN, or a string templateSearch');
+    if strcmpi(varargin{1},'split')
+      error('Extra argument to ctf 3d either templateSearch/split and optionally a vector [iProjcess, nProcesses (from 1)]');
+    end
+  end
+
+  if nargin > 2
+    if isempty(EMC_str2double(varargin{2}))
+      error('Extra argument to ctf 3d either templateSearch/split and optionally a vector [iProjcess, nProcesses (from 1)]');
+    else
+      recon_subset = EMC_str2double(varargin{2});
+      if numel(recon_subset) ~= 2
+        error('Extra argument to ctf 3d either templateSearch/split and optionally a vector [iProjcess, nProcesses (from 1)]');
+      end
+
+    end
   end
 else
   % Default to zero for normal use
@@ -102,6 +102,8 @@ else
     bh_global_turn_on_phase_plate = 0;
   end
 end
+
+fprintf('recon_subset is [%d,%d]\n',recon_subset(1),recon_subset(2));
 
 if (recon_for_tomoCPR + recon_for_templateMatching + recon_for_subTomo ~= 1)
   error('Only one of the three modes can be used at a time');
@@ -141,9 +143,6 @@ try
 catch
   invertDose = 0;
 end
-
-%cycleNumber = sprintf('cycle%0.3d',CYCLE);
-%fprintf('cycle is %d\n',CYCLE);
 
 
 fprintf('tiltweight is %f %f\n',tiltWeight);
@@ -289,14 +288,19 @@ iterList = cell(nGPUs,1);
 % If there is only one tilt, things break in a weird way
 nGPUs = min(nGPUs, nTilts);
 
-[ nParProcesses, iterList] = BH_multi_parallelJobs(nTilts, nGPUs, 256, emc.nCpuCores);
+if (recon_subset(2) > 0)
+  [ nParProcesses, iterList] = BH_multi_parallelJobs(nTilts, nGPUs, 256, emc.nCpuCores, recon_subset);
+else
+  [ nParProcesses, iterList] = BH_multi_parallelJobs(nTilts, nGPUs, 256, emc.nCpuCores);
+end
+
 
 try
   EMC_parpool(nParProcesses)
 catch
   delete(gcp('nocreate'))
   EMC_parpool(nParProcesses)
-end
+end 
 
 
 parfor iParProc = 1:nParProcesses
@@ -371,9 +375,9 @@ end
 
 % All data is handled through disk i/o so everything unique created in the
 parfor iParProc = 1:nParProcesses
-  % for iParProc = 1:nParProcesses %%revert
+  % for iParProc = 1:nParProcesses %
     iGPU = mod(iParProc,nGPUs);
-% for iGPU = 1:nGPUs %%revert
+% for iGPU = 1:nGPUs %
 
   % for iGPU = 1:nGPUs
   gpuDevice(iGPU+1);
@@ -1135,7 +1139,6 @@ for iPrj = 1:nPrjs
       [Hqz, ~] = BH_ctfCalc(radialGrid,Cs,WAVELENGTH,defVect,fastFTSize,AMPCONT,-1,1,SNR);
       
       Hqz = (-1).^modPower.*(phakePhasePlate(1).*Hqz).^1;
-      
       modHqz = [];
     else
       if (pixel_size_angstroms < 2.0)
@@ -1172,6 +1175,7 @@ for iPrj = 1:nPrjs
     
     correctedStack(:,:,TLT(iPrj,1)) = gather(correctedPrj./samplingMask);
   end
+
   clear correctedPrj samplingMask tmpMask tmpCorrection
   
   clear iProjection iProjectionFT

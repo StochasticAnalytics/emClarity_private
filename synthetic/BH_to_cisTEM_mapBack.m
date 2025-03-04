@@ -841,7 +841,9 @@ else
   stack_boundaries(end) = outputNumberOfSlices+1;
 end
 
+do_initial = false
 
+if (do_initial) % revert
 % %%%%%%%%%%%%%%%%%%%%%%%%%
 % Initial reconstruction
 % %%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -914,7 +916,7 @@ while (n_pauses < max_pauses)
       break;
     end
   end
-  if all_found
+  if all_founddo_initial
     break;
   else
     fprintf('Waiting for reconstructions to finish...\n');
@@ -1335,7 +1337,7 @@ system(sprintf('./%s',merge3d_name));
 
 system(sprintf('rm %s/%sdump_?_*.dat',tmpCache,output_prefix));
 
- 
+end % revert do _intial
 
 
 % Get the FSC cutoff for refinement
@@ -1343,7 +1345,7 @@ fsc = importdata(sprintf('%s_stats_refined2.txt',output_prefix),' ',12);
 fsc_cutoff = 0.5 * (fsc.data(find(fsc.data(:,5) < 0.5,1),2) + fsc.data(find(fsc.data(:,4) < 0.5,1),2))
 fsc_res = fsc.data(find(fsc.data(:,5) < 0.143,1),2)
 
-if ~(do_initial)
+if ~(do_initial) % revert
   fsc_last = fsc_cutoff / 0.94; 
 end
 n_max_refinements = 7;

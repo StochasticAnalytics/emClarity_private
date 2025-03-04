@@ -17,6 +17,11 @@ tiltName = recFile.textdata{1};
 nTomos = recFile.data(1);
 recCoords = recFile.data(2:end);
 
+if (nTomos == 0)
+  fprintf("WARNING: No tomograms found in %s\n", reconCoordName);
+  error('The number of tomograms is zero');
+end
+
 tilt_geometry_name = sprintf('fixedStacks/ctf/%s_ali%d_ctf.tlt', tiltName, mapBackIter+1);
 try
   tilt_geometry  = load(tilt_geometry_name);

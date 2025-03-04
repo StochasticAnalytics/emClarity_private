@@ -776,6 +776,11 @@ else
 end
 emc.ctf_tile_size = emc.ctf_tile_size + mod(emc.ctf_tile_size,2);
 
+if isfield(emc, 'ctf_tile_overlap')
+  EMC_assert_numeric(emc.ctf_tile_overlap, 1);
+else
+  emc.ctf_tile_overlap = 2;
+end
 
 if isfield(emc, 'deltaZTolerance')
   EMC_assert_numeric(emc.deltaZTolerance, 1, [10e-9, 300e-9]);

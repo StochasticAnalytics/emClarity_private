@@ -143,7 +143,7 @@ emc.zShift = emc.zShift / emc.pixel_size_si;
 
 % Tile size & overlap
 
-tileOverlap = 2;
+tileOverlap = emc.('ctf_tile_overlap');
 
 % emc.ctf_tile_size = max(emc.ctf_tile_size, 384);
 if (emc.ctf_tile_size > 512)
@@ -447,23 +447,14 @@ if ~(flgSkip)
     % that is the reason for the negative sign
     iEvalMask = iEvalMask.*(-1.*tand(TLT(tiltIDX,4)));
     
-    iEval_farther_from_focus = iEvalMask;
-    iEval_closer_to_focus = iEvalMask;
     
     % zShift is in SI in parameter file, but converted to pixels here.
     
-    % Select region that is at a smaller Z coordinate (farther from focus)
-    iEval_farther_from_focus = iEval_farther_from_focus - emc.zShift;
-    % Select region that is at a larger Z coordinate (closer to focus)
-    iEval_closer_to_focus = iEval_closer_to_focus + emc.zShift;
-    
     % Select region limited by defocus tolerance
     iEvalMask = ( iEvalMask > gpuArray(-emc.deltaZTolerance) & iEvalMask < gpuArray(emc.deltaZTolerance));
-    iEval_farther_from_focus = ( iEval_farther_from_focus > gpuArray(-emc.deltaZTolerance) & iEval_farther_from_focus < gpuArray(emc.deltaZTolerance));
-    iEval_closer_to_focus = ( iEval_closer_to_focus > gpuArray(-emc.deltaZTolerance) & iEval_closer_to_focus < gpuArray(emc.deltaZTolerance));
     
     
-    tmpTile = zeros([halfX,paddedSize,3],'single','gpuArray');
+    tmpTile = zeros([halfX,paddedSize,1],'single','gpuArray');
     
     % % % %    tmpTile = zeros([paddedSize.*[1,1],3],'single','gpuArray');
     
@@ -488,7 +479,7 @@ if ~(flgSkip)
 
     
     for i = 1+emc.ctf_tile_size/2:overlap:d1C-emc.ctf_tile_size/2
-      if min([nT,nT2,nT3])< emc.ctfMaxNumberOfTiles && (iEvalMask(i) || iEval_farther_from_focus(i) || iEval_closer_to_focus(i))
+      if min([nT,nT2,nT3])< emc.ctfMaxNumberOfTiles && (iEvalMask(i))
         for j = 1+emc.ctf_tile_size/2:overlap:d2C-emc.ctf_tile_size/2
           
           thisTile = iProjection( i-emc.ctf_tile_size/2+1:i+emc.ctf_tile_size/2,...
@@ -509,19 +500,10 @@ if ~(flgSkip)
             nT = nT+1;
             tmpTile(:,:,1) = tmpTile(:,:,1) + thisTile;
           end
-          if ( iEval_farther_from_focus(i) )
-            nT2 = nT2+1;
-            tmpTile(:,:,2) = tmpTile(:,:,2) + thisTile;
-          end
-          if (iEval_closer_to_focus(i) )
-            nT3 = nT3+1;
-            tmpTile(:,:,3) = tmpTile(:,:,3) + thisTile;
-          end
           
         end % end of j
       end % end of if iEvalMask
     end % end of i
-    fprintf('%d tiles at dZ= 0\t%d tiles at dZ > 0\t%d tiles at dZ < 0, after tilt %d\n',nT,nT2,nT3,k);
     
     % Apply the dose filter to the sum of each projection to save a bunch of
     % multiplicaiton
@@ -531,12 +513,11 @@ if ~(flgSkip)
   clear tmpTile
   toc
   
-  rotAvgPowerSpec = zeros([paddedSize,paddedSize,3],'single','gpuArray');
-  for iTile = 1:3
+  rotAvgPowerSpec = zeros([paddedSize,paddedSize,1],'single','gpuArray');
     % tmp =  bhF2.swapIndexFWD(psTile(:,:,iTile));
+  iTile = 1;
     psTile(:,:,iTile) = bhF2.swapIndexFWD(psTile(:,:,iTile));
     rotAvgPowerSpec(:,:,iTile) = BH_multi_makeHermitian(psTile(:,:,iTile),[paddedSize,paddedSize],1);
-  end
   
   clear psTile
   
@@ -552,7 +533,7 @@ if ~(flgSkip)
       ROT1 = R(1).*rot1 + R(4).*rot2;
       ROT2 = R(2).*rot1 + R(5).*rot2;
       
-      for iTile = 1:3
+      for iTile = 1
         rotAvgPowerSpec(:,:,iTile) = rotAvgPowerSpec(:,:,iTile) + ...
           interpn(r1,r2,AvgPowerSpec(:,:,iTile),...
           ROT1,ROT2,'linear',0);
@@ -574,10 +555,9 @@ if ~(flgSkip)
     
     currentDefocusEst = defEST;
     currentDefocusWin = defWIN;
-    measuredVsExpected = zeros(2,3);
   end % end of not skip fitting
   
-  for iTilt = 1:3
+  for iTilt = 1
     
     if (skipFitting && resample_stack)
       currentDefocusEst = defEST;
@@ -790,7 +770,6 @@ if ~(flgSkip)
             
             refineCCC(n,:) = [iAng+mAng,mDef + iDelDF,iCCC];
             n = n + 1;
-            fprintf('%d / %d fine astigmatism search\n',n,size(refineCCC,1));
           end
         end
       end
@@ -837,32 +816,12 @@ if ~(flgSkip)
         '%d\t%d\t%d\t%8.2f\n'], TLT');
       fclose(fileID);
       
-    elseif iTilt == 2
-      measuredVsExpected(2,1) = maxDef;
-    elseif iTilt == 3
-      measuredVsExpected(2,3) = maxDef;
     end % Stuff we only do on the full determin (tilt1)
     
   end % Loop on handedness check
-  if sum(abs(diff(measuredVsExpected,1))) > sum(abs(measuredVsExpected(1,:) - flip(measuredVsExpected(2,:))))
-    warnInvertedHand = 1;
-  else
-    warnInvertedHand = 0;
-  end
-  
-  fprintf('\n******************************************************\n\n');
-  fprintf('\Farther from focus |\tAt focus |\Closer to focus\n\n');
-  fprintf('Expected defocus %3.2f %3.2f %3.2f\n\n', abs(measuredVsExpected(1,:)));
-  fprintf('Measured defocus %3.2f %3.2f %3.2f\n\n' ,abs(measuredVsExpected(2,:)));
-  if ( warnInvertedHand )
-    fprintf('\nIt looks like your handedness may be inverted!!\n');
-  else
-    fprintf('\nIt looks like your handedness is probably correct.\n');
-  end
-  fprintf('\n******************************************************\n\n\n');
   
 else
-  
+  % Found an average score: 0.065745 and an average inverted hand score: 0.214261 for tilt tilt60_ali1_ctf
   if (resample_stack)
     [~, idx] = sortrows(abs(TLT(:,4)), -1);
     TLT = TLT(idx,:);

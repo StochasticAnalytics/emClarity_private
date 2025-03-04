@@ -182,6 +182,7 @@ if (emc.autoAli_switchAxes)
   else
     switch_axes = false;
   end
+  clear a b s p pad
 else
   switch_axes = false;
 end
@@ -244,10 +245,11 @@ for iPrj = 1:nZ
   inputStack(:,:,iPrj) = gather(tmpPrj);
 end
 
+
 SAVE_IMG(inputStack,{fixedName,'half'},emc.pixel_size_angstroms);
 fprintf('finished preprocessing tilt-series\n');
 
-clear tmpPrj inputStack
+clear tmpPrj inputStack gradientAliasFilter
 
 
 cd(wrkDir)

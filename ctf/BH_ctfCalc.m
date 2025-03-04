@@ -214,7 +214,9 @@ if Phase_Only < 0
     else
       bFactor = 100;
     end
-    ctfMask = BH_bandpass3d(size(Hqz),0,800,lowCut,'GPU',maxRes);
+
+  
+    ctfMask = BH_bandpass3d(size(Hqz),0.01,800,lowCut,'GPU',maxRes);
     % This term is straight from dTegunov's deconv
     snr = 10.^3.*exp((-2.2.*bFactor).*radialGrid);
     ctfMask = ctfMask .* Hqz ./ (Hqz.^2 + 1./snr);

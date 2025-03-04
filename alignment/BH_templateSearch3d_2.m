@@ -132,6 +132,12 @@ catch
   scale_mip = false;
 end
 
+try 
+  measure_noise_variance = emc.('measure_noise_variance');
+catch
+  measure_noise_variance = false;
+end
+
 
 if pixelSize*2 >  bp_vals(3)
   fprintf('\nLimiting to Nyquist (%f) instead of user requested low pass cutoff %f Angstrom\n',pixelSize*2,bp_vals(3));
@@ -261,9 +267,9 @@ highThr=sqrt(2).*erfcinv(ceil(peakThreshold.*0.10).*2./(prod(size(tomogram)).*nA
 
 
 [ OUTPUT ] = BH_multi_iterator( [targetSize; ...
-  size(tomogram);...
-  sizeTempBIN; ...
-  2.*latticeRadius], 'convolution' );
+                                size(tomogram);...
+                                sizeTempBIN; ...
+                                2.*latticeRadius], 'convolution' );
 
 
 
@@ -273,6 +279,7 @@ sizeChunk = OUTPUT(3,:);
 validArea = OUTPUT(4,:);
 validCalc = OUTPUT(5,:);
 nIters    = OUTPUT(6,:);
+
 
 %[ padVal ] = BH_multi_padVal( sizeTemp, sizeChunk );
 %tempPre = padVal(1,:);
@@ -313,7 +320,7 @@ fprintf('valid Area       %d %d %d\n', validArea);
 fprintf('valid Calc       %d %d %d\n', validCalc);
 fprintf('# of iterations  %d %d %d\n', nIters);
 fprintf('-----\n');
-
+error('asdf')
 valid_ratio = prod(sizeChunk) ./ prod(validCalc);
 size(tomogram)
 
@@ -332,11 +339,18 @@ sizeTomo = size(tomogram);
 % Currently, this would not produce the correct results for odd size area
 % % % fftMask = BH_fftShift(validArea,sizeChunk,0);
 
-% Array for storing chunk results
+% Array for storing chunk results these could probably be half-precision
 RESULTS_peak = zeros(sizeTomo, 'single');
 RESULTS_angle= zeros(sizeTomo, 'single');
 if ( tmpDecoy )
   RESULTS_decoy = RESULTS_peak;
+end
+
+RESULTS_sum = [];
+RESULTS_sum_sq = [];
+if (measure_noise_variance)
+  RESULTS_sum = zeros(sizeTomo, 'single');
+  RESULTS_sum_sq = zeros(sizeTomo, 'single');
 end
 
 
@@ -838,6 +852,16 @@ for iAngle = theta_search
           angTmp = RESULTS_angle(iCut(1):iCut(1)+sizeChunk(1)-1,...
             iCut(2):iCut(2)+sizeChunk(2)-1,...
             iCut(3):iCut(3)+sizeChunk(3)-1);
+
+          if (measure_noise_variance)
+            sumTmp =  RESULTS_sum(iCut(1):iCut(1)+sizeChunk(1)-1,...
+              iCut(2):iCut(2)+sizeChunk(2)-1,...
+              iCut(3):iCut(3)+sizeChunk(3)-1);
+            sumSqTmp = RESULTS_sum_sq(iCut(1):iCut(1)+sizeChunk(1)-1,...
+              iCut(2):iCut(2)+sizeChunk(2)-1,...
+              iCut(3):iCut(3)+sizeChunk(3)-1);
+          end
+
           if ( tmpDecoy )
             decoyTmp = RESULTS_decoy(iCut(1):iCut(1)+sizeChunk(1)-1,...
               iCut(2):iCut(2)+sizeChunk(2)-1,...
@@ -855,6 +879,18 @@ for iAngle = theta_search
           angTmp = gpuArray(angTmp(vA(1,1) + 1:end - vA(2,1), ...
             vA(1,2) + 1:end - vA(2,2), ...
             vA(1,3) + 1:end - vA(2,3)));
+
+          if (measure_noise_variance)
+            sumTmp = gpuArray(sumTmp(vA(1,1) + 1:end - vA(2,1), ...
+              vA(1,2) + 1:end - vA(2,2), ...
+              vA(1,3) + 1:end - vA(2,3)));
+            sumSqTmp = gpuArray(sumSqTmp(vA(1,1) + 1:end - vA(2,1), ...
+              vA(1,2) + 1:end - vA(2,2), ...
+              vA(1,3) + 1:end - vA(2,3)));
+
+            sumTmp = sumTmp + ccfmap;
+            sumSqTmp = sumSqTmp + ccfmap.^2;
+          end
           
           firstLoopOverChunk = false;
           
@@ -877,6 +913,11 @@ for iAngle = theta_search
           angTmp(replaceTmp) = currentGlobalAngle;
           if ( tmpDecoy )
             decoyTmp(decoyTmp < decoy) = decoy(decoyTmp < decoy);
+          end
+
+          if (measure_noise_variance)
+            sumTmp = sumTmp + ccfmap;
+            sumSqTmp = sumSqTmp + ccfmap.^2;
           end
           
           
@@ -919,6 +960,35 @@ for iAngle = theta_search
       iCut(2):iCut(2)+sizeChunk(2)-1,...
       iCut(3):iCut(3)+sizeChunk(3)-1) = angStoreTmp;
     clear angStoreTmp
+
+    if (measure_noise_variance)
+      sumStoreTmp =  RESULTS_sum(iCut(1):iCut(1)+sizeChunk(1)-1,...
+        iCut(2):iCut(2)+sizeChunk(2)-1,...
+        iCut(3):iCut(3)+sizeChunk(3)-1);
+      sumSqStoreTmp = RESULTS_sum_sq(iCut(1):iCut(1)+sizeChunk(1)-1,...
+        iCut(2):iCut(2)+sizeChunk(2)-1,...
+        iCut(3):iCut(3)+sizeChunk(3)-1);
+      
+      
+      sumStoreTmp(vA(1,1) + 1:end - vA(2,1), ...
+        vA(1,2) + 1:end - vA(2,2), ...
+        vA(1,3) + 1:end - vA(2,3)) = gather(sumTmp);
+      sumSqStoreTmp(vA(1,1) + 1:end - vA(2,1), ...
+        vA(1,2) + 1:end - vA(2,2), ...
+        vA(1,3) + 1:end - vA(2,3)) = gather(sumSqTmp);
+      
+      
+      RESULTS_sum(iCut(1):iCut(1)+sizeChunk(1)-1,...
+        iCut(2):iCut(2)+sizeChunk(2)-1,...
+        iCut(3):iCut(3)+sizeChunk(3)-1) = sumStoreTmp;
+      
+      clear sumStoreTmp
+      
+      RESULTS_sum_sq(iCut(1):iCut(1)+sizeChunk(1)-1,...
+        iCut(2):iCut(2)+sizeChunk(2)-1,...
+        iCut(3):iCut(3)+sizeChunk(3)-1) = sumSqStoreTmp;
+      clear sumSqStoreTmp
+    end
     
     if ( tmpDecoy )
       decoyStoreTmp =  RESULTS_decoy(iCut(1):iCut(1)+sizeChunk(1)-1,...
@@ -955,6 +1025,15 @@ RESULTS_angle = RESULTS_angle(1+tomoPre(1):end-tomoPost(1),...
   1+tomoPre(2):end-tomoPost(2),...
   1+tomoPre(3):end-tomoPost(3));
 
+if (measure_noise_variance)
+  RESULTS_sum = RESULTS_sum(1+tomoPre(1):end-tomoPost(1),...
+    1+tomoPre(2):end-tomoPost(2),...
+    1+tomoPre(3):end-tomoPost(3));
+  RESULTS_sum_sq = RESULTS_sum_sq(1+tomoPre(1):end-tomoPost(1),...
+    1+tomoPre(2):end-tomoPost(2),...
+    1+tomoPre(3):end-tomoPost(3));
+end
+
 if ( tmpDecoy )
   RESULTS_decoy = RESULTS_decoy(1+tomoPre(1):end-tomoPost(1),...
     1+tomoPre(2):end-tomoPost(2),...
@@ -985,6 +1064,13 @@ resultsOUT = sprintf('./%s/%s_convmap.mrc',convTMPNAME,mapName);
 anglesOUT  = sprintf('./%s/%s_angles.mrc',convTMPNAME,mapName);
 angleListOUT = sprintf('./%s/%s_angles.list',convTMPNAME,mapName);
 SAVE_IMG(mag,{resultsOUT,'half'});
+noiseVarOUT = sprintf('./%s/%s_noise_variance.mrc',convTMPNAME,mapName);
+
+if (measure_noise_variance)
+  n_angles_searched = sum(any(ANGLES,2));
+  noiseVar = (RESULTS_sum_sq./n_angles_searched - (RESULTS_sum./n_angles_searched).^2);
+  SAVE_IMG(noiseVar,{noiseVarOUT,'half'});
+end
 % SAVE_IMG(MRCImage(RESULTS_angle),anglesOUT);
 if ( tmpDecoy )
   decoyOUT = sprintf('./%s/%s_decoy.mrc',convTMPNAME,mapName);

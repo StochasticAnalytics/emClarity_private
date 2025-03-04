@@ -91,61 +91,83 @@ switch OPERATION
     % gpu as possible. With finer angular searches, the number of references
     % needs more memory, so a smaller size here means more transfers, but this
     % should be balanced by the finer angles (more comp)
-    if all(SIZES(1,:) == 256)
-    nextBest = [128,144,160,168,192,216,224,256];
-    elseif all(SIZES(1,:) == 384)
-    nextBest = [128,144,160,168,192,216,224,256,...
-    288,300,320,336,360,384];
-    elseif all(SIZES(1,:) == 432)
-    nextBest = [128,144,160,168,192,216,224,256,...
-    288,300,320,336,360,384,400,432];
-    elseif all(SIZES(1,:) == 512)
-    nextBest = [128,144,160,168,192,216,224,256,...
-    288,300,320,336,360,384,400,432,480,512];
-    elseif all(SIZES(1,:) > 512)
-        nextBest = [128,144,160,168,192,216,224,256,...
-        288,300,320,336,360,384,400,432,480,512,...
-        540,576,640,648,720,756,768,810,864,896,960,972,1008,1024];
-    end
+    % if all(SIZES(1,:) <= 256)
+    % nextBest = [128,144,160,168,192,216,224,256];
+    % elseif all(SIZES(1,:) <= 384)
+    % nextBest = [128,144,160,168,192,216,224,256,...
+    % 288,300,320,336,360,384];
+    % elseif all(SIZES(1,:) <= 432)
+    % nextBest = [128,144,160,168,192,216,224,256,...
+    % 288,300,320,336,360,384,400,432];
+    % elseif all(SIZES(1,:) <= 512)
+    % nextBest = [128,144,160,168,192,216,224,256,...
+    % 288,300,320,336,360,384,400,432,480,512];
+    % else
+        % nextBest = [128,144,160,168,192,216,224,256,...
+        % 288,300,320,336,360,384,400,432,480,512,...
+        % 540,576,640,648,720,756,768,810,864,896,960,972,1008,1024];
+    % end
+
+    nextBest =  repmat([128,144,160,168,192,216,224,256,...
+      288,300,320,336,360,384,400,432,480,512,...
+      540,576,640,648,720,756,768,810,864,896,960,972,1008,1024]',1,3);
+    
+    nextBest(nextBest(:,1) > SIZES(1,1),1) = 16;
+    nextBest(nextBest(:,2) > SIZES(1,2),2) = 16;
+    nextBest(nextBest(:,3) > SIZES(1,3),3) = 16;
     sizeImage      = SIZES(2,:);
     sizeTemplate   = SIZES(3,:); % the mask or kernel
-    sizeParticle   = SIZES(4,:) ;% a subregion of sizeTemplate
+    sizeParticle   = SIZES(4,:);% a subregion of sizeTemplate
     
     
     borderSizeCalc = floor((sizeTemplate + APODIZATION)./2);
     borderSizeKeep = borderSizeCalc + 2.*sizeParticle;
     
-abs(sum(sizeImage - sizeTemplate))
-    sum(0.1.*sizeImage)
+
     if abs(sum(sizeImage - sizeTemplate)) < sum(0.1.*sizeImage)
       
       OUTPUT = [[0,0,0];[0,0,0] ;sizeImage; ...
         sizeImage; sizeImage ; [1,1,1]];
       return
     end
-    score = zeros(length(nextBest),6);
+    score = zeros(size(nextBest,1),10);
     
     
     
-    validCalc = repmat(nextBest',1,3) - 2.*repmat(borderSizeCalc,length(nextBest),1);
-    validKeep = repmat(nextBest',1,3) - 2.*repmat(borderSizeKeep,length(nextBest),1);
-    minIter= floor(repmat(sizeImage,length(nextBest),1)./validKeep);
-    postPad= repmat(nextBest',1,3)- ...
-      (repmat(sizeImage+borderSizeKeep,length(nextBest),1) -minIter.*(validKeep+1));
-    
+    validCalc = nextBest - 2.*repmat(borderSizeCalc,size(nextBest,1),1);
+    validKeep = nextBest - 2.*repmat(borderSizeKeep,size(nextBest,1),1);
+    minIter= floor(repmat(sizeImage,size(nextBest,1),1)./validKeep);
+    postPad= nextBest- ...
+      (repmat(sizeImage+borderSizeKeep,size(nextBest,1),1) -minIter.*(validKeep+1));
+
+    % Penalize large Z
     % Added this so I can work with test cases where the volume to be
     % searched is the same size as the reference
-    
-    score(:,2:4) = repmat(nextBest',1,3) ./ postPad .* (minIter >= 0)
-
+    score(:,5:7) = minIter;
+    score(:,2:4) = nextBest ./ postPad .* (minIter >= 0);
+    adjustForIterations = minIter + 1;
+    adjustForIterations = (adjustForIterations).^2;
+    adjustForIterations(~isfinite(adjustForIterations)) = 1;
+    score(:,2:4) = score(:,2:4) ./ adjustForIterations;
+    score(:,1) = sum(score(:,2:4),2);
+    score
+    % Testing out the best overall score now
     [~, cX] = max(score(:,2)) ;
     [~, cY] = max(score(:,3)) ;
-    [~, cZ] = max(score(:,4))  ;
+    [~, cZ] = max(score(:,4)) ;
     
     chunkSize = nextBest([cX,cY,cZ]);
+
+    % [ ~, best_score ] = max(score(:,1));
+    % chunkSize = nextBest(best_score.*[1,1,1]);
+
     
-    cY = cY + length(nextBest);
-    cZ = cZ + 2.*length(nextBest);
+    % cX = best_score;
+    % cY = best_score;
+    % cZ = best_score;
+    % TODO: review what is going on here
+    cY = cY + size(nextBest,1);
+    cZ = cZ + 2.*size(nextBest,1);
     validAreaKeep = validKeep([cX,cY,cZ]);
     validAreaCalc = validCalc([cX,cY,cZ]);
     nIters = minIter([cX,cY,cZ])+1;

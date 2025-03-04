@@ -18,9 +18,7 @@ function [ ] = BH_synthetic_mapBack(PARAMETER_FILE, CYCLE, tiltStart)
 buildTomo=1;% % % % % % %
 
 save_diagnostic_ccf=0;
-% If false, this is faster, simplifies the code and permits defocus estimation
-% This will likely be removed in favor of deleting all the blockes under its control
-use_background_estimate = false;
+
 % Default true, we don't need this after projection
 delete_background_estimate = true;
 
@@ -425,34 +423,8 @@ for iTiltSeries = tiltStart:nTiltSeries
   sprintf('[%d,%d]',maxZ,samplingRate);
   tiltNameList{iTiltSeries};
   
-  if (use_background_estimate)
-    backgroundName = sprintf('%scache/%s_%d_bin%d_backgroundEst.rec',CWD,tiltNameList{iTiltSeries},1, samplingRate);
-    fprintf('In tomocpr, using background estimate %s\n\n',backgroundName);
-    send_backgroundLowPassResolution = 28;
 
-    % TODO: investigate deviations from the default, which is to shut off the phakePhasePlate and to use a backgroundLowPassResolution of 28
-    % Default false, we don't apply this filter
-    % if enabled, it currently only saves the filtered background estimate for visualization in addition to the normal version
-    % if (emc.save_mapback_classes)
-    %   BH_ctf_Correct3d(PARAMETER_FILE,sprintf('[%d,%d]',maxZ,samplingRate),tiltNameList{iTiltSeries}, 1, 3, tmpCache);
-    % end
-    % FIXME: calling like this does not use the surface fit for the background
-    send_phakePhasePlateOption = [0,0];
-    BH_ctf_Correct3d(PARAMETER_FILE,sprintf('[%d,%d]',maxZ,samplingRate),tiltNameList{iTiltSeries}, send_phakePhasePlateOption, send_backgroundLowPassResolution, tmpCache);
-    
-    % re-initialize the parpool for each tilt series to free up mem.
-    delete(gcp('nocreate'))
-    EMC_parpool(nWorkers);
-  
-  
-    avgTomo{1} = OPEN_IMG('single',backgroundName);
-    avgTomo{1} = avgTomo{1} ./ (rmsScale*rms(avgTomo{1}(:)));
-    if (delete_background_estimate)
-      system(sprintf('rm -f %s',backgroundName));
-    end
-  else
-    avgTomo{1} = zeros(reconstruction_size, 'single');
-  end % if (use_background_estimate)
+  avgTomo{1} = zeros(reconstruction_size, 'single');
   
   for iRef = 1:nRefs
     refVol{1}{iRef} = gpuArray(refVol{1}{iRef});
