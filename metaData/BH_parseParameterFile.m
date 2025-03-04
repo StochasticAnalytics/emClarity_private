@@ -757,6 +757,12 @@ else
   emc.Tmp_bandpass = [0.001, 1200, 28];
 end
 
+if isfield(emc, 'Tmp_half_precision')
+  EMC_assert_boolean(emc.Tmp_half_precision);
+else
+  emc.Tmp_half_precision = false;
+end
+
 if isfield(emc, 'Pca_bandpass')
   EMC_assert_numeric(emc.Pca_bandpass, 3);
 else

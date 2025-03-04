@@ -146,17 +146,17 @@ switch OPERATION
     score(:,5:7) = minIter;
     score(:,2:4) = nextBest ./ postPad .* (minIter >= 0);
     adjustForIterations = minIter + 1;
-    adjustForIterations = (adjustForIterations).^2;
+    adjustForIterations = (adjustForIterations);
     adjustForIterations(~isfinite(adjustForIterations)) = 1;
     score(:,2:4) = score(:,2:4) ./ adjustForIterations;
     score(:,1) = sum(score(:,2:4),2);
     score
     % Testing out the best overall score now
-    [~, cX] = max(score(:,2)) ;
-    [~, cY] = max(score(:,3)) ;
-    [~, cZ] = max(score(:,4)) ;
+    [~, cX] = max(score(:,2));
+    [~, cY] = max(score(:,3));
+    [~, cZ] = max(score(:,4));
     
-    chunkSize = nextBest([cX,cY,cZ]);
+    chunkSize = [nextBest(cX,1), nextBest(cY,2), nextBest(cZ,3)];
 
     % [ ~, best_score ] = max(score(:,1));
     % chunkSize = nextBest(best_score.*[1,1,1]);
