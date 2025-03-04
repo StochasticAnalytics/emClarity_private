@@ -320,7 +320,7 @@ fprintf('valid Area       %d %d %d\n', validArea);
 fprintf('valid Calc       %d %d %d\n', validCalc);
 fprintf('# of iterations  %d %d %d\n', nIters);
 fprintf('-----\n');
-error('asdf')
+
 valid_ratio = prod(sizeChunk) ./ prod(validCalc);
 size(tomogram)
 
