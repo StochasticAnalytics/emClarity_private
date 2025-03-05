@@ -39,13 +39,7 @@ function [ INDICES, PADVALUES, SHIFTS ] = ...
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-use_noise_instead_of_ignoring = false;
-if nargin > 4
-  if strcmpi(varargin{1}, 'pca')
-        use_noise_instead_of_ignoring = true;
-  end
-end
-minSizeMask = (max(MASK_RADIUS)+6).*[2,2,2];
+minSizeMask = max(MASK_RADIUS) .* [2,2,2];
 winLowCorner = ceil((WINDOW_SIZE-1) ./ 2);
 % if window size is odd then there should be as many pixels to the left and to
 % the right of the origin. mod(ODD -1,2) = 0 otherwise it is 1 setting this
@@ -78,38 +72,10 @@ SHIFTS =   deltaWinCenter;
 % Should keep track of this and figure into the quality weight somehow.
 
 availableArea = WINDOW_SIZE - PADVALUES(1,:) - PADVALUES(2,:);
-if any(availableArea - minSizeMask < -2)
-        % fprintf(['\nvs %d %d %d\nws %d %d %d\nmr %2.1f %2.1f %2.1f\n',...
-        %         'minArea %d %d %d\navailArea %d %d %d\nc %2.1f %2.1f %2.1f\n'], ...
-        %         VOLUME_SIZE, WINDOW_SIZE, MASK_RADIUS, minSizeMask, availableArea, CENTER);
+if (any(availableArea - minSizeMask < -2) || any(isnan(PADVALUES(:))))
         INDICES = 'noUse';
-        PADVALUES = [availableArea];
+        PADVALUES = availableArea;
 end
-if any(isnan(PADVALUES(:)))
-        % fprintf('center %f %f %f\n',CENTER);
-        % fprintf('min %f %f %f\n',minSizeMask);
-        % fprintf('winLowCorner %f %f %f\n', winLowCorner);
-        % fprintf('top %f %f %f\n',winTopCorner);
-        % fprintf('%f %f %f\n',winCenter);
-        % fprintf('del %f %f %f\n',deltaWinCenter);
-        % fprintf('%f %f %f\n',LOW);
-        % fprintf('%f %f %f\n',TOP);
-        % error('\n\nFound a NaN in the pad values. But Why ben why?\n\n');
-        INDICES='noUse';
-        PADVALUES = [availableArea];
-end
-% padSUM = sum(PADVALUES(:,1)) .* WINDOW_SIZE(2) .* WINDOW_SIZE(3);
-% padSUM = padSUM + sum(PADVALUES(:,2)) .* WINDOW_SIZE(1) .* WINDOW_SIZE(3);
-% padSUM = padSUM + sum(PADVALUES(:,3)) .* WINDOW_SIZE(1) .* WINDOW_SIZE(2);
-% padSUM = padSUM ./ prod(WINDOW_SIZE);
-
-% minimal sampling
-% if (padSUM) > .30 || any(any((PADVALUES - [WINDOW_SIZE;WINDOW_SIZE]) >0))
-%   INDICES = 'noUse';
-%   PADVALUES = padSUM;
-% end
-
-
 
 end
 
