@@ -95,7 +95,7 @@ nGPUs = emc.('nGPUs');
 splitOnTomos = emc.('fscGoldSplitOnTomos');
 if (splitOnTomos)
   nGPUs = 1;
-  fprintf('override nGPUs to just 1 for initial step to evenly split crowded tomos because fscGoldSplitOnTomos is true')
+  fprintf('override nGPUs to just 1 for initial step to evenly split crowded tomos because fscGoldSplitOnTomos is true\n');
 end
 
 % Resolution lower than this is not gold standard, and will also be mixed
@@ -332,10 +332,11 @@ parfor iGPU = 1:nGPUs
       iHeader = getHeader(MRCImage(tiltName));
       % first convert the imod model file to a temporary text file
       tmpFile = sprintf('tmp_%d.txt',iGPU);
-      system(sprintf('model2point convmap/%s.mod %s', mapName, tmpFile))
+      fprintf('Converting model %s (%d/%d) file to search for peaks\n', mapName, iTomo, nTomos);
+      % TODO: send this to tmp cache
+      system(sprintf('model2point convmap/%s.mod %s &> /dev/null', mapName, tmpFile));
       modGeom = load(tmpFile);
       system(sprintf('rm %s', tmpFile));
-      flgLookForPoints = 1;
       
       % leave IDX in main memory because it is just for reference.
       sx = floor(iHeader.nX);
@@ -344,52 +345,10 @@ parfor iGPU = 1:nGPUs
       
     catch
       fprintf('did not find convmap, assuming synthetic data, with no deleted model points\n');
-      flgLookForPoints = 0;
     end
-    
-    % Make sure nothing has gone wrong in translating the convmap to the
-    % full size
-    if (flgLookForPoints)
+  
       
-      positionMatrix = zeros(sx, sy, sz, 'single', 'gpuArray');
-      positionIDX    = zeros(sx, sy, sz, 'uint32');
-      
-      % Make a volume with ones in the position of the centers of the tomos.
-      for iSubTomo = 1:size(tmpSearchGeom,1)
-        
-        subTomoOrigin = fix(tmpSearchGeom(iSubTomo,11:13)./dupInTheLoop);
-        if any(subTomoOrigin < 1 + dupRadius) || any([sx,sy,sz] < subTomoOrigin + dupRadius)
-          tmpSearchGeom(iSubTomo,26:26:26*emc.nPeaks) = -9999;
-        else
-          positionMatrix(subTomoOrigin(1),subTomoOrigin(2),subTomoOrigin(3)) = 1;
-          positionIDX(subTomoOrigin(1),subTomoOrigin(2),subTomoOrigin(3)) = ...
-            tmpSearchGeom(iSubTomo, 4);
-        end
-      end % loop building position matrix
-      
-      for iSubTomo = 1:size(modGeom,1)
-        
-        subTomoOrigin = fix(modGeom(iSubTomo,:));
-        if all(subTomoOrigin > 1) && all([sx,sy,sz] > subTomoOrigin)
-          
-          positionMatrix(subTomoOrigin(1),subTomoOrigin(2),subTomoOrigin(3)) = ...
-            positionMatrix(subTomoOrigin(1),subTomoOrigin(2),subTomoOrigin(3)) + 1;
-        end % sometimes a point gets moved out of bounds.
-      end
-      
-      % Convolve positionmatrix with duplicate mask. Just in case there are
-      % rounding errors at any point use convolution to check a neighborhood of
-      % +/- 1 pixel.
-      
-      overlapMatrix = convn(positionMatrix, gpuArray(dupMask), 'same');
-      
-      idxList = positionIDX((overlapMatrix > 1));
-
-      tomoResults.(fileInfo{iTomo,2}) = tmpSearchGeom(ismember(tmpSearchGeom(:,4), idxList),:);
-    else
-      
-      tomoResults.(fileInfo{iTomo,2}) = tmpSearchGeom;
-    end
+    tomoResults.(fileInfo{iTomo,2}) = tmpSearchGeom;
     
     % Fix the retained points
   end

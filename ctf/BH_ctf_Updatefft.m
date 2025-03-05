@@ -89,13 +89,7 @@ parfor iGPU = 1:nGPUs
     
     STACK_PRFX = ITER_LIST{iGPU}{iTilt};
 
-    try
-      l = load(sprintf('fixedStacks/ctf/%s_ali3_ctf.tlt',STACK_PRFX));
-      fprintf('FOUND geometry for %s\n',STACK_PRFX);
-      continue;
-    catch
-      fprintf('reloading geometry for %s\n',STACK_PRFX);
-    end
+
     
     if (mapBackIter)
       mapBackPrfx = sprintf('mapBack%d/%s_ali%d_ctf',mapBackIter,STACK_PRFX,mapBackIter)

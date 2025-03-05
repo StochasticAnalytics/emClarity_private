@@ -15,18 +15,19 @@ end
 
 startTime =  datetime("now");
 CYCLE = EMC_str2double(CYCLE);
+emc = BH_parseParameterFile(PARAMETER_FILE);
 
 if strcmpi(STAGEofALIGNMENT, 'RawAlignment')
   % Ensure we don't have any duplicates: TODO: add an override flag
   % This modifies the RawAlign geometry, so should be cycle -1
-  if (CYCLE > 0)
+  if (CYCLE > 0 && emc.remove_duplicates)
     BH_removeDuplicates(PARAMETER_FILE,sprintf('%d', CYCLE-1));
   end
 end
 
 cycleNumber = sprintf('cycle%0.3u', CYCLE);
 
-emc = BH_parseParameterFile(PARAMETER_FILE);
+
 load(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta');
 
 
@@ -875,7 +876,7 @@ parfor iParProc = parVect
               else
                 if iCCC < avgCCC
                   % Downweight higher frequency in all subTomos with iCCC below the mean
-                  iBfactor = -1.*(emc.flgQualityWeight.*(acosd(iCCC) - acosd(avgCCC)))^2;
+                  iBfactor = -1.*(emc.flgQualityWeight.*(acosd(iCCC/avgCCC) - acosd(avgCCC/avgCCC)))^2;
                   iCCCweight = exp(iBfactor.*cccWeight);
                   
                 else

@@ -805,3 +805,9 @@ if isfield(emc, 'ctfMaxNumberOfTiles')
 else
   emc.('ctfMaxNumberOfTiles') = 10000;
 end
+
+if isfield(emc, 'remove_duplicates')
+  EMC_assert_boolean(emc.remove_duplicates);
+else
+  emc.remove_duplicates = true;
+end

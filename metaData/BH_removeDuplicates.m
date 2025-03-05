@@ -32,8 +32,8 @@ latticeRadius = emc.('particleRadius');
 dupRadius = max(1,floor(0.2*min(latticeRadius)/pixelSize));
 dupTolerance = (2.*dupRadius)+1;
 
-dupMask(dupTolerance, dupTolerance, dupTolerance) = gpuArray(single(0));
-dupMask = dupMask + 1;
+
+dupMask = ones([1, dupTolerance], 'single','gpuArray');
 
 if (nargin ~= 2)
   error('args = PARAMETER_FILE, CYCLE')
@@ -94,7 +94,7 @@ for iTomo = 1:nTomograms
   % resulting matrix will correspond to the number of duplicates within the
   % specified radius.
   
-  overlapMatrix = convn(positionMatrix, dupMask, 'same');
+  overlapMatrix = EMC_convn(positionMatrix, dupMask);
   
   % Positions inbetween particle origins will also be non-zero, so restrict
   % search to be particle origins that are within radius.
