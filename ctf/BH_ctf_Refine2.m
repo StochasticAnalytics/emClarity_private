@@ -250,8 +250,8 @@ for iStack = 1%stacksFound
     SAVE_IMG(MRCImage(gather(psTile)),sprintf('fixedStacks/ctf/%s-PS.mrc',fileName),pixelSize);
     bpLog = fftshift(BH_bandpass3d([size(psTile(:,:,1)),1],0,0,2.2.*pixelSize,'GPU',pixelSize));
     bpLog = bpLog > 0.99;
-    bp  = fftshift(BH_bandpass3d([size(psTile(:,:,1)),1],0.25,20,2.*pixelSize,'GPU',pixelSize));
-    bp2 = fftshift(BH_bandpass3d([size(psTile(:,:,1)),1],1e-6,400,2.*pixelSize,'GPU',pixelSize));
+    bp  = fftshift(BH_bandpass3d([size(psTile(:,:,1)),1],0.0314,max(8,2.*pixelSize),2.*pixelSize,'GPU',pixelSize));
+    bp2 = fftshift(BH_bandpass3d([size(psTile(:,:,1)),1],1e-6,40,2.*pixelSize,'GPU',pixelSize));
     
     for iPrj = 1:d3
       iTile = gpuArray(psTile(:,:,iPrj));
@@ -265,10 +265,7 @@ for iStack = 1%stacksFound
 
 
     SAVE_IMG(MRCImage(gather(psTile_inv)),sprintf('fixedStacks/ctf/%s-PS_inv.mrc',fileName),pixelSize);
-    bpLog = fftshift(BH_bandpass3d([size(psTile_inv(:,:,1)),1],0,0,2.2.*pixelSize,'GPU',pixelSize));
-    bpLog = bpLog > 0.99;
-    bp  = fftshift(BH_bandpass3d([size(psTile_inv(:,:,1)),1],0.25,20,2.*pixelSize,'GPU',pixelSize));
-    bp2 = fftshift(BH_bandpass3d([size(psTile_inv(:,:,1)),1],1e-6,400,2.*pixelSize,'GPU',pixelSize));
+
     
     for iPrj = 1:d3
       iTile = gpuArray(psTile_inv(:,:,iPrj));

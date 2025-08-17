@@ -1,5 +1,5 @@
 function [ BANDPASS ] = BH_bandpass3d( SIZE, HIGH_THRESH, HIGH_CUT, LOW_CUT, ...
-  METHOD, PIXEL_SIZE )
+  METHOD, PIXEL_SIZE, varargin )
 %Create a bandpass filter, to apply to fft of real space 3d images.
 %
 %   Input variables:
@@ -77,25 +77,43 @@ end
 
 gaussian = @(x,m,s) exp( -1.*(x-m).^2 ./ (2.*s.^2) );
 
+half_grid = false;
+if nargin > 6
+  if strcmpi(varargin{1},'halfGrid')
+    half_grid = true;
+  end
+end
 
-
+if (half_grid)
+  nX = emc_get_origin_index(bSize(1));
+else
+  nX = bSize(1);
+end
 % initialize window of appropriate size
 if strcmp(METHOD, 'GPU')
-  mWindow(bSize(1),bSize(2),bSize(3)) = gpuArray(single(0));
+  mWindow(nX,bSize(2),bSize(3)) = gpuArray(single(0));
 else
-  mWindow(bSize(1),bSize(2),bSize(3)) = single(0);
+  mWindow(nX,bSize(2),bSize(3)) = single(0);
 end
 mWindow = mWindow + 1;
 
 %%%% This is ~ 120x faster than = gpuArray(ones(bSize, 'single'));
 % initialize nd grids of appropriate size
 
-
+if (half_grid)
+  [ radius,~,~,~,~,~] = BH_multi_gridCoordinates( bSize, 'Cartesian', METHOD, ...
+  {'single',...
+  [1,0,0;0,1,0;0,0,1],...
+  [0,0,0]','forward',1,1}, ...
+  1, 0, 1, {'halfGrid'} );
+else
   [ radius,~,~,~,~,~] = BH_multi_gridCoordinates( bSize, 'Cartesian', METHOD, ...
   {'single',...
   [1,0,0;0,1,0;0,0,1],...
   [0,0,0]','forward',1,1}, ...
   1, 0, 1 );
+
+end
 
 
 % Calc lowpass filter

@@ -4,7 +4,6 @@ function [ varargout ] = emClarity( varargin )
 
 % Disable warnings
 
-
 warning off
 cudaStart='';
 % FIXME: This only applies to ctf estimate, and it looks like there is no version 2 !?
@@ -162,6 +161,8 @@ if nArgs > 1 && ~(emcHelp || emcProgramHelp)
       multiGPUs = 0;
     case 'segment'
       multiGPUs = 0;
+    case 'getActiveTilts'
+      multiGPUs = 0;
     otherwise
       emc = emC_testParse(varargin{2});
   end
@@ -189,6 +190,7 @@ switch varargin{1}
       '\n\t\t for more details, emClarity <program> help\n',...
       '\ncheck - system check for dependencies\n',...
       '\nsegment - define subregions to reconstruct\n',...
+      '\ngetActiveTilts - get the number of active tilt-series\n',...
       '\ninit - create a new project from template matching results.\n',...
       '\nautoAlign - align tilt-serie\n',...
       '\navg - average subtomograms\n',...
@@ -210,6 +212,7 @@ switch varargin{1}
       '\nreconstruct - reconstruct a volume from a set of subtomograms\n',...
       '\nremoveDuplicates - remove subtomos that have migrated to the same position\n',...
       '\nexperimental - experimental options\n',...
+      '\nmontage - unstack and/or rotate the elements of a montage about x\n',...
       '\nremoveNeighbors - clean templateSearch results based on lattice constraints\n']);
     
     % Currently disabled options. Multi-reference alignment
@@ -232,6 +235,17 @@ switch varargin{1}
       fprintf(['\nUsage:  emClarity segment build (make bin10 tomos)\n\tor\n\temClarify segment recon (convert model files)\n']);
     else
       recScript(varargin{2});
+    end
+  case 'getActiveTilts'
+    if emcProgramHelp || ...
+        length(varargin) ~= 2
+      fprintf(['\nUsage: emClarity getActiveTilts param.m\n']);
+    else
+      emc = emC_testParse(varargin{2});
+      load(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta');
+      [tiltNameList, nTiltSeries] = BH_returnIncludedTilts( subTomoMeta.mapBackGeometry );
+      fprintf('%d\n',nTiltSeries);
+      return 
     end
   case 'init'
     if emcProgramHelp || ...
@@ -311,6 +325,7 @@ switch varargin{1}
         '\n\nFor a shape based mask\n', ...
         'fileNameIN.mrc,fileNameOUT.mrc, pixelSize (Ang)\n']);
       
+        
     else
       switch length(varargin)
         case 5
@@ -421,11 +436,11 @@ switch varargin{1}
         length(varargin) ~= 4  && length(varargin) ~= 5
       fprintf(['\nparam.m\n',...
         'cycle number\n',...
-        'randomSubset\n']);
-      %  'use focused mask\n',...
-      %  '  1 from standard devation\n',...
-      %  '  2 from variance\n',...
-      %  '  3 user supplied (not recommended)\n']);
+        'randomSubset\n',...
+       'use focused mask\n',...
+       '  1 from standard devation\n',...
+       '  2 from variance\n',...
+       '  3 user supplied (not recommended)\n']);
     else
       emC_testParse(varargin{2});
       
@@ -439,7 +454,7 @@ switch varargin{1}
         else
           maskVal = 0;
         end
-        
+
         if (maskVal)
           % re-run on full or randomsubset now using variance or stddev mask
           BH_pcaPub(varargin{2}, varargin{3}, sprintf('%d',-1.*maskVal))
@@ -525,18 +540,23 @@ switch varargin{1}
     fprintf('In tomoCPR the MCR is %s\n',getenv('MCR_CACHE_ROOT'));
     
     if emcProgramHelp || ...
-        ( length(varargin) < 3 || length(varargin) > 4 )
+        ( length(varargin) < 4 || length(varargin) > 5 )
       fprintf(['\nparam.m\n',...
         'cycle number\n',...
-        'nTiltStart\n']);
+        'stage of alignment [most recent stage finished for geometry metadat, eg  - Avg, RawAlignment, Cluster_cls]\n',...
+        '<optional debuging - nTiltStart>\n']);
     else
       emC_testParse(varargin{2});
-      if length(varargin) == 4
+      if length(varargin) == 5
         tiltStart = EMC_str2double(varargin{4});
       else
         tiltStart = 1;
       end
-      BH_synthetic_mapBack(varargin{2}, varargin{3}, tiltStart);
+      % Check that the stage of alignment is valid
+      if ~ismember(varargin{4},{'Avg','RawAlignment','Cluster_cls'})
+        error('Stage of alignment must be one of Avg, RawAlignment, or Cluster_cls');
+      end
+      BH_synthetic_mapBack(varargin{2}, varargin{3}, varargin{4},tiltStart);
     end
   case 'removeDuplicates'
     if emcProgramHelp || ...
@@ -622,15 +642,145 @@ switch varargin{1}
       
     end
     
+  case 'montage'
+      if emcProgramHelp || ...
+         length(varargin) ~= 7
+        fprintf(['parameterfile\n',...
+          'cycle #\n',...
+          'stage of alignment [RawAlignment or Cluster_cls]\n', ...
+          'class number\n',...
+          'operation [unstack or angles to rotate volume by [ZXZ]]\n', ...
+          'halfset [odd, eve, or std (combine)]\n ']);  
+      else
+        % FIMXE: move all this to a different file
+        % FIXME: eve/odd 
+        % FIXME: unstack (add counts too)
+        % FIXME: set pixel size
+        % Check the input arguments
+        EMC_assert_string_value(varargin{7}, {'odd', 'eve', 'std'}, false);
+        halfset = 0; % default is combine
+        if strcmpi(varargin{7},'eve')
+          halfset = 2;
+        elseif strcmpi(varargin{7},'odd')
+          halfset = 1;
+        end
+        if halfset ~= 0
+          error('partial implementation only good for std right now')
+        end
+        operation_val = varargin{6};
+        if strcmpi(operation_val,'unstack')
+          operation = 'unstack';
+        else
+          operation = 'rotx';
+          operation_val = EMC_str2double(operation_val);
+          EMC_assert_numeric(operation_val, 3);
+        end
+          
+        n_classes = EMC_str2double(varargin{5});
+        EMC_assert_numeric(n_classes, 1, [0, 1000]);
+        
+        EMC_assert_string_value(varargin{4}, {'RawAlignment', 'Cluster_cls'}, false)
+        if strcmpi(varargin{4},'RawAlignment')
+          prfx = 'Ref';
+        else
+          prfx = 'Cls';
+        end
+        cycle = EMC_str2double(varargin{3});
+        EMC_assert_numeric(cycle, 1, [0, 1000]);
+        
+        % Read in the parameter file and subTomoMeta
+        cycleNumber = sprintf('cycle%0.3u', cycle);
+        load(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta');
+        emc = BH_parseParameterFile(varargin{2});
+        % Make sure the cycle has been run
+        if ~isfield(subTomoMeta, cycleNumber)
+          error('Cycle %s has not been run yet', cycleNumber);
+        end
+        % Make sure the class locations information is present
+        if (halfset == 0 || halfset == 1)
+          fname = sprintf('class_%d_Locations_%s_%s', n_classes, prfx, 'ODD');
+          if ~isfield(subTomoMeta.(cycleNumber),fname)
+            error('Class locations (%s) for odd half-set are not present', fname);
+          end
+        end
+        if (halfset == 0 || halfset == 2)
+          fname = sprintf('class_%d_Locations_%s_%s', n_classes, prfx, 'EVE');
+          if ~isfield(subTomoMeta.(cycleNumber),fname)
+            error('Class locations (%s) for even half-set are not present', fname);
+          end
+        end
+        % Eve/Odd should always have the same size windows, grab the first
+        % Field is a cell, 1 file names of the references, 2 locations in the image (6 indices), 3 number added to the averages.
+        window_size = subTomoMeta.(cycleNumber).(fname){2}{1}(2:2:end);
+        odd_stack = [];
+        eve_stack = [];
+        if (halfset == 0 || halfset == 1)
+          fname = sprintf('class_%d_Locations_%s_%s', n_classes, prfx, 'ODD');
+          odd_stack = BH_unStackMontage4d(1:length(subTomoMeta.(cycleNumber).(fname){2}), ...
+                                          subTomoMeta.(cycleNumber).(fname){1}, ...
+                                          subTomoMeta.(cycleNumber).(fname){2}, ...
+                                          window_size);
+        end
+        if (halfset == 0 || halfset == 2)
+          fname = sprintf('class_%d_Locations_%s_%s', n_classes, prfx, 'EVE');
+          eve_stack = BH_unStackMontage4d(1:length(subTomoMeta.(cycleNumber).(fname){2}), ...
+                                          subTomoMeta.(cycleNumber).(fname){1}, ...
+                                          subTomoMeta.(cycleNumber).(fname){2}, ...
+                                          window_size);
+        end
+        if strcmpi(operation,'unstack')
+          error('not setup yet')
+        elseif strcmpi(operation,'rotx')
+          if (halfset == 0 || halfset == 1)
+            for i = 1:length(odd_stack)
+              [~,img] = interpolator(gpuArray(odd_stack{i}),operation_val,[0,0,0], 'Bah' , 'forward', 'C1', false);
+              odd_stack{i} = gather(img);
+            end
+          end
+          if (halfset == 0 || halfset == 2)
+            for i = 1:length(eve_stack)
+              [~,img] = interpolator(gpuArray(eve_stack{i}),operation_val,[0,0,0], 'Bah' , 'forward', 'C1', false);
+              eve_stack{i} = gather(img);
+            end
+          end
+          % Combine them if we want to
+          switch halfset
+            case 0
+              % Combine the two half-sets
+              for i = 1:length(odd_stack)
+                odd_stack{i} = odd_stack{i} + eve_stack{i};
+              end
+              montOUT = BH_montage4d(odd_stack,'');
+              fname = strjoin(strsplit(subTomoMeta.(cycleNumber).(sprintf('class_%d_Locations_%s_%s',n_classes, prfx,'ODD')){1},'_ODD.mrc'),sprintf('_rot_%2.2f_%2.2f_%2.2f_STD_rotx.mrc',operation_val(1),operation_val(2),operation_val(3)));
+              % TODO pixels size 
+              SAVE_IMG(montOUT, fname); %,pixelSize);
+              
+            case 1
+              % Save the odd half-set
+              for i = 1:length(odd_stack)
+                odd_stack{i} = odd_stack{i};
+              end
+            case 2
+              % Save the even half-set
+              for i = 1:length(odd_stack)
+                eve_stack{i} = eve_stack{i};
+              end
+            otherwise
+              error('halfset must be 0, 1, or 2')
+          end
+          % Save the stack
+        end
+      end
+    
   case 'reconstruct'
     if emcProgramHelp || ...
         length(varargin) ~= 6 && length(varargin) ~= 7
-      fprintf(['paramterfile\n',...
+      fprintf(['parameterfile\n',...
         'cycle #\n',...
         'output prefix\n', ...
         'symmetry (C1)\n',...
         'max exposure (e/A^2)\n', ...
-        'mapBackIter']);
+        'classIDX']);
     else
       if (length(varargin) == 7)
         BH_to_cisTEM_mapBack(varargin{2},varargin{3},varargin{4},varargin{5},varargin{6}, varargin{7});
@@ -797,8 +947,6 @@ function [ emc  ] = emC_testParse( paramTest )
   catch
     bh_global_kFactorScaling = 1.0;
   end
-  
-  
   
   try
     bh_global_vol_est_scaling = emc.('setParticleVolumeScaling');

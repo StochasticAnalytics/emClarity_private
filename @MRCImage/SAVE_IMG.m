@@ -134,7 +134,16 @@ if mRCImage.flgVolume
     end
   else % normal (not complex) data
 
-    if (mRCImage.header.minDensity == 0.0 && mRCImage.header.maxDensity ==0 )
+    try
+      do_fix_header = mRCImage.header.minDensity == 0.0 && ...
+        mRCImage.header.maxDensity == 0.0;
+    catch
+      mRCImage.header.minDensity
+      mRCImage.header.maxDensity
+      error('Failed to read header min/max density values. Check the file is not corrupt.');
+    end
+
+    if (do_fix_header )
       if numel(mRCImage.volume) < 768^3
         mRCImage.header.minDensity = min(min(min(mRCImage.volume)));
         mRCImage.header.maxDensity = max(max(max(mRCImage.volume)));

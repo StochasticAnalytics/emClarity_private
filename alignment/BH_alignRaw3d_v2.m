@@ -71,7 +71,6 @@ nGPUs = emc.('nGPUs');
 
 
 
-flgRaw_shapeMask =  0;%= emc.('experimentalOpts')(3)
 samplingRate = emc.('Ali_samplingRate');
 
 emc.pixel_size_angstroms = emc.pixel_size_angstroms.*samplingRate;
@@ -99,9 +98,6 @@ rotConvention = 'Bah';
 % Check and override the rotational convention to get helical averaging.
 % Replaces the former hack of adding a fifth dummy value to the angular search
 
-if ( emc.doHelical )
-  rotConvention = 'Helical';
-end
 
 % if (emc.classification)
 %   refName      = emc.('Ref_className');
@@ -173,7 +169,28 @@ tiltList = subTomoMeta.tiltGeometry;
 sortedTomoList = zeros(nTomograms,1);
 for iTomo = 1:nTomograms
   sortedTomoList(iTomo) = sum(geometry.(tomoList{iTomo})(:,26)~=-9999);
+
+  % If we have previously aligned this tomo, it will be skipped, so don't count it
+  % Previously, only the existence of the file was checked in the parfor loop, but this
+  % adds a check that the number of lines matches the number of subtomos, so that if the alignment was
+  previousAlignment = sprintf('alignResume/%s/%s.txt',outputPrefix,tomoList{iTomo});
+  if exist(previousAlignment,'file')
+    % Sometimes when multiple nodes are used, an extra line is added.
+    % In the parfor loop, multiple processes are prevented from writing this from the final iterlist but here we would have to use a random tmp file
+    tmp_filename = tempname;
+    system(sprintf('awk ''{if($10 != "") print $0 }'' %s > %s; ', previousAlignment, tmp_filename));
+    test_load = importdata(tmp_filename);
+    if (size(test_load,1) ~= sortedTomoList(iTomo))
+      fprintf('Warning: Number of lines in %s (%d) does not match number of subtomos for %s (%d)\n', previousAlignment, size(test_load,1), tomoList{iTomo}, sortedTomoList(iTomo));
+      pause(1);
+      delete(previousAlignment);
+    else
+      fprintf('Skipping previously aligned tomogram %s\n', tomoList{iTomo});
+      sortedTomoList(iTomo) = 0;
+    end
+  end
 end
+
 [~, sortedTomoIDX] = sort(sortedTomoList,'descend');
 tomoList = tomoList(sortedTomoIDX);
 % mask defines area for angular search, peakRADIUS restricts translational
@@ -198,6 +215,7 @@ if ( flgReverseOrder )
     iterList{iParProc} = flip(iterList{iParProc});
   end
 end
+
 
 if any(peakSearch > maskRadius)
   fprintf('\n\n\tpeakRADIUS should be <= maskRADIUS!!\n\n')
@@ -322,16 +340,9 @@ else
 end
 
 
-if ( flgRaw_shapeMask )
+
+[ volMask ] = gather(EMC_maskShape(maskType, sizeWindow, maskRadius, 'gpu', {'shift', maskCenter}));
   
-  [ volMask ] = gather(sqrt(volMask .* ...
-    EMC_maskReference(refIMG{1}{iRef}+refIMG{2}{iRef}, emc.pixel_size_angstroms, {'fsc', true})));
-  
-else
-  % % % % % % %     [ volMask ] = gather(BH_mask3d(maskType, sizeWindow, maskRadius, maskCenter));
-  [ volMask ] = gather(EMC_maskShape(maskType, sizeWindow, maskRadius, 'gpu', {'shift', maskCenter}));
-  
-end
 
 
 
@@ -483,7 +494,6 @@ clear refIMG refWDG refOUT iRef
 %%%%%%%%%%%%%%%%%%%%% Determine the angular search, if any are zero, don't
 %%%%%%%%%%%%%%%%%%%%% search at all in that dimension.
 
-updateWeights = false;
 gridSearch = '';
 if (emc.use_new_grid_search)
   gridSearch = eulerSearch(emc.symmetry, angleSearch(1),...
@@ -493,7 +503,9 @@ if (emc.use_new_grid_search)
 
   try
     symmetry_constrained_search = emc.('symmetry_constrained_search');
-    fprintf('Using symmetry constrained search\n');
+    if (symmetry_constrained_search)
+      fprintf('Using symmetry constrained search\n');
+    end
   catch
     symmetry_constrained_search = false;
   end
@@ -529,10 +541,7 @@ else
     flgRefine = false;
   end
   
-  if sum(angleStep(:,2) > 0)
-    updateWeights = true;
-  else
-  end
+
 end
 
 
@@ -611,7 +620,7 @@ parfor iParProc = parVect
       % TODO fix this workaround
       system(sprintf('awk ''{if($10 != "") print $0 }'' %s > %s_clean; mv %s_clean %s',...
         previousAlignment,previousAlignment,previousAlignment,previousAlignment));
-      bestAngles_tmp.(tomoList{iTomo}) = load(previousAlignment);
+      bestAngles_tmp.(tomoList{iTomo}) = importdata(previousAlignment);
       fprintf('Using existing alignment info for %s\n', tomoList{iTomo});
     else
       % There is some memory leak somewhere that I haven't been able to figure
@@ -700,7 +709,7 @@ parfor iParProc = parVect
       tiltGeometry = subTomoMeta.tiltGeometry.(tomoList{iTomo});
       % Load in the geometry for the tomogram, and get number of subTomos.
       positionList = geometry_tmp.(tomoList{iTomo});
-      
+    
 
       binShift = [0,0,0];
       nSubTomos = size(positionList,1);
@@ -1577,10 +1586,9 @@ else
   %   save('bestAnglesTemp.mat', 'bestAngles');
   save('bestAngles.mat', 'bestAngles');
   
-  [ rawAlign ] = BH_rawAlignmentsApply( gather(geometry), bestAngles, samplingRate, emc.nPeaks, rotConvention, updateWeights, emc.update_class_by_ccc);
+  [ rawAlign ] = BH_rawAlignmentsApply( gather(geometry), bestAngles, samplingRate, emc.nPeaks, rotConvention, emc.update_class_by_ccc);
   subTomoMeta.(cycleNumber).('RawAlign') = rawAlign;
   subTomoMeta.(cycleNumber).('newIgnored_rawAlign') = gather(nIgnored);
-  subTomoMeta.('updatedWeights') = true;
   
   clear bestAngles rawAlign
   save(emc.('subTomoMeta'), 'subTomoMeta');

@@ -213,9 +213,9 @@ OddSizeOversampled = 0;
     end
     
     function [inputVol] = shiftStretch(obj, inputVol, shiftXY, Mag, isCentered)
-      
+
       [ dU, dV ] = BH_multi_gridCoordinates(obj.inputSize,'Cartesian','GPU', ...
-        {'none'},1,isCentered,0,{'halfgrid'});
+      {'none'},1,isCentered,0,{'halfgrid'});
       inputVol = inputVol .* (Mag.^-2.*exp(-2i.*pi.*(dU.*shiftXY(1)+dV.*shiftXY(2))));
       
       clear dU dV
@@ -342,21 +342,21 @@ OddSizeOversampled = 0;
           bpValsNew(2),...
           bpValsNew(3),...
           'GPU', ...
-          bpValsNew(4));
-   switch ndims(obj.bandpass)
-        case 3
-        obj.bandpass = obj.bandpass(1:obj.halfDimSize,:,:);
-        case 2
-        obj.bandpass = obj.bandpass(1:obj.halfDimSize,:);
-        case 1
-        obj.bandpass = obj.bandpass(1:obj.halfDimSize);
+          bpValsNew(4), 'halfGrid');
+
+        % switch ndims(obj.bandpass)
+        %   case 3
+        %   obj.bandpass = obj.bandpass(1:obj.halfDimSize,:,:);
+        %   case 2
+        %   obj.bandpass = obj.bandpass(1:obj.halfDimSize,:);
+        %   case 1
+        %   obj.bandpass = obj.bandpass(1:obj.halfDimSize);
+        % end
+          
+          % Update the properties
+          obj.bpDoesNotExist = false;
+          obj.bpVals = bpValsNew;
         end
-        
-        % Update the properties
-        obj.bpDoesNotExist = false;
-        obj.bpVals = bpValsNew;
-      end
-      
       
     end
     

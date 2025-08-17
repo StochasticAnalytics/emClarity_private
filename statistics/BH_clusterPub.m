@@ -75,32 +75,36 @@ for iGold = 1:1+flgGold
   % kAlgorithm = 'neuralNetwork'
     
   switch emc.distance_metric
+    case 'gaussian'
+      kDistMeasure = 'gaussian';
+      kAlgorithm = 'gmm';
     case 'sqeuclidean'
-      kDistMeasure = 'sqeuclidean'
+      kDistMeasure = 'sqeuclidean';
     case 'cityblock'
-      kDistMeasure = 'cityblock'
+      kDistMeasure = 'cityblock';
     case 'cosine'
-      kDistMeasure = 'cosine'
+      kDistMeasure = 'cosine';
     case 'correlation'
-      kDistMeasure = 'correlation'
+      kDistMeasure = 'correlation';
     case 'ward'
-      kDistMeasure = 'ward'
-      kAlgorithm = 'HAC'
+      kDistMeasure = 'ward';
+      kAlgorithm = 'HAC';
     case 'neural'
-      kDistMeasure = 'neural'
-      kAlgorithm = 'neuralNetwork'
+      kDistMeasure = 'neural';
+      kAlgorithm = 'neuralNetwork';
       fprintf('Input params for neural network are %d %d %s\n', ...
         emc.coverSteps, emc.Pca_som_initNeighbor, emc.topologyFcn);
     otherwise
-      kDistMeasure = 'sqeuclidean'
+      kDistMeasure = 'sqeuclidean';
       fprintf(['\nDefaulting to sqeuclidean b/c %s was not recognized'] ...
         , kDist);
   end
   
-  
+  fprintf('\n\tClustering using %s, with distance metric %s\n\n', kAlgorithm, kDistMeasure);
+
   try
     oldPca = load(coeffMatrix);
-    coeffsUNTRIMMED = oldPca.coeffs
+    coeffsUNTRIMMED = oldPca.coeffs;
     idxList = oldPca.idxList;
     if emc.nPeaks > 1
       peakList = oldPca.idxList;
@@ -110,7 +114,7 @@ for iGold = 1:1+flgGold
     
     clear oldPca;
   catch
-    error('trouble loading the previous pcs mat file.')
+    error('trouble loading the previous pca mat file.')
   end
   
   try
@@ -178,14 +182,14 @@ for iGold = 1:1+flgGold
     
     if strcmpi(kAlgorithm, 'kMeans')
       [class, classCenters, sumd, D] = kmeans(coeffMat', nClusters, ...
-        'replicates', emc.n_replicates, ...
+        'Replicates', emc.n_replicates, ...
         'Distance', kDistMeasure, ...
         'MaxIter', 50000, ... % Default was 100
         'Options', statset('UseParallel', 1) );
       
     elseif strcmpi(kAlgorithm, 'kMedoids')
       [class, classCenters, sumd, D] = kmedoids(coeffMat', nClusters, ...
-        'replicates', emc.n_replicates, ...
+        'Replicates', emc.n_replicates, ...
         'Distance', kDistMeasure, ...
         'Options', statset('UseParallel', 1, ...
         'MaxIter', 50000) );
@@ -204,9 +208,24 @@ for iGold = 1:1+flgGold
       [net, tr] = train(net, coeffMat);
       y = net(coeffMat)
       class = vec2ind(y)
-      
+    elseif strcmpi(kAlgorithm, 'gmm')
+      % This is a Gaussian Mixture Model
+
+      GMM = fitgmdist(coeffMat', nClusters, ...
+                    'Regularize', emc.gmm_regularize_value, ...
+                    'Replicates', emc.n_replicates, ...
+                    'CovarianceType', emc.gmm_covariance_type, ... 
+                    'SharedCovariance', emc.gmm_covariance_shared_between_clusters, ... % covariance can vary between clusters
+                    'Start', 'plus', ...
+                    'Options', statset('UseParallel', 1, 'MaxIter', 10000) );
+      posterior_prob = posterior(GMM, coeffMat');
+      % Still hard cutoff, but keep prob to weight the volume
+      [class_probability, class] = max(posterior_prob, [], 2);
+      % class = cluster(GMM, coeffMat');
+      classCenters = GMM.mu;
+      sumd = 0;
     else
-      error('kAlgorithm must be kMeans, or kMedoids, not %s', kAlgorithm);
+      error('kAlgorithm must be kMeans, kMedoids, HAC, neuralNetwork, or gmm not %s', kAlgorithm);
     end
     
     
@@ -217,7 +236,7 @@ for iGold = 1:1+flgGold
     fprintf('Total kmeans dist = %g\n', totSum1)
     fprintf('Total kmeans std  = %g\n', totStd1)
     
-    if (emc.Pca_refineKmeans)
+    if (emc.Pca_refineKmeans && (strcmpi(kAlgorithm, 'kMeans') || strcmpi(kAlgorithm, 'kMedoids')))
       % Using the postions found, refine the original estimates
       
       kMin = min(classCenters,[],1);
@@ -253,14 +272,14 @@ for iGold = 1:1+flgGold
       %                                     'Options', statset('UseParallel', 1) );
       if strcmpi(kAlgorithm, 'kMeans')
         [class, classCenters, sumd,D] = kmeans(coeffMat', nClusters, ...
-          'replicates', emc.n_replicates, ...
+          'Replicates', emc.n_replicates, ...
           'Distance', kDistMeasure, ...
           'MaxIter', 50000, ... % Default was 100
           'Options', statset('UseParallel', 1) );
         
       elseif strcmpi(kAlgorithm, 'kMedoids')
         [class, classCenters, sumd,D] = kmedoids(coeffMat', nClusters, ...
-          'replicates', emc.n_replicates, ...
+          'Replicates', emc.n_replicates, ...
           'Distance', kDistMeasure, ...
           'Options', statset('UseParallel', 1, ...
           'MaxIter', 50000) );
@@ -293,8 +312,20 @@ for iGold = 1:1+flgGold
     % list of classIDX with highest count first
     [~, ndx] = sort(classCount, 'descend');
     newClass = class;
+    originalClass = class;
+    if strcmpi(kAlgorithm, 'gmm')
+      sorted_class_probabilities = class_probability;
+    end
+
     for i = 1:nClusters
       newClass(class == ndx(i)) = i;
+      assignment_mask = find(class == ndx(i));
+      % Re-assign the most populated class to 1, next most populated to 2, etc.
+      newClass(assignment_mask) = i;
+      if strcmpi(kAlgorithm, 'gmm')
+        % Re-map the probabilities to the new class labels
+        sorted_class_probabilities(assignment_mask) = class_probability(assignment_mask);
+      end
     end
     
     fileOUT = fopen(sprintf('%s_%s_ClassIDX.txt',emc.('subTomoMeta'),cycleNumber), 'a');
@@ -315,9 +346,13 @@ for iGold = 1:1+flgGold
     % This isn't great, and maybe my brain is just tired.
     
     if ( strcmpi(kAlgorithm, 'kMedoids') ||  strcmpi(kAlgorithm, 'kMeans') )
-      save(sprintf('clusterTrouble_%d.mat',iCluster), 'idxList', 'class','classCenters','D');
+
+      save(sprintf('clusterTrouble_%d.mat',nClusters), 'idxList', 'class', 'originalClass', 'sumd', 'classCenters','D','-v7.3');
+    elseif strcmpi(kAlgorithm, 'gmm')
+      data_vector = coeffMat';
+      save(sprintf('clusterTrouble_%d.mat',nClusters), 'idxList', 'class', 'originalClass', 'sumd', 'classCenters','GMM','data_vector', 'sorted_class_probabilities','-v7.3');
     else
-      save(sprintf('clusterTrouble_%d.mat',iCluster), 'idxList', 'class');
+      save(sprintf('clusterTrouble_%d.mat',nClusters), 'idxList', 'originalClass', 'class','-v7.3');
     end
     
     for iTomo = 1:nTomograms
@@ -337,6 +372,9 @@ for iGold = 1:1+flgGold
           for thisIDX = 1:length(lIndClass)
             for iPeak = 0:emc.nPeaks-1
               positionList(lIndPart(thisIDX), 26 + 26*iPeak) = class(lIndClass(thisIDX)+iPeak);
+              if strcmpi(kAlgorithm, 'gmm')
+                positionList(lIndPart(thisIDX), 2 + 26*iPeak + 1) = sorted_class_probabilities(lIndClass(thisIDX)+iPeak);
+              end
               %               fprintf('iTomo %d iSubtomo %d iPeak %d Class %d\n',iTomo,lIndPart(thisIDX),iPeak+1,class(lIndClass(thisIDX)+iPeak));
             end
           end
@@ -344,6 +382,9 @@ for iGold = 1:1+flgGold
           fprintf('Size iTomo %d %d\n',size(positionList));
         else
           positionList(lIndPart, 26) = class(lIndClass); % this is where it is breaking
+          if strcmpi(kAlgorithm, 'gmm')
+            positionList(lIndPart, 2) = sorted_class_probabilities(lIndClass);
+          end
           geometry.(tomoList{iTomo}) = positionList;
           
         end
@@ -359,6 +400,11 @@ for iGold = 1:1+flgGold
     % Save a copy of the geometry in the subTomoMeta and also save the name for
     % easy reference in a text file.
     masterTM.(cycleNumber).('ClusterResults').(fout) = geometry;
+    if strcmpi(kAlgorithm, 'gmm')
+      masterTM.(cycleNumber).('ClusterResults').('class_weights') = true;
+    else
+      masterTM.(cycleNumber).('ClusterResults').('class_weights') = false;
+    end
     
     
     

@@ -141,6 +141,7 @@ switch PREVIOUS_PCA
     error('PREVIOUS_PCA should be 1,0,-1,-2,-3')
 end
 
+
 flgWMDs = 3;
 
 cycleNumber = sprintf('cycle%0.3u', CYCLE);
@@ -667,7 +668,7 @@ for iGold = 1:1+flgGold
       gpuMasks.('scaleMask').(stSCALE) = gpuArray(masks.('scaleMask').(stSCALE));
     end
     gpuMasks.('highPass').(stSCALE) = gpuArray(masks.('highPass').(stSCALE));
-    if (use_notch_filter)
+    if (use_notch_filter && ~test_multi_ref_diffmap)
       gpuMasks.('highPass').(stSCALE) =  gpuMasks.('highPass').(stSCALE) .* gpuArray(masks.('scaleMask').(stSCALE));
     end
     
@@ -721,9 +722,7 @@ for iGold = 1:1+flgGold
     tiltGeometry = subTomoMeta.tiltGeometry.(tomoList{iTomo});
     
     fprintf('Working on %d/%d volumes %s\n',iTomo,nTomograms,tomoName);
-    if (iTomo ~= 3)
-      continue; %revertH68_1_label_101_2H68_1_label_101_2
-    end
+
     % Load in the geometry for the tomogram, and get number of subTomos.
     positionList = geometry.(tomoList{iTomo});
     

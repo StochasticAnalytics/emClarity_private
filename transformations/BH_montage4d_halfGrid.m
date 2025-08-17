@@ -39,7 +39,7 @@ nVolumes = length(IMAGES);
 
 
 if ischar(IMAGES{1})
-  img1 = OPEN_IMG('single', IMAGES{1));
+  img1 = OPEN_IMG('single', IMAGES{1});
 else
   img1 = IMAGES{1};
 end

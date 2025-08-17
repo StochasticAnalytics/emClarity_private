@@ -12,9 +12,10 @@ function [ is_valid ] = emc_check_for_valid_image_file(wanted_filename)
         catch
             is_valid = false;
         end
-        % So all we know is that the header was readable, now check that there are at least the right number of bytes in the file
-        is_valid = checkFullFile(test_header);
-        
+        if is_valid
+            % So all we know is that the header was readable, now check that there are at least the right number of bytes in the file
+            is_valid = checkFullFile(test_header);
+        end
     else
         is_valid = false;
     end

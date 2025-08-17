@@ -235,23 +235,23 @@ gpuDevice(useGPU);
 % Initialize a whole mess of control variables and storage volumes. %
 %Out of plane range inc (starts from 1.* inc)
 rotConvention = 'Bah';
-% Check and override the rotational convention to get helical averaging.
-% Replaces the former hack of adding a fifth dummy value to the angular search
 
-if ( emc.doHelical )
-  rotConvention = 'Helical';
-end
+
 
 if (emc.use_new_grid_search)
   gridSearch = eulerSearch(emc.symmetry, angleSearch(1),...
     angleSearch(2),angleSearch(3),angleSearch(4), 0, 0, false);
+  gridSearch.HelicalRestriction(emc.helical_search_theta_constraint);
   nAngles = sum(gridSearch.number_of_angles_at_each_theta);
   inPlaneSearch = gridSearch.parameter_map.psi;
 else
-  
+  if (emc.helical_search_theta_constraint ~= 0)
+    error('Helical search theta constraint not implemented for old grid search');
+  end
   [  nInPlane, inPlaneSearch, angleStep, nAngles] ...
     = BH_multi_gridSearchAngles(angleSearch)
 end
+
 
 highThr=sqrt(2).*erfcinv(ceil(peakThreshold.*0.10).*2./(prod(size(tomogram)).*nAngles(1)))
 
@@ -481,30 +481,33 @@ totalTime = 0;
 firstLoopOverTomo = true;
 
 
-
 if (emc.use_new_grid_search)
-  theta_search = 1:gridSearch.number_of_out_of_plane_angles;
+  theta_search = gridSearch.active_theta_positions;
 else
   theta_search = 1:size(angleStep,1);
 end
 
+
 tomoIDX = 1;
 firstLoopOverAngles = true;
 
+
+  
+% Avoid repeated allocations
+tempPAD = zeros(size(templateBIN) + padBIN(1,:) + padBIN(2,:),'single','gpuArray');
+
+use_only_once = false;
+template_interpolator = '';
+[template_interpolator, ~] = interpolator(gpuArray(templateBIN),[0,0,0],[0,0,0], 'Bah', 'forward', 'C1', use_only_once);
+
+% templateMask_interpolator = '';
+% [templateMask_interpolator, ~] = interpolator(gpuArray(templateMask),[0,0,0],[0,0,0], 'Bah', 'forward', 'C1', use_only_once);
+
 for iTomo = 1:nTomograms
   currentGlobalAngle = 1;
+  currentSearchPosition = 0;
 
-  fprintf('Working on tomo chu %d/%d\n',iTomo,nTomograms);
-  tempImg = gpuArray(templateBIN); %%%%% NEW switch to bin
-  
-  % Avoid repeated allocations
-  tempPAD = zeros(size(tempImg) + padBIN(1,:) + padBIN(2,:),'single','gpuArray');
-  
-  template_interpolator = '';
-  [template_interpolator, ~] = interpolator(tempImg,[0,0,0],[0,0,0], 'Bah', 'forward', 'C1', false);
-  
-  templateMask_interpolator = '';
-  [templateMask_interpolator, ~] = interpolator(gpuArray(templateMask),[0,0,0],[0,0,0], 'Bah', 'forward', 'C1', false);
+  fprintf('Working on tomo chunk %d/%d from %s\n', iTomo, nTomograms, mapName);
   
   
   % Iterate over the tomogram pulling each chunk one at a time.
@@ -548,7 +551,9 @@ for iTomo = 1:nTomograms
     end
     
     for iAzimuth = phi_search
-      
+      % currentSearchPosition = currentSearchPosition + 1;
+      % fprintf('Working search position %d/%d for tomo chunk %d/%d from %s\n',currentSearchPosition, nAngles/length(inPlaneSearch), iTomo, nTomograms, mapName);
+
       if (emc.use_new_grid_search)
         phi = iAzimuth;
       else
@@ -574,6 +579,8 @@ for iTomo = 1:nTomograms
                                                                             [0,0,0],rotConvention,...
                                                                             'forward','C1');
         
+                                              
+
         tempPAD = tempPAD - mean(tempPAD(:));
         
         
@@ -803,7 +810,13 @@ if ignore_threshold
 end
 
 this_try = 0;
-while n <= 2.*peakThreshold && (this_try < max_tries) && MAX > highThr
+if (ignore_threshold)
+  search_limit = peakThreshold
+else
+  search_limit = 2 .* peakThreshold
+end
+
+while n <= search_limit && (this_try < max_tries) && MAX > highThr
   this_try = this_try + 1;
   
   %
@@ -821,7 +834,7 @@ while n <= 2.*peakThreshold && (this_try < max_tries) && MAX > highThr
   try
     c = gather([i,j,k]);
   catch
-    print('Ran into some trouble gathering the i,j,k. Breaking out\n');
+    fprint('Ran into some trouble gathering the i,j,k. Breaking out\n');
     break
   end
   

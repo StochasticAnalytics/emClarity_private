@@ -51,6 +51,17 @@ end
 tomoList = fieldnames(geometry);
 nTomograms = length(tomoList);
 
+% Sort tomos by number of peaks so that if we split by tomo, we get a
+% roughly balanced split.
+nPeaksList = zeros(nTomograms,1);
+for iTomo = 1:nTomograms
+  nPeaksList(iTomo) = size(geometry.(tomoList{iTomo}),1);
+end
+
+[~,sortIDX] = sort(nPeaksList);
+tomoList = tomoList(sortIDX);
+
+
 floorCeil = 0;
 for iTomo = 1:nTomograms
   

@@ -432,6 +432,7 @@ for iRef = 1:nReferences
     halfSet = 'STD';
   end
   
+  
   imgFilt1 = BH_bandLimitCenterNormalize(img1.*volMask{1}.*shapeMask_1,bandpassFilt{iGold}, ...
     (volMask{1} > 0.01),padCalc, 'single');
   imgFilt1 = real(ifftn(imgFilt1));

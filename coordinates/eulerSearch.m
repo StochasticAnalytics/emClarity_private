@@ -8,6 +8,7 @@ classdef eulerSearch < handle
     number_of_search_dimensions = 0;
     number_of_search_positions = 0;
     number_of_out_of_plane_angles = 1; % poorly named. Theta of zero is still searched but not "outofplane"
+    active_theta_positions = [];
     number_of_angles_at_each_theta = [];
     best_parameters_to_keep = 0;
     list_of_search_parameters = {};
@@ -26,6 +27,7 @@ classdef eulerSearch < handle
     max_search_x = 0.0;
     max_search_y = 0.0;
     bipolar_search = false;
+    initialized = false;
     parameter_map = struct( ...
       'phi', [] , ...
       'theta', [], ...
@@ -64,11 +66,11 @@ classdef eulerSearch < handle
       
     end
     
-    
+
     
     function [] = CalculateGridSearchPositions(obj)
       
-      
+      obj.initialized = true;
       theta_max_local = obj.theta_max;
       obj.parameter_map.psi = -obj.psi_max./2 : obj.psi_step : obj.psi_max/2;
       obj.number_of_search_positions = 0;
@@ -82,6 +84,7 @@ classdef eulerSearch < handle
       end
       obj.parameter_map.theta = theta_search;
       obj.number_of_out_of_plane_angles = length(theta_search);
+      obj.active_theta_positions = 1:length(theta_search);
       obj.number_of_angles_at_each_theta = zeros(obj.number_of_out_of_plane_angles,1);
       obj.parameter_map.phi = cell(obj.number_of_out_of_plane_angles,1);
       
@@ -123,6 +126,22 @@ classdef eulerSearch < handle
       
     end
     
+    function [] = HelicalRestriction(obj, max_deviation_from_xy_plane)
+      if ~obj.initialized
+        error('Must call Init before calling HelicalRestrictions');
+      end
+      if (max_deviation_from_xy_plane ~= 0.0)
+        included_angles = abs(obj.parameter_map.theta - 90) <= max_deviation_from_xy_plane;
+        if (sum(included_angles) == 0)
+          error('No angles are within the helical restriction');
+        end
+        obj.active_theta_positions = find(included_angles);
+        obj.number_of_out_of_plane_angles = length(obj.active_theta_positions);
+        obj.number_of_search_positions = sum(obj.number_of_angles_at_each_theta(obj.active_theta_positions));
+
+      end
+    end
+
     function [] = SetSymmetryLimits(obj)
       
       switch obj.symmetry_symbol(1)

@@ -24,7 +24,8 @@ last_parsed_parameter = 'none';
 stringValues = {'subTomoMeta'; ...
   'Ali_mType';'Cls_mType';'Cls_mType';'Raw_mType';'Fsc_mType'; ...
   'Pca_distMeasure';'Kms_mType';'flgPrecision';'Tmp_xcfScale';...
-  'fastScratchDisk';'Tmp_eraseMaskType';'startingDirection';'Peak_mType';'symmetry'};
+  'fastScratchDisk';'Tmp_eraseMaskType';'startingDirection';'Peak_mType';'symmetry'; ...
+  'gmm_covariance_type';'distance_metric'};
 for i = 1:size(p2,1)
   pNameVal = strsplit(p2{i,1},'=');
   if length(pNameVal) == 1
@@ -34,7 +35,7 @@ for i = 1:size(p2,1)
     fprintf("Last successfully parsed parameter: %s\n", string(last_parsed_parameter));
     error('To many colons in\n\t %s',char(pNameVal))
   else   
-    if any(strcmp(stringValues, pNameVal{1}))
+    if any(strcmpi(stringValues, pNameVal{1}))
       emc.(pNameVal{1}) = pNameVal{2};
     else
       emc.(pNameVal{1}) = EMC_str2double(pNameVal{2});
@@ -207,12 +208,13 @@ else
 end
 
 
-% Check and override the rotational convention to get helical averaging.
-% Replaces the former hack of adding a fifth dummy value to the angular search
-if isfield(emc,'doHelical')
-  EMC_assert_boolean(emc.doHelical)
+% Helix or filament with axis on Z, this will restrain the search angles to be +/- this many degrees from the X/y plane.
+% A full search should still be specified
+% Only affects templateSearch
+if isfield(emc,'helical_search_theta_constraint')
+  EMC_assert_numeric(emc.helical_search_theta_constraint, 1)
 else
- emc.doHelical = false;
+ emc.helical_search_theta_constraint = 0;
 end
 
 if isfield(emc,'eucentric_fit')
@@ -365,14 +367,18 @@ if ~isfield(emc, 'Pca_clusters');
 end
 
 % Allowed values are validated inside BH_clusterPub.m
-if ~isfield(emc, 'Pca_distMeasure');
+emc = EMC_assert_deprecated_substitution(emc, 'distance_metric', 'Pca_distMeasure');
+if isfield(emc, 'distance_metric')
+  EMC_assert_string_value(emc.distance_metric, {'sqeuclidean', 'cosine', 'gaussian','ward','neural'}, false);
+else
   emc.distance_metric = 'sqeuclidean';
 end
 
-if isfield(emc, 'Pca_nReplicates');
-  EMC_assert_numeric(emc.Pca_nReplicates, 1, [100, 1000]);
+emc = EMC_assert_deprecated_substitution(emc, 'n_replicates', 'Pca_nReplicates');
+if isfield(emc, 'n_replicates')
+  EMC_assert_numeric(emc.n_replicates, 1, [1, 1000]);
 else
-  emc.n_replicates = 256;
+  emc.n_replicates = 64;
 end
 
 if isfield(emc, 'Pca_refineKmeans')
@@ -408,6 +414,26 @@ end
 if ~isfield(emc, 'Pca_som_topologyFcn')
   % TODO: assert on allowed values
   emc.Pca_som_topologyFcn = 'hextop';
+end
+
+
+% specifying shared diagonal will approximate K-means
+if isfield(emc, 'gmm_covariance_type')
+  EMC_assert_string_value(emc.gmm_covariance_type, {'full', 'diagonal'},false);
+else
+  emc.gmm_covariance_type = 'full';
+end
+
+if isfield(emc, 'gmm_covariance_shared_between_clusters')
+  EMC_assert_boolean(emc.gmm_covariance_shared_between_clusters);
+else
+  emc.gmm_covariance_shared_between_clusters = false;
+end
+
+if isfield(emc, 'gmm_regularize_value')
+  EMC_assert_numeric(emc.gmm_regularize_value, 1, [0.0, 1.0]);
+else
+  emc.gmm_regularize_value = 0.01;
 end
 
 if isfield(emc, 'spike_prior')
@@ -506,6 +532,12 @@ if isfield(emc, 'tomoCPR_random_subset')
   EMC_assert_numeric(emc.tomoCPR_random_subset, 1);
 else
   emc.tomoCPR_random_subset = -1;
+end
+
+if isfield(emc, 'tomoCPR_n_particles_minimum')
+  EMC_assert_numeric(emc.tomoCPR_n_particles_minimum, 1, [1, 100000]);
+else
+  emc.tomoCPR_n_particles_minimum = 10;
 end
 
 if isfield(emc, 'tomoCPR_target_n_patches_x_y')
@@ -627,7 +659,7 @@ end
 
 emc = EMC_assert_deprecated_substitution(emc, 'tomo_cpr_defocus_range', 'tomoCprDefocusRange');
 if isfield(emc, 'tomo_cpr_defocus_range')
-  EMC_assert_numeric(emc.tomo_cpr_defocus_range, 1, [0.0, 10000e-9]);
+  EMC_assert_numeric(emc.tomo_cpr_defocus_range, 1, [0.0, 100000e-9]);
 else
   emc.tomo_cpr_defocus_range = 500e-9;
 end
@@ -639,7 +671,7 @@ else
   emc.tomo_cpr_defocus_step = 100e-9;
 end
 
-emc = EMC_assert_deprecated_substitution(emc, 'tomo_cpr_defocus_refine', 'calcCTF');
+emc = EMC_assert_deprecated_substitution(emc, 'tomo_cpr_defocus_refine', 'tomoCprDefocusRefine');
 if isfield(emc, 'tomo_cpr_defocus_refine')
   EMC_assert_boolean(emc.tomo_cpr_defocus_refine);
 else

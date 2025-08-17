@@ -1,31 +1,27 @@
 function [weightedImgs] = BH_multi_cRef_Vnorm( ...
-  fscParams, aliParams, mskParams,...
-  imgs, weights, ...
-  flgCombine, flgReference, ...
-  pixelSize, bFactor,varargin)
+                                              fscParams, aliParams, mskParams,...
+                                              imgs, weights, weights_sqrt, ...
+                                              flgCombine, flgReference, ...
+                                              pixelSize, bFactor,varargin)
 
 
 % Don't force to zero - particularly for comparison with ground truth, should
 % only be used with a very small (i.e. non-zero but no real amplification)
 % value.
-if any(bFactor < 0)
-  bFactor = abs(bFactor)
-  noForceMask = 1
-else
-  noForceMask = 0
-end
 
-if nargin == 10
+
+if nargin == 11
   gpuDevice(varargin{1})
 end
 
-if nargin == 11
+if nargin == 12
   highPassFilter = varargin{2};
 else
   highPassFilter = [0,0];
 end
 
-[ padVal ] = BH_multi_padVal(size(imgs{1}), size(weights{1}));
+[ padVal ] = BH_multi_padVal(size(imgs{1}), size(weights{1}))
+
 
 
 
@@ -56,12 +52,9 @@ for iWgt = 1:2
   imgs{iWgt} = imgs{iWgt} - mean(imgs{iWgt}(:));
   imgs{iWgt} = gpuArray(imgs{iWgt} ./rms(imgs{iWgt}(:)));
   
-  [weights{iWgt}, ~] = BH_multi_cRef_wgtCritical(gpuArray(weights{iWgt}));
-  
+  % [weights{iWgt}, ~] = BH_multi_cRef_wgtCritical(gpuArray(weights{iWgt}));
+
 end
-
-
-
 
 
 % The mask used in the FSC calc
@@ -96,16 +89,17 @@ end
 
 
 
+
 radialGrid = BH_multi_gridCoordinates(size(weights{1}),'Cartesian','GPU', ...
   {'none'},1,0,1);
 radialGrid = radialGrid ./ pixelSize;
 
-[ anisoFSC, avgCTF ] = calc_anisoFSC(fscParams, radialGrid,weights, bFactor, pixelSize);
+[ anisoFSC, ~ ] = calc_anisoFSC(fscParams, radialGrid,weights, bFactor, pixelSize);
 
 
 
 if any(bFactor)
-  [ bFactor, bandFilter ] = calc_bfact(fscParams, radialGrid,flgReference, bFactor, noForceMask,highPassFilter,pixelSize);
+  [ bFactor, bandFilter ] = calc_bfact(fscParams, radialGrid,flgReference, bFactor, 0,highPassFilter,pixelSize);
 else
   bFactor = {1};
 end
@@ -127,7 +121,7 @@ for iBfact = 1:length(bFactor)
     snrWeight = 1;
     
     [ weightedImgs{iBfact} ] = gather(apply_weights((anisoFSC), ...
-      (avgCTF{1}+avgCTF{2})./2, ...
+      (weights_sqrt{1}+weights_sqrt{2}).^0.5, ...
       (radialGrid < 0.5./pixelSize),...
       (imgs{1}+imgs{2}), ...
       ifftshift(weights{1}+weights{2}),...
@@ -137,7 +131,7 @@ for iBfact = 1:length(bFactor)
     snrWeight = 0.5;
     for iGold = 1:2
       [ weightedImgs{iGold} ] = gather(apply_weights((anisoFSC), ...
-        (avgCTF{iGold}), ...
+        (weights_sqrt{iGold}.^0.5), ...
         (radialGrid < 0.5./pixelSize),...
         (imgs{iGold}), ...
         ifftshift(weights{iGold}),...

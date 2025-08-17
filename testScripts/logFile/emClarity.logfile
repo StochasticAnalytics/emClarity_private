@@ -1,0 +1,32 @@
+
+		***************************************
+
+emClarity version 57a0d00
+run starting on 03-Apr-2025 07:12:20
+cmd int matlab -nosplash -nodisplay 
+
+		***************************************
+
+Error using textscan
+Invalid file identifier. Use fopen to generate a valid file identifier.
+Error in BH_parseParameterFile (line 7)
+
+Error in emClarity>emC_testParse (line 679)
+
+Error in emClarity (line 168)
+
+		***************************************
+
+emClarity version 57a0d00
+run starting on 03-Apr-2025 07:30:44
+cmd int matlab 
+
+		***************************************
+
+Error using textscan
+Invalid file identifier. Use fopen to generate a valid file identifier.
+Error in BH_parseParameterFile (line 7)
+
+Error in emClarity>emC_testParse (line 679)
+
+Error in emClarity (line 168)

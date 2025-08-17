@@ -22,13 +22,13 @@ catch
   mapBackIter = 0;
 end
 
-if isnan(EMC_str2double(STACK_PRFX))
-  % It is a name, run here.
-  nGPUs = 1;
-  flgParallel = 0;
-  STACK_LIST = {STACK_PRFX};
-  ITER_LIST = {STACK_LIST};
-else
+% if isnan(EMC_str2double(STACK_PRFX))
+%   % It is a name, run here.
+%   nGPUs = 1;
+%   flgParallel = 0;
+%   STACK_LIST = {STACK_PRFX};
+%   ITER_LIST = {STACK_LIST};
+% else
   flgParallel = 1;
   
   updateCMD = sprintf('%s,%d,TiltAlignment,UpdateTilts,[%d,0,0],STD', ...
@@ -36,14 +36,16 @@ else
     subTomoMeta.currentCycle);
   % fprintf('%s/n',updateCMD);
   nGPUs = emc.('nGPUs');
-  ITER_LIST = cell(nGPUs,1);
+  nWorkers_per_gpu = 2;
+  nWorkers = nWorkers_per_gpu*nGPUs;
+  ITER_LIST = cell(nWorkers,1);
   
   [STACK_LIST, nTiltSeries] = BH_returnIncludedTilts( subTomoMeta.mapBackGeometry );
   clear STACK_LIST_tmp
-  for iGPU = 1:nGPUs
-    ITER_LIST{iGPU} = STACK_LIST(iGPU:nGPUs:nTiltSeries);
+  for iGPU = 1:nWorkers
+    ITER_LIST{iGPU} = STACK_LIST(iGPU:nWorkers:nTiltSeries);
   end
-end
+% end
 
 eucShiftsResults = 0;
 if emc.eucentric_fit
@@ -57,10 +59,10 @@ catch
 end
 
 try
-  EMC_parpool(nGPUs);
+  EMC_parpool(nWorkers);
 catch
   delete(gcp('nocreate'));
-  EMC_parpool(nGPUs);
+  EMC_parpool(nWorkers);
 end
 
 % Assuming that mapBackIter > 0 since we are updating
@@ -72,14 +74,14 @@ end
 
 % For some reason matlab was geeking out about calling this in the parfor
 % loop, getting confused about whether it is a variable or a function.
-parfor iGPU = 1:nGPUs
+parfor iGPU = 1:nWorkers
 % for iGPU = 1:nGPUs
 
   %  for iTilt = 1:length(ITER_LIST{iGPU})
   
   if ( flgParallel )
-    useGPU = iGPU;
-    gDev = gpuDevice(useGPU);
+    useGPU = floor((1+iGPU)/nWorkers_per_gpu);
+    gpuDevice(useGPU);
   else
     useGPU = BH_multi_checkGPU(-1);
     gDev = gpuDevice(useGPU);
@@ -329,7 +331,7 @@ parfor iGPU = 1:nGPUs
         end
       end
     else
-      error('ctf update should only be called after tomoCPR (mapBackIter > 0), you can change this with emClarity geometry paramX.m X SwitchCurrentTomoCPR [mapBackIter,0,0] STD');
+      error('ctf update should only be called after tomoCPR (mapBackIter > 0), you can change this with emClarity geometry paramX.m X TiltAlignment SwitchCurrentTomoCpr [mapBackIter,0,0] STD');
     end
 
     

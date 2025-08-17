@@ -38,6 +38,11 @@ if (CYCLE == 0)
   emc.flgQualityWeight = 0;
 end
 
+if (emc.flgQualityWeight <=0 && emc.ccc_cutoff > 0.0)
+  fprintf('\n\t\tWARNING: Quality weighting is on, but the cutoff is set to %2.2f, so no volumes will be used. Overriding ccc_cutoff\n\n',emc.ccc_cutoff);
+  emc.ccc_cutoff = 0;
+end
+
 if (emc.projectVolumes && ~emc.flgCutOutVolumes)
   emc.flgCutOutVolumes = true;
 end
@@ -54,9 +59,6 @@ if (emc.flgCutOutVolumes)
 end
 
 rotConvention = 'Bah';
-if ( emc.doHelical )
-  rotConvention = 'Helical';
-end
 
 % The weights are only re-estimated for an out of plane search. Until this
 % happens, they are not valid.
@@ -69,6 +71,8 @@ if (emc.track_stats)
     emc.track_stats = false;
   end
 end
+
+
 
 %%% For general release, I've disabled class average alignment and
 %%% multi-reference alignment, so set the default to OFF. If either of
@@ -126,6 +130,9 @@ switch STAGEofALIGNMENT
     className    = emc.(sprintf('%s_className','Raw'));
     samplingRate = emc.('Ali_samplingRate');
     
+    if (~emc.multi_reference_alignment &&  max(size(classVector{1},2),size(classVector{2},2)) > 1)
+      error('You have more than one class, but multi-reference alignment is not enabled');
+    end
     if (emc.multi_reference_alignment && (test_multi_ref_diffmap || ~emc.classification))
       fprintf('\n\nMutliRef enabled.\n');
       pause(2);
@@ -147,10 +154,10 @@ switch STAGEofALIGNMENT
     % Goal is to re-extract odd-half, applying the xform found in fscGold
     fieldPrefix = 'Ref';
     savePrefix = 'Ref';
-    classVector{1}  = emc.(sprintf('%s_classes_odd',fieldPrefix));
-    classVector{2}  = emc.(sprintf('%s_classes_eve',fieldPrefix));
+    classVector{1}  = emc.(sprintf('%s_classes_odd','Raw'));
+    classVector{2}  = emc.(sprintf('%s_classes_eve','Raw'));
     
-    className    = emc.(sprintf('%s_className',fieldPrefix));
+    className    = emc.(sprintf('%s_className','Raw'));
     samplingRate = emc.('Ali_samplingRate');
     
     flgFinalAvg = 1;
@@ -244,6 +251,16 @@ end
 doNotTrim = false;
 eachTomo  = false;
 flgEstSNR = 0;
+% see if we previously had weights from a GMM, this will be overwritten if we are in Cluster_cls stage.
+if isfield(subTomoMeta.(cycleRead), 'class_weights')
+  use_class_weights = subTomoMeta.(cycleRead).class_weights;
+else
+  use_class_weights = false;
+end
+
+fprintf('\n\n\tUsing class weights: %d\n\n', use_class_weights);
+pause(3);
+
 switch STAGEofALIGNMENT
   case 'RawAlignment'
     if ( CYCLE )
@@ -257,7 +274,17 @@ switch STAGEofALIGNMENT
     end
     
   case 'FinalAlignment'
-    geometry = subTomoMeta.(cycleRead).Avg_geometry;
+    if emc.multi_reference_alignment
+      if (emc.classification)
+        geometry = subTomoMeta.(cycleNumber).('ClusterClsGeom') ;
+      else
+        geometry = subTomoMeta.(cycleNumber).('ClusterRefGeom') ;
+      end
+    else
+      geometry = subTomoMeta.(cycleRead).Avg_geometry;
+
+    end
+    
     if ~(emc.classification)
       doNotTrim = true;
     end
@@ -282,7 +309,13 @@ switch STAGEofALIGNMENT
       
       geometry = subTomoMeta.(cycleRead).ClusterResults.(cN{1});
     end
-    
+
+    % If we are averaging from new classes, check to see iff we have probability weights form a GMM
+    if isfield(subTomoMeta.(cycleRead).ClusterResults, 'class_weights')
+      use_class_weights = subTomoMeta.(cycleRead).ClusterResults.class_weights;
+      fprintf('\n\n\tUsing class weights from new class assignments: %d\n\n', use_class_weights);
+      pause(3);
+    end
     
     subTomoMeta.(cycleRead).('KmsSampling') = samplingRate;
     doNotTrim = true;
@@ -371,8 +404,8 @@ if (flgFinalAvg)
   
   % Assuming the mask/window sizes haven't changed since the original average
   % that was used to calc the FSC -- that would break things here.
-  imgNAME = sprintf('class_%d_Locations_REF_%s', className, 'EVE');
-  weightNAME = sprintf('class_%d_Locations_REF_%s_Wgt', className, 'EVE');
+  imgNAME = sprintf('class_%d_Locations_Ref_%s', className, 'EVE');
+  weightNAME = sprintf('class_%d_Locations_Ref_%s_Wgt', className, 'EVE');
   
   [ refIMG ] = BH_unStackMontage4d(1, ...
     subTomoMeta.(cycleNumber).(imgNAME){1}, ...
@@ -540,6 +573,7 @@ if (emc.flgQualityWeight)
   for iParProc = 1:nParProcesses
     for iTomo = iterList{iParProc}
       if (emc.track_stats)
+        error('The weight in column two is now being taken as a class probability assignent from clustering, this branch is broken.');
         geometry.(tomoList{iTomo})(:,1:26:26*emc.nPeaks) = geometry.(tomoList{iTomo})(:,1:26:26*emc.nPeaks)./geometry.(tomoList{iTomo})(:,2:26:26*emc.nPeaks);
       end
       
@@ -648,7 +682,7 @@ parfor iParProc = parVect
   nIgnored = 0;
   nSubTomosTotal = 0;
   avgVolume_tmp = cell(maxClasses,2);
-  avgWedge_tmp  = cell(maxClasses,2);
+  avgWedge_tmp  = cell(maxClasses,4);
   geometry_tmp = geometry;
   
   
@@ -656,8 +690,10 @@ parfor iParProc = parVect
   for iRow = 1:maxClasses
     for iCol = 1:2
       avgVolume_tmp{iRow, iCol} = zeros(sizeMask, 'single');
+      avgWedge_tmp{iRow, iCol}= zeros(sizeCalc, 'single');    
+    end
+    for iCol = 3:4
       avgWedge_tmp{iRow, iCol}= zeros(sizeCalc, 'single');
-      
     end
   end
   
@@ -830,6 +866,14 @@ parfor iParProc = parVect
             positionList(iSubTomo,:) = sortedList;
           else
             peakWgt = 1;
+          end
+
+          if (use_class_weights)
+            EMC_assert_numeric(positionList(iSubTomo,2),1,[0.0,1.0])
+            if (positionList(iSubTomo,2) < 0.98)
+              fprintf('Reweighting subtomo %d with class weight %2.2f\n',iSubTomo,positionList(iSubTomo,2).^2);
+            end
+            peakWgt = peakWgt .* positionList(iSubTomo,2).^2;
           end
           
           % %           if (emc.spike_prior)
@@ -1006,7 +1050,7 @@ parfor iParProc = parVect
               
               [~, iWedgeMask] = interpolator(gpuArray(iSF3D), angles, [0,0,0], rotConvention , 'inv', emc.symmetry, true);
                             
-              
+              % Scaling prior to applying the quality weight which will result in less total power for downweighted volumes
               iParticle = iParticle -  mean(iParticle(interpMask_tmpBinary));
               iParticle = iParticle ./  rms(iParticle(interpMask_tmpBinary));
               iParticle = iParticle .* interpMask_tmp;
@@ -1032,6 +1076,7 @@ parfor iParProc = parVect
                 % Flag the particle as ignored
                 positionList(iSubTomo, 26:26:emc.nPeaks*26) = -9999;
               else
+
                 
                 if (test_fuzz)
                   % Find the right row in the weight array
@@ -1051,9 +1096,11 @@ parfor iParProc = parVect
                   for iWeight = 1:length(iProb)
                     avgVolume_tmp{iWeight, positionList(iSubTomo,7)} =  ...
                       avgVolume_tmp{iWeight, positionList(iSubTomo,7)}  + (iParticle .* iProb(iWeight));
-                    
+                    % FIXME: for storing sum of CTFS (these are just sum of)
                     avgWedge_tmp{ iWeight, positionList(iSubTomo,7)} = ...
                       avgWedge_tmp{ iWeight, positionList(iSubTomo,7)}  + (iWedgeMask .* iProb(iWeight));
+
+                    
                     nExtracted_tmp(iWeight, positionList(iSubTomo,7)) = ...
                       nExtracted_tmp(iWeight, positionList(iSubTomo,7)) + iProb(iWeight);
                   end
@@ -1118,7 +1165,8 @@ parfor iParProc = parVect
             avgVolume_tmp{ iSnr, 1} =  avgVolume_tmp{ iSnr, 1} + ...
               gather(iTempParticleODD);
             avgVolume_tmp{ iSnr, 2} =  avgVolume_tmp{ iSnr, 2} + ...
-              gather(iTempParticleEVE);
+              gather(iTempParticleEVE); 
+              % FIXME: for storing sum of CTFS (these are just sum of)
             
             avgWedge_tmp{  iSnr, 1} = avgWedge_tmp{  iSnr, 1} + ...
               gather(iTempWedgeODD);
@@ -1136,6 +1184,10 @@ parfor iParProc = parVect
               gather(iTempWedgeODD);
             avgWedge_tmp{  iClassPos, 2} = avgWedge_tmp{  iClassPos, 2} + ...
               gather(iTempWedgeEVE);
+            avgWedge_tmp{  iClassPos, 3} = avgWedge_tmp{  iClassPos, 3} + ...
+              gather(sqrt(iTempWedgeODD));
+            avgWedge_tmp{  iClassPos, 4} = avgWedge_tmp{  iClassPos, 4} + ...
+              gather(sqrt(iTempWedgeEVE));
           end
         end
       end % end of loop over classes
@@ -1172,7 +1224,8 @@ end % end parfor loop on gpus
 
 nExtracted = zeros(maxClasses,2);
 avgVolume = cell(maxClasses,2);
-avgWedge  = cell(maxClasses,4);
+avgSF3D = cell(maxClasses,2);
+avgSF3D_Sq  = cell(maxClasses,2);
 nSubTomosTotal = 0;
 nIgnored = 0;
 
@@ -1187,13 +1240,15 @@ for iParProc = 1:nParProcesses
     for iHalf = 1:2-flgFinalAvg
       if iParProc == 1
         avgVolume{iVol, iHalf} = avgResults{iParProc}{iVol, iHalf};
-        avgWedge{iVol, iHalf} = wgtResults{iParProc}{iVol, iHalf};
-        
+        avgSF3D_Sq{iVol, iHalf} = wgtResults{iParProc}{iVol, iHalf};
+        avgSF3D{iVol, iHalf} = wgtResults{iParProc}{iVol, iHalf+2};
       else
         avgVolume{iVol, iHalf} = avgVolume{iVol, iHalf} + ...
           avgResults{iParProc}{iVol, iHalf};
-        avgWedge{iVol, iHalf} = avgWedge{iVol, iHalf} + ...
+        avgSF3D_Sq{iVol, iHalf} = avgSF3D_Sq{iVol, iHalf} + ...
           wgtResults{iParProc}{iVol, iHalf};
+        avgSF3D{iVol, iHalf} = avgSF3D{iVol, iHalf} + ...
+          wgtResults{iParProc}{iVol, iHalf+2};
         
       end
     end
@@ -1251,11 +1306,14 @@ end
 
 classSum = cell(2,1);
 classWgtSum = cell(2,1);
+classWgtSumSqrt = cell(2,1);
 if (saveClassSum > -1)
   classSum{1} = zeros(size(avgVolume{1,1}),'single');
   classSum{2} = zeros(size(avgVolume{1,2}),'single');
-  classWgtSum{1} = zeros(size(avgWedge{1,1}),'single');
-  classWgtSum{2} = zeros(size(avgWedge{1,2}),'single');
+  classWgtSum{1} = zeros(size(avgSF3D_Sq{1,1}),'single');
+  classWgtSum{2} = zeros(size(avgSF3D_Sq{1,2}),'single');
+  classWgtSumSqrt{1} = zeros(size(avgSF3D_Sq{1,3}),'single');
+  classWgtSumSqrt{2} = zeros(size(avgSF3D_Sq{1,4}),'single');
 end
 
 for iClassPos = 1:maxClasses
@@ -1294,7 +1352,8 @@ for iClassPos = 1:maxClasses
       if (saveClassSum > -1)
         fprintf('adding class %d to %d\n',iClassPos,iGold);
         classSum{iGold} = classSum{iGold} + classStorage{iClassPos,iGold};
-        classWgtSum{iGold} = classWgtSum{iGold} + avgWedge{iClassPos,iGold};
+        classWgtSum{iGold} = classWgtSum{iGold} + avgSF3D_Sq{iClassPos,iGold};
+        classWgtSumSqrt{iGold} = classWgtSumSqrt{iGold} + avgSF3D{iClassPos,iGold};
       end
     end
     
@@ -1314,7 +1373,7 @@ if  strcmpi(STAGEofALIGNMENT, 'Cluster') && ~(emc.classification)
   [classListOut, geometry] = reorder_classes(avgVolume(:,1),avgVolume(:,2),maxClasses, geometry);
   
   avgVolume(:,2) = avgVolume(classListOut(:,2), 2);
-  avgWedge(:,2) = avgWedge(classListOut(:,2), 2);
+  avgSF3D_Sq(:,2) = avgSF3D_Sq(classListOut(:,2), 2);
   
   classMatches = fopen(sprintf('%s_class%d_%s_matches.txt', ...
     outputPrefix,className,fieldPrefix),'w');
@@ -1367,11 +1426,21 @@ for iGold = 1:2-flgFinalAvg
   end
   SAVE_IMG(montOUT, imout, emc.pixel_size_angstroms);
   %%%%%%%%
-  [montOUT, imgLocations] = BH_montage4d(avgWedge(:,iGold), '');
+  [montOUT, imgLocations] = BH_montage4d(avgSF3D_Sq(:,iGold), '');
   
   imout = sprintf('%s_class%d_%s_%s_Wgt.mrc',outputPrefix, ...
     className, fieldPrefix, halfSet);
   classOut = sprintf('class_%d_Locations_%s_%s_Wgt', className,fieldPrefix, halfSet);
+  
+  % For the weight, instead of imgCounts save the padValues
+  subTomoMeta.(cycleNumber).(classOut) = {imout,imgLocations,fscPAD};
+  SAVE_IMG(montOUT, imout, emc.pixel_size_angstroms);
+
+  [montOUT, imgLocations] = BH_montage4d(avgSF3D(:,iGold), '');
+  
+  imout = sprintf('%s_class%d_%s_%s_WgtSqrt.mrc',outputPrefix, ...
+    className, fieldPrefix, halfSet);
+  classOut = sprintf('class_%d_Locations_%s_%s_WgtSqrt', className,fieldPrefix, halfSet);
   
   % For the weight, instead of imgCounts save the padValues
   subTomoMeta.(cycleNumber).(classOut) = {imout,imgLocations,fscPAD};
@@ -1400,6 +1469,14 @@ for iGold = 1:2-flgFinalAvg
     classOut = sprintf('class_%d_Locations_%s_%s_Wgt', saveClassSum, savePrefix, halfSet);
     SAVE_IMG(montOUT, imout,emc.pixel_size_angstroms);
     subTomoMeta.(cycleNumber).(classOut) = {imout,imgLocations,imgCounts};
+
+    [montOUT, imgLocations] = BH_montage4d(classWgtSumSqrt(iGold), '');
+    
+    imout = sprintf('%s_class%d_%s_%s_WgtSqrt.mrc',outputPrefix, ...
+      saveClassSum, savePrefix, halfSet);
+    classOut = sprintf('class_%d_Locations_%s_%s_WgtSqrt', saveClassSum, savePrefix, halfSet);
+    SAVE_IMG(montOUT, imout,emc.pixel_size_angstroms);
+    subTomoMeta.(cycleNumber).(classOut) = {imout,imgLocations,imgCounts};
     
   end
 end
@@ -1414,6 +1491,7 @@ nExtracted = gather(nExtracted);
 
 subTomoMeta.(cycleNumber).('SymmetryApplied').(STAGEofALIGNMENT) = emc.symmetry;
 subTomoMeta.(cycleNumber).('ClassVector').(STAGEofALIGNMENT) = classVector;
+subTomoMeta.(cycleNumber).('class_weights') = use_class_weights;
 cycleNumber = gather(cycleNumber);
 subTomoMeta.('currentCycle') = gather(CYCLE);
 
@@ -1450,6 +1528,9 @@ end
 
 
 
+refIMG = cell(2,1);
+refWGT = cell(2,1);
+refWGT_SQRT = cell(2,1);
 
 if ~( flgEstSNR )
   load(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta');
@@ -1465,6 +1546,8 @@ if ~( flgEstSNR )
       className, fieldPrefix, halfSet);
     wgtIN = sprintf('class_%d_Locations_%s_%s_Wgt', ...
       className, fieldPrefix, halfSet);
+    wgtSqrtIN = sprintf('class_%d_Locations_%s_%s_WgtSqrt', ...
+      className, fieldPrefix, halfSet);
     
     [ refIMG{iGold} ] = BH_unStackMontage4d(1:maxClasses, ...
       subTomoMeta.(cycleNumber).(imgIN){1}, ...
@@ -1474,6 +1557,11 @@ if ~( flgEstSNR )
     [ refWGT{iGold} ] = BH_unStackMontage4d(1:maxClasses, ...
       subTomoMeta.(cycleNumber).(wgtIN){1},...
       subTomoMeta.(cycleNumber).(wgtIN){2},...
+      sizeCalc);
+
+    [ refWGT_SQRT{iGold} ] = BH_unStackMontage4d(1:maxClasses, ...
+      subTomoMeta.(cycleNumber).(wgtSqrtIN){1},...
+      subTomoMeta.(cycleNumber).(wgtSqrtIN){2},...
       sizeCalc);
   end
   
@@ -1545,6 +1633,7 @@ if ~( flgEstSNR )
     refTMP = gather(BH_multi_cRef_Vnorm(fscParams, aliParams, mskParams,...
       {refIMG{1}{iOdd},refIMG{2}{iEve}}, ...
       {refWGT{1}{iOdd},refWGT{2}{iEve}}, ...
+      {refWGT_SQRT{1}{iOdd},refWGT_SQRT{2}{iEve}}, ...
       flgCombine,flgRefCutOff, emc.pixel_size_angstroms, bFactorSend));
     
     if ~(flgFinalAvg)

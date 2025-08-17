@@ -9,8 +9,6 @@ function [  ] = BH_ctf_Correct3d( PARAMETER_FILE, varargin )
 %   emClarity ctf 3d paramN.m 'templateMatching' = use this to make recs
 %   for higher res template matching (in the works)
 
-% Read in 2dCtf stacks to trouble shoot
-PosControl2d=0;
 emc = BH_parseParameterFile(PARAMETER_FILE);
 
 % Apply a Wiener filter with this many zeros during Ctf multiplication
@@ -66,7 +64,6 @@ reconstructionParameters = 0;
 filterProjectionsForTomoCPRBackground=0;
 flgWhitenPS = [0,0,0.0];
 use_existing_tmpCache='';
-recon_for_tomoCPR = false;
 recon_for_templateMatching = false;
 recon_for_subTomo = false;
 
@@ -80,6 +77,12 @@ if nargin > 1
     end
   else
     if strcmpi(varargin{1},'split')
+        % Default to zero for normal use
+        recon_for_subTomo = true;
+        if isempty(bh_global_turn_on_phase_plate)
+          bh_global_turn_on_phase_plate = 0;
+        end
+    else
       error('Extra argument to ctf 3d either templateSearch/split and optionally a vector [iProjcess, nProcesses (from 1)]');
     end
   end
@@ -105,8 +108,8 @@ end
 
 fprintf('recon_subset is [%d,%d]\n',recon_subset(1),recon_subset(2));
 
-if (recon_for_tomoCPR + recon_for_templateMatching + recon_for_subTomo ~= 1)
-  error('Only one of the three modes can be used at a time');
+if ( recon_for_templateMatching + recon_for_subTomo ~= 1)
+  error('Only one of the two modes can be used at a time');
 end
 
 try
@@ -137,12 +140,6 @@ end
 useSurfaceFit = emc.('useSurfaceFit')
 
 
-try
-  % Not for normal use, pass the total dose less first frame to flip values.
-  invertDose = emc.('invertDose')
-catch
-  invertDose = 0;
-end
 
 
 fprintf('tiltweight is %f %f\n',tiltWeight);
@@ -150,7 +147,7 @@ fprintf('tiltweight is %f %f\n',tiltWeight);
 [tmpCache, flgCleanCache, CWD] = EMC_setup_tmp_cache(emc.fastScratchDisk, use_existing_tmpCache, 'ctf3d', false);
 
 
-if (recon_for_tomoCPR || recon_for_templateMatching)
+if ( recon_for_templateMatching)
   useSurfaceFit = false;
 end
 
@@ -178,18 +175,6 @@ end
 
 
 try
-  flgDampenAliasedFrequencies = emc.('flgDampenAliasedFrequencies');
-catch
-  flgDampenAliasedFrequencies = 0;
-end
-
-try
-  flg2dCTF = emc.('flg2dCTF');
-catch
-  flg2dCTF = 0;
-end
-
-try
   % Part of the experiment with template matching using higher res info, also
   % allow for a median filter post CTF correction, pre reconstruction to
   % further denoise prior to template matching.
@@ -201,28 +186,24 @@ end
 
 
 %%%%% Take these from param file later.
-if (recon_for_tomoCPR)
-  samplingRate = reconstructionParameters(2);
+if (recon_for_subTomo)
+  samplingRate = emc.('Ali_samplingRate');
+  % This number is used to roughly balance the trade off between
+  % achievable resolution, and run time during reconstruction as
+  % determined by the thickness of each 3d slab reconstructed. Given that
+  % we expect the resolution to improve beyond our current value, we
+  % multiply by 1/2, which gives a (only loosely optimized) resTarget.
+  resTarget = mean(subTomoMeta.('currentResForDefocusError')*0.5);
+  if (emc.whitenPS(1))
+    emc.whitenPS(2) = resTarget;
+  end
 else
-  if (recon_for_subTomo)
-    samplingRate = emc.('Ali_samplingRate');
-    % This number is used to roughly balance the trade off between
-    % achievable resolution, and run time during reconstruction as
-    % determined by the thickness of each 3d slab reconstructed. Given that
-    % we expect the resolution to improve beyond our current value, we
-    % multiply by 1/2, which gives a (only loosely optimized) resTarget.
-    resTarget = mean(subTomoMeta.('currentResForDefocusError')*0.5);
-    if (emc.whitenPS(1))
-      emc.whitenPS(2) = resTarget;
-    end
-  else
-    % For template search
-    samplingRate = emc.('Tmp_samplingRate');
-    try
-      resTarget = emc.('lowResCut');
-    catch
-      resTarget = 12;
-    end
+  % For template search
+  samplingRate = emc.('Tmp_samplingRate');
+  try
+    resTarget = emc.('lowResCut');
+  catch
+    resTarget = 12;
   end
 end
 
@@ -253,32 +234,21 @@ tiltTomoList = {};
 if (recon_for_subTomo)
   [tiltList, nTilts] = BH_returnIncludedTilts(subTomoMeta.mapBackGeometry);  
 else  
-  if (recon_for_tomoCPR)
-    tiltList{1} = varargin{2};
-    nTilts = 1;
-    if ~isfield(subTomoMeta.mapBackGeometry.(tiltList{1}).(tomoList))
-      error('Did not find any tomograms for tilt-series %s',tiltList{1});
-    end
-    tomoList = subTomoMeta.mapBackGeometry.(tiltList{1}).(tomoList);
-  else
-    % TODO set up a check on the recon folder to get what is needed for
-    % templateSearch
-    getCoords = dir('recon/*.coords');
-    nTilts = length(getCoords);
-    if (nTilts == 0)
-      error('Did not find any tomogram coordinates in recon/TS*.coords');
-    end
-    tiltList = cell(nTilts,1);
-    tiltRecGeom = cell(nTilts,1);
-    tiltTomoList = cell(nTilts,1);
-    for iStack = 1:nTilts
-      % Since we are calling this for templateSearch nTomosPossible == nTomos
-      % After template matching, there may be inactive tomos, but we'll have the same amount
-      [ tiltRecGeom{iStack}, tiltName, tiltTomoList{iStack}, tilt_geometry] = BH_multi_recGeom( sprintf('recon/%s',getCoords(iStack).name), mapBackIter);
-      tiltList{iStack} = tiltName;
-    end
-
-    
+  % TODO set up a check on the recon folder to get what is needed for
+  % templateSearch
+  getCoords = dir('recon/*.coords');
+  nTilts = length(getCoords);
+  if (nTilts == 0)
+    error('Did not find any tomogram coordinates in recon/TS*.coords');
+  end
+  tiltList = cell(nTilts,1);
+  tiltRecGeom = cell(nTilts,1);
+  tiltTomoList = cell(nTilts,1);
+  for iStack = 1:nTilts
+    % Since we are calling this for templateSearch nTomosPossible == nTomos
+    % After template matching, there may be inactive tomos, but we'll have the same amount
+    [ tiltRecGeom{iStack}, tiltName, tiltTomoList{iStack}, tilt_geometry] = BH_multi_recGeom( sprintf('recon/%s',getCoords(iStack).name), mapBackIter);
+    tiltList{iStack} = tiltName;
   end
 end
 
@@ -366,7 +336,6 @@ parfor iParProc = 1:nParProcesses
                 mapBackIter,...
                 1,...
                 samplingRate,...
-                PosControl2d,...
                 tiltWeight,...
                 flgMedianFilter);
     
@@ -411,22 +380,10 @@ parfor iParProc = 1:nParProcesses
         iCoords{iCoordIdx} = tiltRecGeom{iTilt}{iCoordIdx};
       end
     else
-      if (recon_for_tomoCPR)
-        % Get a copy of the tomoCoords (all tomodata will be deleted and only the tilt info kept for tomoCPR)
-        % place in a cell for consistency
-        
-        iCoords{1} = subTomoMeta.mapBackGeometry.tomoCoords.(tomoList{1});
-        iCoords{1}.is_active = 1;
-        iCoords{1}.dX_specimen_to_tomo = 0;
-        iCoords{1}.dY_specimen_to_tomo = 0;
-        iCoords{1}.dZ_specimen_to_tomo = 0;
-      else
-        for iCoordIdx = 1:nTomos
-          % each element of this cell is a struct tomoCoords
-          iCoords{iCoordIdx} = subTomoMeta.mapBackGeometry.tomoCoords.(tomoList{iCoordIdx});
-        end
+      for iCoordIdx = 1:nTomos
+        % each element of this cell is a struct tomoCoords
+        iCoords{iCoordIdx} = subTomoMeta.mapBackGeometry.tomoCoords.(tomoList{iCoordIdx});
       end
-
     end
 
     
@@ -448,56 +405,33 @@ parfor iParProc = 1:nParProcesses
                                                   samplingRate, cycleNumber,...
                                                   0,1);
     else
-      if (recon_for_tomoCPR)
-        NX = size(maskedStack,1);
-        NY = size(maskedStack,2);
-        
-        %           NY = size(maskedStack,2)-1;
-        NZ = floor(reconstructionParameters(1));
-        specimen_NZ_nm = NZ * emc.pixel_size_angstroms / 10;
-      
-        if (nTomos ~= 1)
-          error('For tomoCPR, only one tomo can be reconstructed at a time');
-        end
-        for iCoordIdx = 1:nTomos
-          iCoords{iCoordIdx}.tomoCoords.NX = NX * samplingRate;
-          iCoords{iCoordIdx}.tomoCoords.NY = NY * samplingRate;
-          iCoords{iCoordIdx}.tomoCoords.NZ = NZ * samplingRate;
-        end
-      else
-        [ ~, specimen_NZ_nm, ~ ] = calcAvgZ('dummy',iCoords,tiltList{iTilt}, ...
-                                            tomoList,nTomos, emc.pixel_size_angstroms, ...
-                                            samplingRate, cycleNumber,...
-                                            0,1);
-      end
+      [ ~, specimen_NZ_nm, ~ ] = calcAvgZ('dummy',iCoords,tiltList{iTilt}, ...
+                                          tomoList,nTomos, emc.pixel_size_angstroms, ...
+                                          samplingRate, cycleNumber,...
+                                          0,1);
     end
     
-    if ( flg2dCTF || recon_for_tomoCPR)
-      n_slabs_to_reconstruct = 1;
-      ctf3dDepth = specimen_NZ_nm * 10 ^ -9;
-    else
-      % TODO: for very thick specimen, this may be preventing the avg from getting to high enough
-      % resolution to be useful. So far, this is only optimized on in vitro samples.
-      dampeningMax = 0.90;
+    % TODO: for very thick specimen, this may be preventing the avg from getting to high enough
+    % resolution to be useful. So far, this is only optimized on in vitro samples.
+    dampeningMax = 0.90;
 
-      [ ctf3dDepth ] = BH_ctfCalcError( samplingRate*mean(TLT(:,16)), ...
-                                        TLT(1,17),TLT(1,18),abs(TLT(1,15)), ...
-                                        2048, TLT(1,19), ...
-                                        resTarget,specimen_NZ_nm*10, ...
-                                        dampeningMax,CYCLE);
-      fprintf('\n\nCalculated a ctfDepth of %2.2f nm for %s\n\n',ctf3dDepth*10^9,tiltList{iTilt});
-      if (ctf3dDepth > emc.max_ctf3dDepth)
-        ctf3dDepth = emc.max_ctf3dDepth;
-        fprintf('Calculated ctfDepth exceeds user specified max, so actually using a max_ctfDepth of %2.2f nm\n',ctf3dDepth*10^9);
-      end
-      % sections centered at 0, which for now is also supposed to coincide with
-      % the mean defocus determination, although this could be corrected using
-      % knowledge of particle positions given assurance that particles are the
-      % primary source of signal (and not carbon for example).
-      n_slabs_to_reconstruct = ceil(specimen_NZ_nm/(ctf3dDepth*10^9));
-      % max odd number
-      n_slabs_to_reconstruct = n_slabs_to_reconstruct + ~mod(n_slabs_to_reconstruct,2);
+    [ ctf3dDepth ] = BH_ctfCalcError( samplingRate*mean(TLT(:,16)), ...
+                                      TLT(1,17),TLT(1,18),abs(TLT(1,15)), ...
+                                      2048, TLT(1,19), ...
+                                      resTarget,specimen_NZ_nm*10, ...
+                                      dampeningMax,CYCLE);
+    fprintf('\n\nCalculated a ctfDepth of %2.2f nm for %s\n\n',ctf3dDepth*10^9,tiltList{iTilt});
+    if (ctf3dDepth > emc.max_ctf3dDepth)
+      ctf3dDepth = emc.max_ctf3dDepth;
+      fprintf('Calculated ctfDepth exceeds user specified max, so actually using a max_ctfDepth of %2.2f nm\n',ctf3dDepth*10^9);
     end
+    % sections centered at 0, which for now is also supposed to coincide with
+    % the mean defocus determination, although this could be corrected using
+    % knowledge of particle positions given assurance that particles are the
+    % primary source of signal (and not carbon for example).
+    n_slabs_to_reconstruct = ceil(specimen_NZ_nm/(ctf3dDepth*10^9));
+    % max odd number
+    n_slabs_to_reconstruct = n_slabs_to_reconstruct + ~mod(n_slabs_to_reconstruct,2);
     fprintf('with %3.3f nm sections, correcting %d tilt-series\n', ctf3dDepth*10^9, n_slabs_to_reconstruct);
     
     % For each tomo create a list of slices that are to be reconstructed
@@ -538,27 +472,23 @@ parfor iParProc = 1:nParProcesses
       end
       
 
-      if (PosControl2d)
-        correctedStack = maskedStack;
-      else
         
         % I would have thought the global would be recognized, but it looks
         % like there is something odd about its use with a parfor loop
         % FIXME, when setting up the iterator, make clean copies for each
         % worker that are local in scope.e
         
-        [ correctedStack ] = ctfMultiply_tilt(n_slabs_to_reconstruct,iSection,ctf3dDepth, ...
-                                              avgZ,TLT,emc.pixel_size_angstroms,maskedStack,...
-                                              specimen_NZ_nm*10/emc.pixel_size_angstroms,flgDampenAliasedFrequencies,...
-                                              preCombDefocus,samplingRate,...
-                                              applyExposureFilter,surfaceFit,...
-                                              useSurfaceFit,invertDose,...
-                                              bh_global_turn_on_phase_plate,...
-                                              filterProjectionsForTomoCPRBackground,...
-                                              emc.whitenPS, ...
-                                              flip_defocus_offset, ...
-                                              flip_tilt_offset);
-      end
+      [ correctedStack ] = ctfMultiply_tilt(n_slabs_to_reconstruct,iSection,ctf3dDepth, ...
+                                            avgZ,TLT,emc.pixel_size_angstroms,maskedStack,...
+                                            specimen_NZ_nm*10/emc.pixel_size_angstroms,...
+                                            preCombDefocus,samplingRate,...
+                                            applyExposureFilter,surfaceFit,...
+                                            useSurfaceFit,...
+                                            bh_global_turn_on_phase_plate,...
+                                            filterProjectionsForTomoCPRBackground,...
+                                            emc.whitenPS, ...
+                                            flip_defocus_offset, ...
+                                            flip_tilt_offset);
       % Write out the stack to the cache directory as a tmp file
       
       if (flgEraseBeads_aferCTF)
@@ -583,10 +513,7 @@ parfor iParProc = 1:nParProcesses
 
           reconName = sprintf('%s/%s_ali%d_%d_%d.rec', tmpCache, tiltList{iTilt}, mapBackIter+1, this_tomo_idx, iSection);
             
-          if (recon_for_tomoCPR)
-            TA = sortrows(subTomoMeta.tiltGeometry.(tomoList{1}),1);
-            TA = TA(:,4);
-          end
+
 
           if (recon_for_subTomo)
             TA = sortrows(subTomoMeta.tiltGeometry.(tomoList{iTomo}),1);
@@ -728,8 +655,6 @@ parfor iParProc = 1:nParProcesses
       % be checked first.
       if (bh_global_turn_on_phase_plate(1))
         reconNameFull = sprintf('cache/%s_bin%d_filtered.rec', tomoList{iTomo}, samplingRate);
-      elseif recon_for_tomoCPR
-        reconNameFull = sprintf('%scache/%s_bin%d_backgroundEst.rec', CWD, tomoList{iTomo}, samplingRate);
       else
         reconNameFull = sprintf('cache/%s_bin%d.rec', tomoList{iTomo},samplingRate);
       end
@@ -810,19 +735,14 @@ function [] = preBinStacks(TLT, ...
                           mapBackIter, ...
                           usableArea,...
                           samplingRate,...
-                          PosControl2d,...
                           tiltWeight,...
                           flgMedianFilter)
 
 
 
-if (PosControl2d)
-  prefix = 'ctf';
-  suffix = '_ctf';
-else
-  prefix = 'ali';
-  suffix = '';
-end
+
+prefix = 'ali';
+suffix = '';
 
 % TODO: this could all be in loadOrBin
 fullStack = sprintf('%sStacks/%s_ali%d%s.fixed', prefix,STACK_PRFX, mapBackIter+1, suffix);
@@ -963,10 +883,10 @@ end
 
 function [correctedStack] = ctfMultiply_tilt(n_slabs_to_reconstruct,iSection,ctf3dDepth, ...
                                             avgZ,TLT,pixel_size_angstroms,maskedStack,...
-                                            specimen_NZ_nm,flgDampenAliasedFrequencies,...
+                                            specimen_NZ_nm,...
                                             preCombDefocus,samplingRate,...
                                             applyExposureFilter,surfaceFit,...
-                                            useSurfaceFit,invertDose, ...
+                                            useSurfaceFit, ...
                                             phakePhasePlate, ...
                                             filterProjectionsForTomoCPRBackground,...
                                             flgWhitenPS, ...
@@ -1015,34 +935,16 @@ if (flip_defocus_offset)
 end
 
 
-if ( flgDampenAliasedFrequencies )
-  % Experiment with dampning higher frequencies where aliasing is going to
-  % result in nonsens.
-  flgDampenAlias = 1;
-  fprintf('\n\nExperimental dampening of aliased CTF terms\n');
-else
-  flgDampenAlias = 0;
-end
-
-apoSize = 6;
 fastFTSize = BH_multi_iterator([d1,d2],'fourier2d');
-
 
 % These should be constant for a given tiltseries
 Cs = TLT(1,17);
 WAVELENGTH = TLT(1,18);
 AMPCONT = TLT(1,19);
 
-if ( flgDampenAlias )
-  % Calculate a centered grid b/c real space convolution
-  [radialGrid,phi,~,~,~,~] = BH_multi_gridCoordinates(fastFTSize, ...
-    'Cylindrical','GPU', ...
-    {'none'},1,1,0);
-else
-  [radialGrid,phi,~,~,~,~] = BH_multi_gridCoordinates(fastFTSize, ...
-    'Cylindrical','GPU', ...
-    {'none'},1,0,0);
-end
+[radialGrid,phi,~,~,~,~] = BH_multi_gridCoordinates(fastFTSize, ...
+  'Cylindrical','GPU', ...
+  {'none'},1,0,0);
 radialGrid = {radialGrid./(pixel_size_angstroms*10^-10),0,phi};
 phi = [];
 

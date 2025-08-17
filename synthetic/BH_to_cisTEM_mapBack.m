@@ -1,4 +1,4 @@
-function [ ] = BH_to_cisTEM_mapBack(PARAMETER_FILE, CYCLE, output_prefix, symmetry, MAX_EXPOSURE, mapBackIter)
+function [ ] = BH_to_cisTEM_mapBack(PARAMETER_FILE, CYCLE, output_prefix, symmetry, MAX_EXPOSURE, classIDX)
 
 % Map back and align using the subtomograms as fiducial markers.
 
@@ -16,7 +16,7 @@ function [ ] = BH_to_cisTEM_mapBack(PARAMETER_FILE, CYCLE, output_prefix, symmet
 
 
 emc = BH_parseParameterFile(PARAMETER_FILE);
-mapBackIter = EMC_str2double(mapBackIter);
+classIDX = EMC_str2double(classIDX)
 MAX_EXPOSURE = EMC_str2double(MAX_EXPOSURE)
 if isnan(MAX_EXPOSURE)
   error('MAX_EXPOSURE is nan - if running from an interactive matlab session, did you enter as a string?');
@@ -95,9 +95,10 @@ fprintf('Using %d workers as max of %d %d*nGPUs and %d nWorkers visible\n', ...
 
 
 load(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta');
-if (mapBackIter == -1)
-  mapBackIter = subTomoMeta.currentTomoCPR;
+if (classIDX == -1)
+  classIDX = 0;
 end
+mapBackIter = subTomoMeta.currentTomoCPR;
 
 
 % TODO: use these to add an optional defocus fitting step
@@ -166,7 +167,8 @@ for iTiltSeries = tiltStart:nTiltSeries
   if (skip_to_the_end_and_run)
     continue;
   end
-  
+
+
   if (useFixedNotAliStack)
     tilt_filestem = tilt_series_filenames{iTiltSeries};
     tilt_filepath = sprintf('%sfixedStacks/%s.fixed', CWD, tilt_series_filenames{iTiltSeries});
@@ -186,6 +188,8 @@ for iTiltSeries = tiltStart:nTiltSeries
   skip_this_tilt_series_because_it_is_empty = false(n_tomos_this_tilt_series,1);
   
   % tomoList = fieldnames(subTomoMeta.mapBackGeometry.tomoName);
+  % FIXME: switch to the included tilts, but also add a check there is > 1 subtomo
+  % First determine why things are failing with only one subtomo as this could point to an off by one error, which may have significant implications for the alignment.
   tomoList = {};
   n_active_tomos = 0;
   fn = fieldnames(subTomoMeta.mapBackGeometry.tomoName);
@@ -193,9 +197,16 @@ for iTiltSeries = tiltStart:nTiltSeries
     if strcmp(subTomoMeta.mapBackGeometry.tomoName.(fn{iTomo}).tiltName, tilt_series_filenames{iTiltSeries})
       % This is dumb, fix it to be explicit.
       if (subTomoMeta.mapBackGeometry.tomoCoords.(fn{iTomo}).is_active)
-        tomoList{n_active_tomos+1} = fn{iTomo};
-        % Only increment if values found.
-        n_active_tomos = n_active_tomos + 1;
+        if (classIDX == 0)
+          n_subtomos = sum(geometry.(fn{iTomo})(:,26) ~= -9999);
+        else
+          n_subtomos = sum(geometry.(fn{iTomo})(:,26) == classIDX);
+        end
+        if (n_subtomos > 0)
+          tomoList{n_active_tomos+1} = fn{iTomo};
+          % Only increment if values found.
+          n_active_tomos = n_active_tomos + 1;
+        end
       end
     end
   end
@@ -388,8 +399,12 @@ for iTiltSeries = tiltStart:nTiltSeries
      
     positionList = geometry.(tomoList{iTomo});
 
-    
-    positionList = positionList(positionList(:,26) ~= -9999,:);
+    if (classIDX == 0)
+      positionList = positionList(positionList(:,26) ~= -9999,:);
+    else
+      positionList = positionList(positionList(:,26) == classIDX,:);
+    end
+
     nFidsTotal = nFidsTotal + size(positionList,1);
 
     tiltHeader = getHeader(MRCImage(tilt_filepath,0));
@@ -665,7 +680,7 @@ for iTiltSeries = tiltStart:nTiltSeries
   STACK = OPEN_IMG('single',tilt_filepath);
   
   for iPrj = 1:nPrjs
-    
+    n_included_this_prj = 0;
     if (abs(TLT(iPrj,11)) > MAX_EXPOSURE)
       continue;
     end
@@ -707,6 +722,7 @@ for iTiltSeries = tiltStart:nTiltSeries
      
       particle_was_skipped = false;
       if  ( x_start > 0 && y_start > 0 && x_start + tileSize(1) - 1 < sTX && y_start + tileSize(2) - 1 < sTY )
+        n_included_this_prj = n_included_this_prj + 1;
         output_particle_stack(:,:,iGpuDataCounter) = STACK(x_start:x_start+tileSize(1) - 1,y_start:y_start+tileSize(2) - 1,TLT(iPrj,1));
       
         % The trasformation of the particle is e1,e2,e3,esym  into it's postion in the tomogram frame, then
@@ -785,16 +801,20 @@ for iTiltSeries = tiltStart:nTiltSeries
     
   end % end of prj loop
   
-  % Trim the stack to account for windowing skips
-  output_particle_stack = gather(output_particle_stack(:,:,1:iGpuDataCounter - 1));
-  tmp_stack_filename = sprintf('%s/%s_%d.mrc',mbOUT{1:2},iCell);
-  SAVE_IMG(output_particle_stack, tmp_stack_filename, pixelSize);
+  n_included_this_prj
 
-  fprintf(newstack_file_handle, '%s\n',tmp_stack_filename);
-  fprintf(newstack_file_handle, '0-%d\n',iGpuDataCounter-2);
+  if (n_included_this_prj > 0)
+    % Trim the stack to account for windowing skips
+    output_particle_stack = gather(output_particle_stack(:,:,1:iGpuDataCounter - 1));
+    tmp_stack_filename = sprintf('%s/%s_%d.mrc',mbOUT{1:2},iCell);
+    SAVE_IMG(output_particle_stack, tmp_stack_filename, pixelSize);
 
-  % output_cell{iCell}= gather(output_particle_stack);
-  iCell = iCell + 1;
+    fprintf(newstack_file_handle, '%s\n',tmp_stack_filename);
+    fprintf(newstack_file_handle, '0-%d\n',iGpuDataCounter-2);
+
+    % output_cell{iCell}= gather(output_particle_stack);
+    iCell = iCell + 1;
+  end
 
 end % end of the loop over tilt series
 
@@ -827,7 +847,7 @@ n_threads_per_proc = floor(maxThreads/n_recon_procs) .* ones(1,n_recon_procs);
 leftover_threads = maxThreads - n_threads_per_proc(1)*n_recon_procs;
 thread_counter = 1;
 while (leftover_threads > 0)
-  this_proc = mod(thread_counder,4)+1;
+  this_proc = mod(thread_counter,4)+1;
   n_threads_per_proc(this_proc) = n_threads_per_proc(this_proc) + 1;
   leftover_threads = leftover_threads - 1;
 end
@@ -841,9 +861,9 @@ else
   stack_boundaries(end) = outputNumberOfSlices+1;
 end
 
-do_initial = false
+do_initial = true
 
-if (do_initial) % revert
+if (do_initial) % 
 % %%%%%%%%%%%%%%%%%%%%%%%%%
 % Initial reconstruction
 % %%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -916,7 +936,7 @@ while (n_pauses < max_pauses)
       break;
     end
   end
-  if all_founddo_initial
+  if all_found
     break;
   else
     fprintf('Waiting for reconstructions to finish...\n');
@@ -961,8 +981,8 @@ system(sprintf('rm %s/%sdump_?_*.dat',tmpCache,output_prefix));
 
 % Get the FSC cutoff for refinement
 fsc = importdata(sprintf('%s_stats.txt',output_prefix),' ',12);
-fsc_cutoff = 0.5 * (fsc.data(find(fsc.data(:,5) < 0.5,1),2) + fsc.data(find(fsc.data(:,4) < 0.5,1),2))
-
+% fsc_cutoff = 0.5 * (fsc.data(find(fsc.data(:,5) < 0.5,1),2) + fsc.data(find(fsc.data(:,4) < 0.5,1),2));
+fsc_cutoff = fsc.data(find(fsc.data(:,4) < 0.5,1))
 %%%%%%%%%%%%%%%%%%%%%%%%%
 % Refine
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%r
@@ -1149,7 +1169,8 @@ system(sprintf('rm %s/%sdump_?_*.dat',tmpCache,output_prefix));
 
 % Get the FSC cutoff for refinement
 fsc = importdata(sprintf('%s_stats_refined.txt',output_prefix),' ',12);
-fsc_cutoff = 0.5 * (fsc.data(find(fsc.data(:,5) < 0.5,1),2) + fsc.data(find(fsc.data(:,4) < 0.5,1),2))
+% fsc_cutoff = 0.5 * (fsc.data(find(fsc.data(:,5) < 0.5,1),2) + fsc.data(find(fsc.data(:,4) < 0.5,1),2))
+fsc_cutoff = fsc.data(find(fsc.data(:,4) < 0.5,1))
 % Use to decide whether to do more angular refinement
 fsc_last = fsc_cutoff 
 
@@ -1337,15 +1358,16 @@ system(sprintf('./%s',merge3d_name));
 
 system(sprintf('rm %s/%sdump_?_*.dat',tmpCache,output_prefix));
 
-end % revert do _intial
+end %  do _intial
 
 
 % Get the FSC cutoff for refinement
 fsc = importdata(sprintf('%s_stats_refined2.txt',output_prefix),' ',12);
-fsc_cutoff = 0.5 * (fsc.data(find(fsc.data(:,5) < 0.5,1),2) + fsc.data(find(fsc.data(:,4) < 0.5,1),2))
+% fsc_cutoff = 0.5 * (fsc.data(find(fsc.data(:,5) < 0.5,1),2) + fsc.data(find(fsc.data(:,4) < 0.5,1),2))
+fsc_cutoff = fsc.data(find(fsc.data(:,4) < 0.5,1))
 fsc_res = fsc.data(find(fsc.data(:,5) < 0.143,1),2)
 
-if ~(do_initial) % revert
+if ~(do_initial) % 
   fsc_last = fsc_cutoff / 0.94; 
 end
 n_max_refinements = 7;
@@ -1564,7 +1586,8 @@ system(sprintf('rm %s/%sdump_?_*.dat',tmpCache, output_prefix));
 
 % Get the FSC cutoff for refinement
 fsc = importdata(sprintf('%s_stats_refined%d.txt',output_prefix, i_refine),' ',12);
-fsc_cutoff = 0.5 * (fsc.data(find(fsc.data(:,5) < 0.5,1),2) + fsc.data(find(fsc.data(:,4) < 0.5,1),2))
+% fsc_cutoff = 0.5 * (fsc.data(find(fsc.data(:,5) < 0.5,1),2) + fsc.data(find(fsc.data(:,4) < 0.5,1),2))
+fsc_cutoff = fsc.data(find(fsc.data(:,4) < 0.5,1))
 fsc_res = fsc.data(find(fsc.data(:,5) < 0.143,1),2)
 
 
@@ -1759,7 +1782,8 @@ end
   system(sprintf('rm %s/%sdump_?_*.dat',tmpCache,output_prefix));
 
   fsc = importdata(sprintf('%s_stats_refined3.txt',output_prefix),' ',12);
-  fsc_cutoff = 0.5 * (fsc.data(find(fsc.data(:,5) < 0.5,1),2) + fsc.data(find(fsc.data(:,4) < 0.5,1),2))
+  % fsc_cutoff = 0.5 * (fsc.data(find(fsc.data(:,5) < 0.5,1),2) + fsc.data(find(fsc.data(:,4) < 0.5,1),2))
+  fsc_cutoff = fsc.data(find(fsc.data(:,4) < 0.5,1))
   fsc_res = fsc.data(find(fsc.data(:,5) < 0.143,1),2)
 end % defocus refine loop
 

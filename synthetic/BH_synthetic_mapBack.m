@@ -1,4 +1,4 @@
-function [ ] = BH_synthetic_mapBack(PARAMETER_FILE, CYCLE, tiltStart)
+function [ ] = BH_synthetic_mapBack(PARAMETER_FILE, CYCLE, STAGEofALIGNMENT, tiltStart)
 
 % Map back and align using the subtomograms as fiducial markers.
 
@@ -17,7 +17,6 @@ function [ ] = BH_synthetic_mapBack(PARAMETER_FILE, CYCLE, tiltStart)
 % FIXME: is this even relevant any more?
 buildTomo=1;% % % % % % %
 
-save_diagnostic_ccf=0;
 
 % Default true, we don't need this after projection
 delete_background_estimate = true;
@@ -25,6 +24,8 @@ delete_background_estimate = true;
 
 
 emc = BH_parseParameterFile(PARAMETER_FILE);
+
+
 
 CYCLE = EMC_str2double(CYCLE);
 cycle_numerator = '';
@@ -140,7 +141,7 @@ ctfInc = emc.('tomo_cpr_defocus_step')*10^10;
 calcCTF = emc.('tomo_cpr_defocus_refine');
 
 
-[tiltNameList, nTiltSeries] = BH_returnIncludedTilts( subTomoMeta.mapBackGeometry )
+[tiltNameList, nTiltSeries] = BH_returnIncludedTilts( subTomoMeta.mapBackGeometry );
 
 
 
@@ -161,12 +162,29 @@ end
 % Cycle 0 is named differently - I'll be deleting this in an overhaul of the way
 % the subTomoMeta is written.
 if (CYCLE)
-  try
-    fprintf('Using Alignment geometry %s\n',cycleNumber);
-    geometry = subTomoMeta.(cycleNumber).RawAlign;
-  catch
+  if strcmpi(STAGEofALIGNMENT, 'Cluster')
+    geometry = subTomoMeta.(cycleNumber).('ClusterClsGeom');
+    fprintf('Using ClusterClsGeom geometry %s\n',cycleNumber);
+    % FIXME: THis logic is confusing, the two ClusterCls/REf are the product of the average step ...
+  elseif strcmpi(STAGEofALIGNMENT, 'RawAlignment') 
+    if ( emc.multi_reference_alignment )
+      if (emc.classification)
+        geometry = subTomoMeta.(cycleNumber).('ClusterClsGeom');
+        fprintf('Using ClusterClsGeom geometry %s\n',cycleNumber);
+      else
+        geometry = subTomoMeta.(cycleNumber).('ClusterRefGeom');
+        fprintf('Using ClusterRefGeom geometry %s\n',cycleNumber);
+      end
+    else
+      geometry = subTomoMeta.(cycleNumber).RawAlign;
+      fprintf('Using Alignment geometry %s\n',cycleNumber);
+    end
+  else
+    if ~strcmpi(STAGEofALIGNMENT, 'Avg')
+      error('Unknown stage of alignment %s', STAGEofALIGNMENT);
+    end
+    geometry = subTomoMeta.(cycleNumber).('Avg_geometry');
     fprintf('Using Average geometry %s\n',cycleNumber);
-    geometry = subTomoMeta.(cycleNumber).Avg_geometry;
   end
 else
   try
@@ -236,19 +254,31 @@ is_first_run = true;
 
 mbOUT = {[tmpCache],[mapBackIter+1],'dummy'};
 
+continue_an_existing_run = false;
+% Check for an existing completed mapBack dir exist, if so move to backup
+if exist(sprintf('mapBack%d',mapBackIter+1), 'dir')
+  [y,m,d] = ymd(datetime);
+  [h,mi,s] = hms(datetime);
+  system(sprintf('mv mapBack%d mapBack%d_%d%0.2d%0.2d_%d_%d_%d',mapBackIter+1,mapBackIter+1,y,m,d,h,mi,floor(s)));
+  clear y m d h mi s
+end
+% Now check for an existing incomplete mapBack dir, if so, continue
+if exist(sprintf('cache/mapBack%d',mapBackIter+1), 'dir')
+  continue_an_existing_run = true;
+else
+  system(sprintf('mkdir -p cache/mapBack%d',mapBackIter+1));
+end
+
+system(sprintf('mkdir -p %smapBack%d',tmpCache,mapBackIter+1));
+
 for iTiltSeries = tiltStart:nTiltSeries
   skip_this_tilt_series_bc_alignments_are_bonkers = false;
   if (skip_to_the_end_and_run)
     continue;
   end
 
-
-
-
   
-  % mapBackRePrjSize = min(64,subTomoMeta.mapBackGeometry.(tiltNameList{iTiltSeries}).('tomoCprRePrjSize'))
-  mapBackRePrjSize = 512
-  % % %   iViewGroup = subTomoMeta.mapBackGeometry.viewGroups.(tiltNameList{iTiltSeries});
+  mapBackRePrjSize = 512;
   nTomograms = subTomoMeta.mapBackGeometry.(tiltNameList{iTiltSeries}).nTomos
   if nTomograms == 0
     % No points were saved after template matching so skip this tilt series
@@ -257,6 +287,8 @@ for iTiltSeries = tiltStart:nTiltSeries
   end
 
   skip_this_tilt_series_because_it_is_empty = false(nTomograms,1);
+
+
   
   % tomoList = fieldnames(subTomoMeta.mapBackGeometry.tomoName);
   tomoList = subTomoMeta.mapBackGeometry.(tiltNameList{iTiltSeries}).tomoList;
@@ -267,6 +299,28 @@ for iTiltSeries = tiltStart:nTiltSeries
   
   [~,tiltBaseName,~] = fileparts(tilt_filename);
   mbOUT{3} = tiltBaseName;
+
+  if (continue_an_existing_run)
+    tilt_already_mapped_back = true;
+    % A minimum check see if we have the model file
+    check_mod = sprintf('cache/mapBack%d/%s_fit-full.fid',mbOUT{2:3});
+    if ~(exist(check_mod,'file'))
+      tilt_already_mapped_back = false;
+      fprintf('Tilt series %s has not been started\n',tiltNameList{iTiltSeries});
+    else
+      % Okay they both exist lets see if they are readable, the same length and > 0
+      [ model_is_not_okay ] = system(sprintf('model2point %s %s.tmp >> /dev/null', check_mod, check_mod));
+      if (model_is_not_okay)
+        tilt_already_mapped_back = false;
+        fprintf('Tilt series %s has not been started\n',tiltNameList{iTiltSeries});
+      end
+      system(sprintf('rm %s.tmp', check_mod));
+    end
+    if (tilt_already_mapped_back)
+      fprintf('Tilt series %s has already been mapped back, skipping\n',tiltNameList{iTiltSeries});
+      continue;
+    end
+  end
   
   
   if (mapBackIter)
@@ -346,16 +400,7 @@ for iTiltSeries = tiltStart:nTiltSeries
     end
   end
   
-  % Check that an existing mapBack dir doen't exist, if so move to backup
-  if exist(sprintf('mapBack%d',mapBackIter+1), 'dir')
-    [y,m,d] = ymd(datetime);
-    [h,mi,s] = hms(datetime);
-    system(sprintf('mv mapBack%d mapBack%d_%d%0.2d%0.2d_%d_%d_%d',mapBackIter+1,mapBackIter+1,y,m,d,h,mi,floor(s)));
-    clear y m d h mi s
-  end
 
-  system(sprintf('mkdir -p %smapBack%d',tmpCache,mapBackIter+1));
-  system(sprintf('mkdir -p cache/mapBack%d',mapBackIter+1));
   
   % re-initialize the parpool for each tilt series to free up mem.
   if ~isempty(gcp('nocreate'))
@@ -398,6 +443,8 @@ for iTiltSeries = tiltStart:nTiltSeries
   if (emc.save_mapback_classes && save_mapback_masks)
     avgColor = zeros(reconstruction_size, 'int16');
   end
+
+  
   
 
   TLT = tiltGeometry.(tomoList{1});
@@ -419,6 +466,7 @@ for iTiltSeries = tiltStart:nTiltSeries
     refVol{2}{iRef} = gather(refVol{2}{iRef});
     particleMask{iRef} = gather(particleMask{iRef});
   end
+
   
   sprintf('[%d,%d]',maxZ,samplingRate);
   tiltNameList{iTiltSeries};
@@ -438,19 +486,21 @@ for iTiltSeries = tiltStart:nTiltSeries
     avgColor = zeros(reconstruction_size, 'int16');
   end
   
+  
   if (buildTomo)
     coordOUT = fopen(sprintf('%smapBack%d/%s.coord',mbOUT{1:3}),'w');
     coordSTART = fopen(sprintf('%smapBack%d/%s.coord_start',mbOUT{1:3}),'w');
     if (emc.save_mapback_classes)
       coordCLASS = fopen(sprintf('%smapBack%d/%s.coord_class',mbOUT{1:3}),'w');
-      coordCLASS_perTomo = cell(nTomograms,1);
+      coordClass_perTomo = cell(nTomograms,1);
       for iCoordClassPerTomo = 1:nTomograms
-        coordClass_perTomo{iCoordClassPerTomo} = fopen(sprintf('%smapBack%d/%s.coord_class',mbOUT{1:2},tomoList{iCoordClassPerTomo}),'w');
+        coordClass_perTomo{iCoordClassPerTomo} = fopen(sprintf('%smapBack%d/%s_%s.coord_class',mbOUT{1:3},tomoList{iCoordClassPerTomo}),'w');
       end
     end    
     defOUT   = fopen(sprintf('%smapBack%d/%s.defAng',mbOUT{1:3}),'w');
   end
-  
+
+
   % Track the number of fiducials in order to scale the K-factor to more or less
   % aggressivley downweight outliers in the alignment
 
@@ -462,9 +512,16 @@ for iTiltSeries = tiltStart:nTiltSeries
     positionList{iTomo} = positionList{iTomo}(positionList{iTomo}(:,26) ~= -9999,:);
     n_possible_particles = n_possible_particles + size(positionList{iTomo},1);
   end
+
+  n_possible_particles
+  if (emc.tomoCPR_n_particles_minimum > n_possible_particles)
+    fprintf('There are fewer particles available (%d) than tomoCPR_n_particles_minimum (%d)\n', n_possible_particles, emc.tomoCPR_n_particles_minimum);
+    skip_this_tilt_series_because_it_is_empty = true(size(skip_this_tilt_series_because_it_is_empty));
+  end
+
     
   % Now check to see if we need to limit the number of fiducials
-  if (emc.tomoCPR_random_subset == -1 || emc.tomoCPR_random_subset > n_possible_particles)
+  if (emc.tomoCPR_random_subset == -1 || emc.tomoCPR_random_subset >= n_possible_particles)
     fprintf('Using all of the %d available fiducials\n',size(positionList{iTomo},1));
   else
     fprintf('Using a random subset of %d fiducials from the %d available\n',...
@@ -747,13 +804,16 @@ for iTiltSeries = tiltStart:nTiltSeries
       end % loop over subtomos
     end %%%% temp condition to skip building full tomo
     
-    
+    fprintf('Finished processing %s\n',tomoList{iTomo});
   end % end of loop over tomograms on this tilt-series
   
+  fprintf('Finished processing tilt series %s\n',tiltNameList{iTiltSeries});
   % No subtomos remain
   if all( skip_this_tilt_series_because_it_is_empty )
     continue;
   end
+  fprintf('Finished processing tilt series after continue %s\n',tiltNameList{iTiltSeries});
+    buildTomo
     
   if (buildTomo)
 
@@ -764,15 +824,18 @@ for iTiltSeries = tiltStart:nTiltSeries
       p2m = sprintf(['point2model -sphere 6 -thick 6 -scat  ',...
         '%smapBack%d/%s.coord_class %smapBack%d/%s_classIdx.3dfid'], ...
         mbOUT{1:3},mbOUT{1:3});
+      fprintf('Running point2model on %s\n',p2m);
       system(p2m);
       for iCoordClassPerTomo = 1:nTomograms
         fclose(coordClass_perTomo{iCoordClassPerTomo});
         p2m = sprintf(['point2model -sphere 6 -thick 6 -scat  ',...
-          '%smapBack%d/%s.coord_class %smapBack%d/%s_classIdx.3dfid'], ...
-          mbOUT{1:2},tomoList{iCoordClassPerTomo},mbOUT{1:2},tomoList{iCoordClassPerTomo});
+          '%smapBack%d/%s_%s.coord_class %smapBack%d/%s_%s_classIdx.3dfid'], ...
+          mbOUT{1:3},tomoList{iCoordClassPerTomo},mbOUT{1:3},tomoList{iCoordClassPerTomo});
+        fprintf('Running point2model for iTomo %d on %s\n',iCoordClassPerTomo,p2m);
         system(p2m);
       end
     end
+    
     p2m = sprintf(['point2model -zero -circle 3 -color 0,0,255 -values -1 ',...
                   '%smapBack%d/%s.coord %smapBack%d/%s.3dfid'], ...
                   mbOUT{1:3},mbOUT{1:3});
@@ -812,7 +875,6 @@ for iTiltSeries = tiltStart:nTiltSeries
     
     clear avgTomo{1}  wgt
   end
-
   % % %   % It may be faster to work with a rotated vol since the reading in may cause
   % % %   % problems, but the projection is so slow, that this isn't worth dealing with
   % % %   % now.
@@ -1073,7 +1135,7 @@ for iTiltSeries = tiltStart:nTiltSeries
     end
     
     % re-write the projected coords
-    system(sprintf(['model2point -float -contour -zero ', '%smapBack%d/%s.fid %smapBack%d/%s.coordPrj'], mbOUT{1:3}, mbOUT{1:3}))
+    system(sprintf(['model2point -contour -zero ', '%smapBack%d/%s.fid %smapBack%d/%s.coordPrj'], mbOUT{1:3}, mbOUT{1:3}))
     
   end
   
@@ -1159,17 +1221,9 @@ for iTiltSeries = tiltStart:nTiltSeries
   % Zero and only changed if CTF is refined.
   defocusShifts = cell(nPrjs,1);
   
-  if (calcCTF)
-    nToCheck = floor(ctfRange./ctfInc);
-    defShiftVect = ctfInc.*[-nToCheck:nToCheck]';
-  else
-    nToCheck = 1;
-    defShiftVect = 0;
-  end
-  nDefTotal = length(defShiftVect);
   
   defocusCCC = cell(nPrjs,1);
-  expectedDefocusPerFiducial=cell(nPrjs,1);
+  defocusVAL = cell(nPrjs,1);
   
   
   if samplingRate > 1
@@ -1200,8 +1254,8 @@ for iTiltSeries = tiltStart:nTiltSeries
     % I must specify the number of fiducials somehwere else, replace the
     % unique when there is time.
     defocusShifts{iPrj} = 0;
-    defocusCCC{iPrj} = zeros(nDefTotal, nFidsTotal,'single','gpuArray');
-    expectedDefocusPerFiducial{iPrj} = zeros(nDefTotal,nFidsTotal,'single');
+    defocusCCC{iPrj} = zeros( nFidsTotal,1,'single','gpuArray');
+    defocusVAL{iPrj} = zeros( nFidsTotal,1,'single','gpuArray');
   end
   
   %Put back into a natural order
@@ -1211,10 +1265,10 @@ for iTiltSeries = tiltStart:nTiltSeries
     emc.k_factor_scaling = 10 / sqrt(nFidsTotal);
   end
   
-  
+
   % for iPrj = 1:nPrjs % recert
   parfor iPrj = 1:nPrjs
-    
+  
     %   	    % For some reason if these mrc objects are created before the parfor
     % loop begins, they fail to load. It is fine as a regular for loop
     % though - annoying, but very little overhead. It would be nice
@@ -1372,6 +1426,7 @@ for iTiltSeries = tiltStart:nTiltSeries
       mRx
       mRy
       COM
+      save('full_trbl.mat', '-v7');
       SAVE_IMG(MRCImage(gather(cccPrj)),'err.mrc');
       error('failed to box out the cross-correlation for image\n%s\non Projection %d\n', ...
         tiltName, iPrj);
@@ -1418,9 +1473,13 @@ for iTiltSeries = tiltStart:nTiltSeries
     
     coordOUT = fopen(sprintf('%smapBack%d/%s_%03d.coordFIT',mbOUT{1:3},iPrj),'w');
     
-    tmpOut = zeros([CTFSIZE,size(wrkFid,1)],'single','gpuArray');
+    n_tiles = size(wrkFid,1);
     dXY = [0,0];
-    for iFid = 1:size(wrkFid,1)
+    initial_shifts = zeros(n_tiles,2); 
+    score_sum = 0.0;
+    score_sum_sq = 0.0;
+    n_at_end_of_range = 0;
+    for iFid = 1:n_tiles
       
       if wrkFid(iFid,2) == -9999
         fprintf(coordOUT,'%d %d %0.4f %0.4f %d\n', wrkFid(iFid,1:2), [-4,-4], -9999);
@@ -1479,11 +1538,6 @@ for iTiltSeries = tiltStart:nTiltSeries
       dataTile = dataTile./rms(dataTile(:));
       refTile = refTile ./ rms(refTile(:));
 
-      if (save_diagnostic_ccf)
-        SAVE_IMG(dataTile, 'dataTile.mrc');
-        SAVE_IMG(refTile, 'refTile.mrc');
-      end
-
       
       dataTile = ctfMask.*BH_padZeros3d(dataTile,'fwd',padCTF, ...
         'GPU','singleTaper');
@@ -1491,154 +1545,152 @@ for iTiltSeries = tiltStart:nTiltSeries
       refTile = ctfMask.*BH_padZeros3d(refTile,'fwd',padCTF, ...
         'GPU','singleTaper');
       
-        if (save_diagnostic_ccf)
-          SAVE_IMG(dataTile, 'dataTile_pad.mrc');
-          SAVE_IMG(refTile, 'refTile_pad.mrc');
-        end
 
-      
+      % TODO: make sure this is matching how the calc is done in toCistem
       df1 = (wrkDefAngTilt(iFid,1) + wrkPar(iFid,5)) * 10;
       df2 = (wrkDefAngTilt(iFid,1) - wrkPar(iFid,5)) * 10;
       dfA = wrkPar(iFid,6);
       
-      if (calcCTF)
-        dataFT = bhF.swapPhase(bhF.fwdFFT(dataTile,1,1,[1e-5,40,min(min_res_for_ctf_fitting,sqrt(2).*pixel_size),pixel_size]),'fwd');
-        refFT  = conj(bhF.fwdFFT(refTile,1,1,[1e-5,40,min(min_res_for_ctf_fitting,sqrt(2).*pixel_size),pixel_size]));
-      else
-        dataFT = bhF.swapPhase(bhF.fwdFFT(dataTile,1,1,[1e-5,400,lowPassCutoff,pixel_size]),'fwd');
-        refFT  = conj(bhF.fwdFFT(refTile,1,1,[1e-5,400,lowPassCutoff,pixel_size]));
+
+      dataFT = bhF.swapPhase(bhF.fwdFFT(dataTile,1,1,[1e-5,400,lowPassCutoff,pixel_size]),'fwd');
+
+      dataFT = dataFT ./ sqrt(2.*sum(abs(dataFT(1:end-bhF.invTrim,:)).^2,'all'));
+
+      refFT  = conj(bhF.fwdFFT(refTile,1,1,[1e-5,400,lowPassCutoff,pixel_size]));
+    
+
+      iRefCTF = refFT .* ...
+          mexCTF(true,false,int16(CTFSIZE(1)),int16(CTFSIZE(2)),single(samplingRate*TLT(iPrj,16)*10^10), ...
+              single(TLT(iPrj,18)*10^10),single(TLT(iPrj,17)*10^3),...
+              single(df1),single(df2 ),single(dfA),single(TLT(iPrj,18)));
+      %           try
+      iRefCTF = iRefCTF ./ sqrt(2.*sum(abs(iRefCTF(1:end-bhF.invTrim,:)).^2,'all'));
+      cccMap = dataFT .* iRefCTF;
+
+      if (use_PCF)
+        cccMap = cccMap .* cccMap ./ (abs(cccMap) + 0.001);
       end
-      
-      bestScore = -inf;
-      bestCTF = 1;
-      for deltaCTF = 1:nDefTotal
-        iRefCTF = refFT .* ...
-          mexCTF(true,false,int16(CTFSIZE(1)),int16(CTFSIZE(2)),single(samplingRate*TLT(iPrj,16)*10^10), ...
-                single(TLT(iPrj,18)*10^10),single(TLT(iPrj,17)*10^3),...
-                single(df1 + defShiftVect(deltaCTF)),single(df2 + defShiftVect(deltaCTF)),single(dfA),single(TLT(iPrj,18)));
-        %           try
-        iRefCTF = iRefCTF ./ sqrt(2.*sum(abs(iRefCTF(1:end-bhF.invTrim,:)).^2,'all'));
-        cccMap = dataFT .* iRefCTF;
-
-
-        if (use_PCF)
-          cccMap = cccMap .* cccMap ./ (abs(cccMap) + 0.001);
-        end
+  
+      cccMap = peakMask.*real(bhF.invFFT(cccMap));
     
-        cccMap = peakMask.*real(bhF.invFFT(cccMap));
-    
-        if (save_diagnostic_ccf)
-          SAVE_IMG(cccMap, 'ccfMap.mrc');
-        end
-
-        tmpOut(:,:,iFid) = cccMap;
-   
-        
-        [maxVal,maxMap] = max(cccMap(:));
-        defocusCCC{iPrj}(deltaCTF,iFid) = maxVal;
-        
-        
-        % It might be better to reorder the search, to reduce the
-        % number of times this loop is executed (assumming the value is
-        % closer to the center of the defocusVector)
-        if maxVal > bestScore
-          bestScore = maxVal;
-          bestCTF = deltaCTF;
-          if ~(calcCTF)
-            [mMx, mMy] = ind2sub(size(cccMap), maxMap);
-            
-            try
-              
-              % It would be good to know why this is out of bounds
-              % sometimes. FIXME
-              
-              cccMap = cccMap(mMx-COM:mMx+COM, mMy-COM:mMy+COM);
-              cccMap = cccMap - min(cccMap(:));
-              
-              comMapX = sum(sum(bx.*cccMap))./sum(cccMap(:));
-              comMapY = sum(sum(by.*cccMap))./sum(cccMap(:));
-         
-              
-              % peak in Map is where query is relative to ref, dXY then is the shift
-              % needed to move the predicted position to the measured.
-              % Data moved from a position of estimated_global_offset, so add this to dXY
-              
-              dXY = [mMx,mMy]+[comMapX,comMapY] - ctfOrigin(1:2)+ estimated_global_offset + [sx,sy];
-            catch
-              dXY = estimated_global_offset + [sx,sy]; % TODO double check me
-            end
-            
-          end
-        end
-      end % End of loop over defocus values.
+      [maxVal,maxMap] = max(cccMap(:));
       
-      
-      if (calcCTF)
-        
-        [~,imDefC] = max(defocusCCC{iPrj}(:,iFid),[],1);
-        dCTF = imDefC;
-        %           fprintf('New best score %3.6f for defocus shift %3.3eAng\n', bestScore, defShiftVect(dCTF));
-        
-        dataFT = bhF.swapPhase(bhF.fwdFFT(dataTile,1,1,[1e-5,400,lowPassCutoff,pixel_size]),'fwd');
-        refFT  = conj(bhF.fwdFFT(refTile,1,1,[1e-5,400,lowPassCutoff,pixel_size]));
-        
-        iRefCTF = refFT .* ...
-          mexCTF(true,false,int16(CTFSIZE(1)),int16(CTFSIZE(2)),single(samplingRate*TLT(iPrj,16)*10^10), ...
-          single(TLT(iPrj,18)*10^10),single(TLT(iPrj,17)*10^3),...
-          single(df1 + defShiftVect(dCTF)),single(df2 + defShiftVect(dCTF)),single(dfA),single(TLT(iPrj,18)));
-        % Renormalize
-        dataFT = dataFT ./ (sum(abs(dataFT(:)).^2)./numel(dataFT));
-        iRefCTF = iRefCTF ./ (sum(abs(iRefCTF(:)).^2)./numel(iRefCTF));
-        
-        cccMap = dataFT .* iRefCTF;
-        if (use_PCF)
-          cccMap = cccMap .* cccMap ./ (abs(cccMap) + 0.1);
-          
-        end
-        cccMap = peakMask.*real(bhF.invFFT(cccMap));
-        
-        if (save_diagnostic_ccf)
-          SAVE_IMG(cccMap, 'ccfMap_2.mrc');
-        end
-        [~,maxMap] = max(cccMap(:));
-        
-        [mMx, mMy] = ind2sub(size(cccMap), maxMap);
+      [mMx, mMy] = ind2sub(size(cccMap), maxMap);
+      try
+        % It would be good to know why this is out of bounds
+        % sometimes. FIXME
         
         cccMap = cccMap(mMx-COM:mMx+COM, mMy-COM:mMy+COM);
-        
         cccMap = cccMap - min(cccMap(:));
         
         comMapX = sum(sum(bx.*cccMap))./sum(cccMap(:));
         comMapY = sum(sum(by.*cccMap))./sum(cccMap(:));
-    
         % peak in Map is where query is relative to ref, dXY then is the shift
         % needed to move the predicted position to the measured.
         % Data moved from a position of estimated_global_offset, so add this to dXY
-        
-        dXY = [mMx,mMy]+[comMapX,comMapY] - ctfOrigin(1:2)+ estimated_global_offset + [sx,sy];
+        particle_shift = [mMx,mMy]+[comMapX,comMapY] - ctfOrigin(1:2) + [sx,sy];
+      catch
+        particle_shift = [sx,sy]; % TODO double check me
       end
+      
+      % Re-calculate the scores with the shifted data    
+      dataFT = bhF.swapPhase(bhF.fwdFFT(dataTile,1,1,[1e-5,400,lowPassCutoff,pixel_size]),'fwd');
+      dataFT = bhF.shiftStretch(dataFT, -1.*particle_shift, 1.0, false);
+      dataFT = dataFT ./ sqrt(2.*sum(abs(dataFT(1:end-bhF.invTrim,:)).^2,'all'));
+
+      cccMap = dataFT .* iRefCTF;
+      cccMap = peakMask.*real(bhF.invFFT(cccMap));
+      [maxVal_shift,~] = max(cccMap(:));
+      % If the shift makes things worse, override and keep just the global and tile shifts
+      re_shift_for_defocus = false;
+
+      dXY = particle_shift + estimated_global_offset; 
+      if (maxVal_shift - maxVal < 0)
+          re_shift_for_defocus = true; 
+          dXY = [sx,sy] + estimated_global_offset;     
+      end
+			if (calcCTF)
+				refFT  = conj(bhF.fwdFFT(refTile,1,1,[1e-8,40,3.*pixel_size,pixel_size]));
+				dataFT = bhF.swapPhase(bhF.fwdFFT(dataTile,1,1,[1e-8,40,3.*pixel_size,pixel_size]),'fwd');
+      
+        if (re_shift_for_defocus)
+          dataFT = bhF.shiftStretch(dataFT, -1.*[sx,sy], 1.0, false);
+				else
+					dataFT = bhF.shiftStretch(dataFT, -1.*particle_shift, 1.0, false);	
+				end
+          dataFT = dataFT ./ sqrt(2.*sum(abs(dataFT(1:end-bhF.invTrim,:)).^2,'all'));
+
+        % ctfRange = 10000;
+        % ctfInc = 100;
+
+        n_steps = 3;
+
+        bestScore = -inf;
+        bestCTF = 0;
+				i_ctf_range = ctfRange;
+        for i_defocus_step = 1:n_steps
+					if (i_defocus_step > 1)
+						i_ctf_range = ctfRange ./ (5*(i_defocus_step-1));
+          end
+          ctfInc = max(1, floor(i_ctf_range./10));
+          nToCheck = max(1, floor(i_ctf_range./ctfInc));
+          defShiftVect = ctfInc.*[-nToCheck:nToCheck] + bestCTF;
+          for deltaCTF = defShiftVect
+          
+            iCTF =   mexCTF(true,false,int16(CTFSIZE(1)),int16(CTFSIZE(2)),single(samplingRate*TLT(iPrj,16)*10^10), ...
+              single(TLT(iPrj,18)*10^10),single(TLT(iPrj,17)*10^3),...
+              single(df1 + deltaCTF),single(df2 + deltaCTF),single(dfA),single(TLT(iPrj,18)));
+            iRefCTF = refFT .* iCTF;
+            
+            %           try
+            iRefCTF = iRefCTF ./ sqrt(2.*sum(abs(iRefCTF(1:end-bhF.invTrim,:)).^2,'all')) ./  (sum(abs(iCTF).^2,'all') ./ numel(iCTF))^2;
+            cccMap = dataFT .* iRefCTF;
+      
+            if (use_PCF)
+              cccMap = cccMap .* cccMap ./ (abs(cccMap) + 0.001);
+            end
+
+            cccMap = peakMask.*real(bhF.invFFT(cccMap));
+
+            [maxVal,maxMap] = max(cccMap(:));
+              
+            % It might be better to reorder the search, to reduce the
+            % number of times this loop is executed (assumming the value is
+            % closer to the center of the defocusVector)
+            if maxVal > bestScore
+              bestScore = maxVal;
+              bestCTF = deltaCTF;
+            end
+
+          end % End of loop over defocus values.
+        end % End loop stepping down search range
+        defocusCCC{iPrj}(iFid) = bestScore;
+        defocusVAL{iPrj}(iFid) = bestCTF;
+      end % End of calcCTF block
+      
+
+
       fprintf(coordOUT,'%d %d %0.4f %0.4f %d\n', wrkFid(iFid,1:2), dXY, wrkFid(iFid,5));
-      if (save_diagnostic_ccf)
-        error('save_diagnostic_ccf');
-      end
     end % end of loop over fiducials
 
     if (calcCTF)
-      [~,imDefC] = max(defocusCCC{iPrj},[],1);
-      expectedDefocus = mean(defShiftVect(imDefC));
+      score_weights = gather(defocusCCC{iPrj});
+      score_weights = score_weights ./ sum(score_weights);
+      expectedDefocus = sum(gather(defocusVAL{iPrj}).*score_weights);
       defocusShifts{iPrj} = expectedDefocus;
-      fprintf('prj %d delDef %3.3e\n',expectedDefocus);
+      fprintf('prj %d delDef %3.3e\n', iPrj, expectedDefocus);
     end
     evalMaskCell{iPrj} = uint8(evalMask); evalMask = [];
     fclose(coordOUT);
   end % end of the parfor loop
+
 
   if ( calcCTF )
     
     save(sprintf('%smapBack%d/%s%s.defShiftsMat',mbOUT{1:3},outCTF),'defocusShifts');
     defShifts = fopen(sprintf('%smapBack%d/%s%s.defShifts',mbOUT{1:3},outCTF),'w');
     defCCC = sprintf('%smapBack%d/%s%s_defCCC.mat',mbOUT{1:3},outCTF);
-    save(defCCC,'defocusCCC','expectedDefocusPerFiducial');
+    save(defCCC,'defocusCCC');
     for iPrj = 1:nPrjs
       fprintf(defShifts,'%6.6e\n',defocusShifts{iPrj});
     end
@@ -1813,225 +1865,17 @@ fprintf(aliCom_rerun,[...
                 mbOutAlt{2:3},...
                 mbOutAlt{2:3});
   fclose(aliCom_rerun);
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  % % TODO: It looks like the output model file (3dmod) is the solved positions,
-  % % but is saved at a pixel size of 1. Scaling by the sampling rate in all dimensions
-  % % and then adding the origin (only for Z) places the coordinates back into the bin6 model
-  % % I think we could get shifts from this
-  % % TODO: could use ImageOriginXandY to accound for a diffence in origin due to binning
-  % % as ImageSizeXandY given as binned size*sampling rate, which may not equal full size
-  % % fullTiltSizeXandY,...
-  % %   unsampled_pixel_size,unsampled_pixel_size,...
-  %   % 'ImageSizeXandY %d,%d\n',...
-  %   %   'ImagePixelSizeXandY %f,%f\n',...
-  % fprintf(aliCom,['#!/bin/bash\n\n',...
-  %   '#iTiltSeries %d\n',...
-  %   'tiltalign -StandardInput << EOF\n',...
-  %   'ModelFile %smapBack%d/%s_fit-full.fid\n',...
-  %   'ImagesAreBinned 1\n',...
-  %   'OutputModelFile %smapBack%d/%s%s.3dmod\n',...
-  %   'OutputResidualFile %smapBack%d/%s%s.resid\n',...
-  %   'OutputFidXYZFile	%smapBack%d/%s%s.xyz\n',...
-  %   'OutputTiltFile	%smapBack%d/%s%s.tlt\n',...
-  %   'OutputXAxisTiltFile	%smapBack%d/%s%s.xtilt\n',...
-  %   'OutputTransformFile	%smapBack%d/%s%s.tltxf\n',...
-  %   'RotationAngle	0.00\n',... % assumed to be rotated already
-  %   'TiltFile	%s\n',...
-  %   'SurfacesToAnalyze	%d\n',...
-  %   'RotOption	%d\n',... % def solve all rotations
-  %   'RotDefaultGrouping	3\n',... % if rot option --> 5 use def group size
-  %   'TiltOption	%d\n',... % Tilts are harder use automapping
-  %   'TiltDefaultGrouping	%d\n',...
-  %   'MagOption	%d\n',... % def solve all mags
-  %   'MagDefaultGrouping	%d\n',...
-  %   'XStretchOption	0\n',...
-  %   'SkewOption	0\n',...
-  %   'BeamTiltOption	0\n',...
-  %   'XTiltOption	0\n',...
-  %   'ResidualReportCriterion	0.001\n',...
-  %   'RobustFitting\n',...
-  %   'KFactorScaling %3.3f\n',...
-  %   'LocalAlignments\n',...
-  %   'LocalRotOption %d\n',...
-  %   'LocalRotDefaultGrouping %d\n',...
-  %   'LocalTiltOption %d\n',...
-  %   'LocalTiltDefaultGrouping %d\n',...
-  %   'LocalMagOption %d\n',...
-  %   'LocalMagDefaultGrouping %d\n',...
-  %   'OutputLocalFile %smapBack%d/%s%s.local\n',...
-  %   'TargetPatchSizeXandY %d,%d\n', ...
-  %   'MinFidsTotalAndEachSurface %d,%d\n',...
-  %   'MinSizeOrOverlapXandY %f,%f\n',...
-  %   '%s\n',...
-  %   '%s\n',...
-  %   '%s\n',...
-  %   'EOF'],...
-  %   iTiltSeries,...
-  %   mbOutAlt{1:3},... % for ModelFile
-  %   mbOutAlt{1:3},...
-  %   outCTF,...
-  %   mbOutAlt{1:3},outCTF,mbOutAlt{1:3},outCTF,...
-  %   mbOutAlt{1:3},outCTF,mbOutAlt{1:3},outCTF,mbOutAlt{1:3},outCTF, ...
-  %   tilt_script_name,...
-  %   n_surfaces, ...
-  %   emc.rot_option_global, ...
-  %   emc.tilt_option_global, ...
-  %   emc.tilt_default_grouping_global, ...
-  %   emc.mag_option_global, ...
-  %   emc.mag_default_grouping_global, ...
-  %   emc.k_factor_scaling, ...
-  %   emc.rot_option_local, ...
-  %   emc.rot_default_grouping_local, ...
-  %   emc.tilt_option_local, ...
-  %   emc.tilt_default_grouping_local, ...
-  %   emc.mag_option_local, ...
-  %   emc.mag_default_grouping_local, ...
-  %   mbOutAlt{1:3},outCTF,targetPatchSize, ...
-  %   targetPatchSize,...
-  %   nFiducialsPerPatch, ...
-  %   floor(nFiducialsPerPatch/3),...
-  %   emc.min_overlap,emc.min_overlap,...
-  %   final_line1,final_line2,final_line3);
-  % % % % Assume that any backlash was solved well enough that there are no major
-  % % % % discontinuities in the coarse alignment. Mag and rot are solved/ tilt in
-  % % % % the global solution anyhow, so this shouldn't be a bit deal.
-  % % % % 'SeparateGroup	1-%d\n',...
-  % % % % iViewGroup,
-  % %        fprintf(aliCom,'\n\ngrep -A %d  " At minimum tilt" ./mapBack%d/%s_ta.log >  ./mapBack%d/tmp.log',nPrjs+2,mbOUT{1:3},mbOUT{1:3});
-  % %        fprintf(aliCom,'\nawk ''{if(NR >3) print $5}'' ./mapBack%d/tmp.log > mapBack%d/%s.mag',mbOUT{1:3},mbOUT{1:3});
-  
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-  % system(sprintf('chmod a=wrx %smapBack%d/%s.align',mbOUT{1:3}));
   
-  if (is_first_run)
-    % if ( multi_node_run )
-    %   fOUT = fopen(sprintf('%smapBack%d/runAlignments_%d_%d.sh',mbOUT{1:2},tiltStart,nTiltSeries),'w');
-    %   fprintf(fOUT,['%smapBack%d/%s.align > ',...
-    %     '%smapBack%d/%s.align_ta.log &\n'],mbOutAlt{1:3},mbOutAlt{1:3});
-    % else
-    %   fOUT = fopen(sprintf('%smapBack%d/runAlignments.sh',mbOUT{1:2}),'w');
-    %   fprintf(fOUT,['#!/bin/bash\n\n%smapBack%d/%s.align > ',...
-    %     '%smapBack%d/%s.align_ta.log &\n'],mbOutAlt{1:3},mbOutAlt{1:3});
-    % end
+ 
 
-    if ( multi_node_run )
-      % These will be aggregated in the main runAlignments.sh
-      fOUT = fopen(sprintf('%smapBack%d/runAlignments_%d_%d.sh',mbOUT{1:2},tiltStart,nTiltSeries),'w');
-    else
-      fOUT = fopen(sprintf('%smapBack%d/runAlignments.sh',mbOUT{1:2}),'w');
-      fprintf(fOUT,'#!/bin/bash\n\n');
-    end
-    % fprintf(fOUT,'cat %s | /scratch/etna/master_align.sh `xargs` &\n',aliCom_name);
-    fprintf(fOUT,'%s\n',aliCom_name_rerun);
-
-    % Since we send to the background in a shell, makes sure the
-    % function waits on children.
-    %if (iTiltSeries == nTiltSeries)
-    %  fprintf(fOUT,'\nwait\n');
-    %end
-    fclose(fOUT);
-    is_first_run = false;
-  else
-    if ( multi_node_run )
-      fOUT = fopen(sprintf('%smapBack%d/runAlignments_%d_%d.sh',mbOUT{1:2},tiltStart,nTiltSeries),'a');
-    else
-      fOUT = fopen(sprintf('%smapBack%d/runAlignments.sh',mbOUT{1:2}), 'a');
-    end
-    % fprintf(fOUT,['%smapBack%d/%s.align > ',...
-    %   '%smapBack%d/%s.align_ta.log &\n'], ...
-    %   mbOutAlt{1:3},mbOutAlt{1:3});
-    fprintf(fOUT,'%s\n',aliCom_name_rerun);
-  
-    % Since we send to the background in a shell, makes sure the
-    % function waits on children.
-    %if (iTiltSeries == nTiltSeries)
-    %  fprintf(fOUT,'\nwait\n');
-    %end
-    fclose(fOUT);
-  end
-  
-  % if (emc.run_tomocpr_alignments)
-    
-  % end
-
-  %system(sprintf('./mapBack/%s.align > ./mapBack/%s_ta.log',TN,TN));
-  
-  %%%%%%%%% There is still sometimes a shift in Z, fit slope of the X shifts
-  %%%%%%%%% and make cutoff compared to zshift to re-run the alignment with
-  %%%%%%%%% this value entered for AxisZShift.
-  
-  % Until I hear from DAVID get the mag from the tilt log
-  %%%system(sprintf('grep -A %d  " At minimum tilt" ./mapBack/%s_ta.log >  tmp.log',nPrjs+2,TN));
-  %%%system(sprintf('awk ''{if(NR >3) print $5}'' tmp.log > mapBack/%s.mag',TN));
-  %%%end %uf cibdutuib
+  % This is an partial run
+  system(sprintf('mkdir -p  cache/mapBack%d', mbOUT{2}));
+  system(sprintf('mv %smapBack%d/%s* cache/mapBack%d/', mbOUT{1:2},mbOutAlt{3}, mbOUT{2}));
 
 end % loop over tilts
 
 
-if ( flgRunAlignments )
-
-  mainFile = sprintf('cache/mapBack%d/runAlignments.sh',mbOUT{2});
-  altFiles = sprintf('cache/mapBack%d/runAlignments_*.sh',mbOUT{2});
-  % Only possible as [cycle, 0, 0]
-  if (multi_node_run)
-    system(sprintf('rm %s && touch %s',mainFile,mainFile));
-    fprintf('Combining Results from alt and main\n');
-    system(sprintf('cat %s >> %s',altFiles,mainFile));
-  end
-  
-  % fOUT = fopen(mainFile,'a');
-  % fprintf(fOUT,'\nwait\n');
-  % fclose(fOUT);
-  
-  % system(sprintf('chmod a=wrx %smapBack%d/runAlignments.sh', mbOUT{1:2}));
-  % system(sprintf('%smapBack%d/runAlignments.sh', mbOUT{1:2}));
-
-  % BH_multi_parallelWorkers will return at most nthreads 
-  system(sprintf("cat cache/mapBack%d/runAlignments.sh | parallel -j%d 'cat {} | /scratch/etna/master_align.sh `xargs`'", mbOUT{1:2}, floor(BH_multi_parallelWorkers(256)/2)))
-end
-
-if ( conserveDiskSpace )
-  system(sprintf('rm %smapBack%d/%s_mapBack.st', mbOUT{1:3}));
-end
-
-
-if (flgRunAlignments)
-  system(sprintf('mv %smapBack%d mapBack%d', mbOUT{1:2}, mbOUT{2}));
-else 
-  if (multi_node_run)
-    % This is an partial run
-    system(sprintf('mkdir -p  cache/mapBack%d', mbOUT{2}));
-    system(sprintf('mv %smapBack%d/* cache/mapBack%d', mbOUT{1:2}, mbOUT{2}));
-  else
-    error('This should not happen');
-  end
-end
-
-
-% if (flgCleanCache)
-%   % Double check that this exists to avoid data loss.
-%   checkDir = dir(tmpCache);
-%   if isempty(checkDir)
-%     fprintf('not removing the temp cache because it did not eval with dir\n');
-%   else
-%     cleanItUp = sprintf('rm  %s/*',tmpCache);
-%     system(cleanItUp);
-%   end
-% end
-% Since we've updated (potentially) mapBackRePrjSize, save the new metaData.
-if (flgRunAlignments)
-  subTomoMeta.currentTomoCPR =  subTomoMeta.currentTomoCPR + 1;
-  
-  if isfield(subTomoMeta,'tomoCPR_run_in_cycle')
-    subTomoMeta.('tomoCPR_run_in_cycle') = cat(1,subTomoMeta.('tomoCPR_run_in_cycle'),...
-      [subTomoMeta.currentTomoCPR,CYCLE]);
-  else
-    subTomoMeta.('tomoCPR_run_in_cycle') = [subTomoMeta.currentTomoCPR,CYCLE];
-  end
-  
-  save(emc.('subTomoMeta'), 'subTomoMeta');
-end
 
 end
 

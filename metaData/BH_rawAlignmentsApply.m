@@ -1,7 +1,7 @@
 
 function [UPDATED_GEOMETRY] = ...
                             BH_rawAlignmentsApply( INPUT_GEOMETRY , ...
-                            BEST_ANGLES, SAMPLING, nPeaks, rotConvention, updateWeights, updateClassByBestReferenceScore)
+                            BEST_ANGLES, SAMPLING, nPeaks, rotConvention, updateClassByBestReferenceScore)
 %Apply class alignments to the full set of subTomograms
 %   
 %
@@ -97,11 +97,7 @@ for iTomo = 1:nTomograms
      
 
      positionList(iParticle,1+26*(iPeak-1)) = gather(newAlignment(pIndex,[6] + 10*(iPeak-1)));
-     % I don't think I'm using this column anywhere else but double check
-     % classification maybe. FIXME.
-     if (updateWeights)
-      positionList(iParticle,2+26*(iPeak-1)) = gather(newAlignment(pIndex,[7] + 10*(iPeak-1)));
-     end
+
 
      if (updateClassByBestReferenceScore)
       positionList(iParticle,26+26*(iPeak-1)) = gather(newAlignment(pIndex,[1] + 10*(iPeak-1)));
