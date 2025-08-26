@@ -499,7 +499,7 @@ if (emc.eucentric_fit && mapBackIter)
       end
     end
   end
-  save(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta');
+  save(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta', '-v7.3');
 end
 
 if ( flgParallel )

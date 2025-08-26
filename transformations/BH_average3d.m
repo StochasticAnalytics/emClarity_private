@@ -231,7 +231,7 @@ if subTomoMeta.('currentCycle') == CYCLE - 1
   cycleRead = sprintf('cycle%0.3u', CYCLE - 1);
   % Save a backup of the cycles total geometry
   save(sprintf('%s_%s_backup.mat',cycleRead,emc.('subTomoMeta')), ...
-    'subTomoMeta');
+    'subTomoMeta', '-v7.3');
 end
 
 if strcmpi(STAGEofALIGNMENT, 'RawAlignment')
@@ -783,7 +783,8 @@ parfor iParProc = parVect
 
       reconScaling = 1;
       do_load = false;
-      [ volumeData ] = BH_multi_loadOrBuild(tomoList{iTomo}, ...
+      [ volumeData ] = BH_multi_loadOrBuild(emc.alt_cache, ...
+                                            tomoList{iTomo}, ...
                                             mapBackIter, ...
                                             samplingRate, ...
                                             iGPUidx,...
@@ -791,11 +792,6 @@ parfor iParProc = parVect
     
       volHeader = getHeader(volumeData);
     end
-    
-    
-    
-    iTiltName = subTomoMeta.mapBackGeometry.tomoName.(tomoList{iTomo}).tiltName;
-    wgtName = sprintf('cache/%s_bin%d.wgt',iTiltName,samplingRate);
     
     
     % Work on each class seperately pushing to main memory when finished.
@@ -983,7 +979,7 @@ parfor iParProc = parVect
                 % first!!! TODO add a flag to check this.
                 
                 
-                
+                % Not updated to handle alt_cache
                 particleOUT_name = sprintf('cache/subtomo_%0.7d_%d.mrc',positionList(iSubTomo,4),iPeak);
                 positionList(iSubTomo,[11:13]+26*(iPeak-1)) = shiftVAL+CUTPADDING+emc_get_origin_index(sizeWindow);
                 if (emc.projectVolumes)
@@ -1316,15 +1312,38 @@ if (saveClassSum > -1)
   classWgtSumSqrt{2} = zeros(size(avgSF3D_Sq{1,4}),'single');
 end
 
+% Track per-half stats to match dynamic range for bad tiles
+bad_tile = false(maxClasses,2);
+tile_rms = zeros(maxClasses,2,'single');
+tile_mean = zeros(maxClasses,2,'single');
+
 for iClassPos = 1:maxClasses
   
 
   % Re-weight both halves whether flgGold or not.
   
   for iGold = 1:2-flgFinalAvg
-    
-    avgVolume{iClassPos,iGold} = avgVolume{iClassPos,iGold} ./ ...
-      sum(nExtracted(iClassPos,iGold));
+    % Normalize by the number of extracted volumes; if none, mark as bad.
+    n_count = sum(nExtracted(iClassPos,iGold));
+    if n_count > 0
+      vtmp = avgVolume{iClassPos,iGold} ./ n_count;
+      % Detect non-finite prior to sanitization
+      had_nonfinite = any(~isfinite(vtmp(:)));
+      % Sanitize any non-finite values resulting from upstream ops
+      vtmp(~isfinite(vtmp)) = 0;
+      avgVolume{iClassPos,iGold} = vtmp;
+      % Record stats from the sanitized tile
+      tile_mean(iClassPos,iGold) = mean(vtmp(:));
+      tile_rms(iClassPos,iGold) = rms(vtmp(:));
+      bad_tile(iClassPos,iGold) = had_nonfinite;
+      clear vtmp had_nonfinite
+    else
+      % No contributing volumes: mark as bad and set placeholder zeros
+      avgVolume{iClassPos,iGold} = zeros(sizeMask, 'single');
+      tile_mean(iClassPos,iGold) = 0;
+      tile_rms(iClassPos,iGold) = 0;
+      bad_tile(iClassPos,iGold) = true;
+    end
   end
   
   for iGold = 1:2-flgFinalAvg
@@ -1334,31 +1353,72 @@ for iClassPos = 1:maxClasses
       halfSet = 'EVE';
     end   
     
-    classStorage{iClassPos,iGold} = gather(avgVolume{iClassPos,iGold} );
+    classStorage{iClassPos,iGold} = gather(avgVolume{iClassPos,iGold});
     
-    if ~isfinite( mean(classStorage{iClassPos,iGold}(:)) )
-      clear classAVG
-      fprintf('zeroing out classavg because of NaN values detected.\n')
-    else
-      
-      % Normalize the regular averages
-      classStorage{iClassPos,iGold} = classStorage{iClassPos,iGold} - ...
-        mean(classStorage{iClassPos,iGold}(:));
-      
-      classStorage{iClassPos,iGold} = classStorage{iClassPos,iGold} ./ ...
-        rms(classStorage{iClassPos,iGold}(:));
-      classStorage{iClassPos,iGold} = gather(classStorage{iClassPos,iGold});
-      
-      if (saveClassSum > -1)
-        fprintf('adding class %d to %d\n',iClassPos,iGold);
-        classSum{iGold} = classSum{iGold} + classStorage{iClassPos,iGold};
-        classWgtSum{iGold} = classWgtSum{iGold} + avgSF3D_Sq{iClassPos,iGold};
-        classWgtSumSqrt{iGold} = classWgtSumSqrt{iGold} + avgSF3D{iClassPos,iGold};
-      end
+    % Normalize the regular averages now; bad tiles will be replaced later
+    ms = mean(classStorage{iClassPos,iGold}(:));
+    rs = rms(classStorage{iClassPos,iGold}(:));
+    if rs == 0 || ~isfinite(rs)
+      rs = 1; % avoid divide-by-zero; will be overwritten if bad_tile true
+    end
+    classStorage{iClassPos,iGold} = (classStorage{iClassPos,iGold} - ms) ./ rs;
+    classStorage{iClassPos,iGold} = gather(classStorage{iClassPos,iGold});
+    
+    if (saveClassSum > -1)
+      fprintf('adding class %d to %d\n',iClassPos,iGold);
+      classSum{iGold} = classSum{iGold} + classStorage{iClassPos,iGold};
+      classWgtSum{iGold} = classWgtSum{iGold} + avgSF3D_Sq{iClassPos,iGold};
+      classWgtSumSqrt{iGold} = classWgtSumSqrt{iGold} + avgSF3D{iClassPos,iGold};
     end
     
   end
   
+end
+
+
+% Inject white Gaussian noise into any bad tiles, matching per-half stats
+half_mu = zeros(1,2,'single');
+half_sigma = zeros(1,2,'single');
+for iGold = 1:2-flgFinalAvg
+  valid_mask = ~bad_tile(:,iGold);
+  if any(valid_mask)
+    mu_half = median(tile_mean(valid_mask,iGold));
+    sig_half = median(tile_rms(valid_mask,iGold));
+    if ~isfinite(mu_half); mu_half = 0; end
+    if ~isfinite(sig_half) || sig_half == 0; sig_half = 1; end
+  else
+    % No valid tiles at all: fallback defaults
+    mu_half = 0; sig_half = 1;
+  end
+  half_mu(iGold) = single(mu_half);
+  half_sigma(iGold) = single(sig_half);
+  for iClassPos = 1:maxClasses
+    if bad_tile(iClassPos,iGold)
+      noise_tile = single(randn(sizeMask)) .* single(sig_half) + single(mu_half);
+      avgVolume{iClassPos,iGold} = noise_tile;
+      % Recompute normalized classStorage for this tile
+      ms = mean(noise_tile(:));
+      rs = rms(noise_tile(:));
+      if rs == 0 || ~isfinite(rs); rs = 1; end
+      classStorage{iClassPos,iGold} = (noise_tile - ms) ./ rs;
+    end
+  end
+end
+
+% Persist bad-tile info and noise stats for downstream postprocessing resets
+try
+  if (2-flgFinalAvg) >= 1
+    subTomoMeta.(cycleNumber).('bad_tiles').(STAGEofALIGNMENT).('ODD') = bad_tile(:,1);
+    subTomoMeta.(cycleNumber).('bad_tiles').(STAGEofALIGNMENT).('stats').('ODD_mean') = half_mu(1);
+    subTomoMeta.(cycleNumber).('bad_tiles').(STAGEofALIGNMENT).('stats').('ODD_rms')  = half_sigma(1);
+  end
+  if (2-flgFinalAvg) >= 2
+    subTomoMeta.(cycleNumber).('bad_tiles').(STAGEofALIGNMENT).('EVE') = bad_tile(:,2);
+    subTomoMeta.(cycleNumber).('bad_tiles').(STAGEofALIGNMENT).('stats').('EVE_mean') = half_mu(2);
+    subTomoMeta.(cycleNumber).('bad_tiles').(STAGEofALIGNMENT).('stats').('EVE_rms')  = half_sigma(2);
+  end
+catch
+  % non-fatal; continue if struct assignment fails for any reason
 end
 
 
@@ -1413,6 +1473,8 @@ for iGold = 1:2-flgFinalAvg
   
   
   [montOUT, imgLocations] = BH_montage4d(avgVolume(:,iGold), '');
+  % Ensure no non-finites propagate to disk (noise is finite)
+  montOUT(~isfinite(montOUT)) = 0;
   
   
   imout = sprintf('%s_class%d_%s_%s_NoWgt.mrc',outputPrefix, ...
@@ -1427,6 +1489,7 @@ for iGold = 1:2-flgFinalAvg
   SAVE_IMG(montOUT, imout, emc.pixel_size_angstroms);
   %%%%%%%%
   [montOUT, imgLocations] = BH_montage4d(avgSF3D_Sq(:,iGold), '');
+  montOUT(~isfinite(montOUT)) = 0;
   
   imout = sprintf('%s_class%d_%s_%s_Wgt.mrc',outputPrefix, ...
     className, fieldPrefix, halfSet);
@@ -1437,6 +1500,7 @@ for iGold = 1:2-flgFinalAvg
   SAVE_IMG(montOUT, imout, emc.pixel_size_angstroms);
 
   [montOUT, imgLocations] = BH_montage4d(avgSF3D(:,iGold), '');
+  montOUT(~isfinite(montOUT)) = 0;
   
   imout = sprintf('%s_class%d_%s_%s_WgtSqrt.mrc',outputPrefix, ...
     className, fieldPrefix, halfSet);
@@ -1496,7 +1560,7 @@ cycleNumber = gather(cycleNumber);
 subTomoMeta.('currentCycle') = gather(CYCLE);
 
 
-save(emc.subTomoMeta, 'subTomoMeta');
+save(emc.subTomoMeta, 'subTomoMeta', '-v7.3');
 
 
 
@@ -1646,6 +1710,45 @@ if ~( flgEstSNR )
     
   end
   
+  % After reweighting, reset bad tiles back to Gaussian noise so they don't
+  % affect downstream processing or visualization.
+  try
+    if isfield(subTomoMeta.(cycleNumber),'bad_tiles') && ...
+       isfield(subTomoMeta.(cycleNumber).bad_tiles, STAGEofALIGNMENT)
+      bt = subTomoMeta.(cycleNumber).bad_tiles.(STAGEofALIGNMENT);
+      % Build per-half masks and stats if present
+      half_fields = {'ODD','EVE'};
+      for iGold = 1:2
+        if iGold == 2 && ~(flgGold || emc.classification)
+          % If only one combined half is used, skip second
+          continue
+        end
+        if isfield(bt, half_fields{iGold})
+          bt_mask = bt.(half_fields{iGold});
+          % Fallbacks for stats
+          mu_field = sprintf('%s_mean', half_fields{iGold});
+          sg_field = sprintf('%s_rms',  half_fields{iGold});
+          if isfield(bt,'stats') && isfield(bt.stats, mu_field) && isfield(bt.stats, sg_field)
+            mu_h = bt.stats.(mu_field);
+            sg_h = bt.stats.(sg_field);
+            if ~isfinite(mu_h); mu_h = 0; end
+            if ~isfinite(sg_h) || sg_h == 0; sg_h = 1; end
+          else
+            mu_h = 0; sg_h = 1;
+          end
+          for iRef = 1:length(refIMG{iGold})
+            if iRef <= numel(bt_mask) && bt_mask(iRef)
+              noise_tile = single(randn(sizeWindow)) .* single(sg_h) + single(mu_h);
+              refIMG{iGold}{iRef} = noise_tile;
+            end
+          end
+        end
+      end
+    end
+  catch
+    % Non-fatal: if any issue occurs, leave refIMG as-is
+  end
+  
   
   for iGold = 1:2-flgFinalAvg
     if( flgGold || emc.classification )
@@ -1687,7 +1790,7 @@ if ~( flgEstSNR )
   if (emc.flgCutOutVolumes && volumesNeedToBeExtracted)
     subTomoMeta.('volumesAreCutOut') = 1;
   end
-  save(emc.('subTomoMeta'), 'subTomoMeta');
+  save(emc.('subTomoMeta'), 'subTomoMeta', '-v7.3');
   
 end
 

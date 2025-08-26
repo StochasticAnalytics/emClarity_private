@@ -155,7 +155,7 @@ end % end loop over tomorams
 fprintf('%d of %d particles removed\n', nRemoved, nTotal);
 
 subTomoMeta.(cycleNumber).RawAlign = geometry;
-save(emc.('subTomoMeta'), 'subTomoMeta');
+save(emc.('subTomoMeta'), 'subTomoMeta', '-v7.3');
 
 end
 

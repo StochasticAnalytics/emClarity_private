@@ -162,7 +162,7 @@ end
 % Cycle 0 is named differently - I'll be deleting this in an overhaul of the way
 % the subTomoMeta is written.
 if (CYCLE)
-  if strcmpi(STAGEofALIGNMENT, 'Cluster')
+  if strcmpi(STAGEofALIGNMENT, 'Cluster_cls')
     geometry = subTomoMeta.(cycleNumber).('ClusterClsGeom');
     fprintf('Using ClusterClsGeom geometry %s\n',cycleNumber);
     % FIXME: THis logic is confusing, the two ClusterCls/REf are the product of the average step ...

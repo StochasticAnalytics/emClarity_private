@@ -26,15 +26,18 @@ function  BH_geometryAnalysis( PARAMETER_FILE, CYCLE, ...
 %
 %   AssignToTrunk
 %     - VECTOR_OP: same format as AssignToBranch.
-%     - Writes TSV files in working directory: cycleNNN_trunk_<b>.txt
+%     - Writes TSV files in working directory: cycleNNN_trunk_<b>_from_<origin>.txt
 %       each with columns: tName (tomogram), subtomoIDX (col 4), mappedClass=b.
+%       <origin> is parsed from subTomoMeta suffix "_branch_<num>" (0 if absent),
+%       allowing per-branch disambiguation to prevent overwrites.
 %     - Validates labels and tiles in the same way; no metadata mutation.
 %
 %   AssignAndMerge
-%     - Consumes all mapping files cycleNNN_trunk_*.txt, determines current branch
-%       from subTomoMeta name suffix "_branch_<num>", and sets class column to that
-%       branch for matching subtomoIDX; others are set to -9999. Only affects the
-%       current in-memory geometry and subsequent save of subTomoMeta.
+%     - Consumes mapping files cycleNNN_trunk_*_from_<origin>.txt and uses only
+%       those with <origin> equal to the current branch parsed from subTomoMeta.
+%       Sets class to the current branch for matching subtomoIDX and -9999
+%       otherwise. Only affects the current in-memory geometry and subsequent
+%       save of subTomoMeta.
 %
 % Notes
 %   - Column conventions used here: class column=26, subtomo index column=4.
@@ -59,6 +62,10 @@ if strcmpi(VECTOR_OP, 'undo')
 elseif (strcmpi(VECTOR_OP, 'listTomos'))
     listTomos = 1;
     fprintf('Listing tomos, delete those that should be removed, and run again replacing "listTomos" with "tomoList.txt"\n');
+elseif strcmpi(OPERATION, 'TrimOldCycles')
+  % For TrimOldCycles, VECTOR_OP should be a scalar (target cycle)
+  VECTOR_OP = EMC_str2double(VECTOR_OP);
+
 else
   try
     % should be a text file of only x,y,z (model2points imodModel classes.txt)
@@ -160,21 +167,20 @@ outputPrefix = sprintf('%s_%s', cycleNumber, emc.('subTomoMeta'));
       if (undoOP)
         subTomoMeta.(cycleNumber).RawAlign = ...
         subTomoMeta.(cycleNumber).(sprintf('Pre_%s_RawAlign', OPERATION));
-        save(emc.('subTomoMeta'), 'subTomoMeta');
+  save(emc.('subTomoMeta'), 'subTomoMeta', '-v7.3');
         error('No Error, just exiting.\n')
       else      
         geometry = subTomoMeta.(cycleNumber).RawAlign;
         subTomoMeta.(cycleNumber).(sprintf('Pre_%s_RawAlign', OPERATION)) = geometry;
       end
     case 'Cluster'
-  
-
-        try
-          class_coeffs{1} =  emc.('Pca_coeffs_odd');
-          class_coeffs{2} =  emc.('Pca_coeffs_eve');
-        catch
-          class_coeffs{1} = emc.('Pca_coeffs');
-        end
+      
+      try
+        class_coeffs{1} =  emc.('Pca_coeffs_odd');
+        class_coeffs{2} =  emc.('Pca_coeffs_eve');
+      catch
+        class_coeffs{1} = emc.('Pca_coeffs');
+      end
 
       cluster_key = sprintf('%s_%d_%d_nClass_%d_%s',outputPrefix,class_coeffs{halfNUM(1)}(1,1), ...
                                     class_coeffs{halfNUM(1)}(1,end), className, halfSet)
@@ -183,9 +189,9 @@ outputPrefix = sprintf('%s_%s', cycleNumber, emc.('subTomoMeta'));
      
       
       if (undoOP)
-  subTomoMeta.(cycleNumber).ClusterResults.(cluster_key) = ...
-  subTomoMeta.(cycleNumber).(sprintf('Pre_%s_ClusterResults', OPERATION)).(cluster_key);
-        save(emc.('subTomoMeta'), 'subTomoMeta');
+        subTomoMeta.(cycleNumber).ClusterResults.(cluster_key) = ...
+        subTomoMeta.(cycleNumber).(sprintf('Pre_%s_ClusterResults', OPERATION)).(cluster_key);
+  save(emc.('subTomoMeta'), 'subTomoMeta', '-v7.3');
         error('No Error, just exiting.\n')
       else     
 
@@ -429,7 +435,8 @@ switch OPERATION
   % Prepare mapping files for future AssignAndMerge without modifying metadata.
   % Contract:
   % - Input VECTOR_OP: [class_idx, <ignored>, x, y] with class 1 == ignore.
-  % - Output files: cycleNNN_trunk_<b>.txt (TSV: tName, subtomoIDX, mappedClass=b).
+  % - Output files: cycleNNN_trunk_<b>_from_<origin>.txt (TSV: tName, subtomoIDX, mappedClass=b).
+  %   <origin> is parsed from subTomoMeta suffix _branch_<num>; 0 if not present.
   % Failure modes: out-of-bounds label, unlabeled/conflicting tiles.
 
     if ~(strcmpi(STAGEofALIGNMENT, 'Cluster'))
@@ -439,11 +446,20 @@ switch OPERATION
   % Build tile mapping (and branch count) using shared helper
   [tile_to_branch, n_branches] = emc_build_tile_to_branch(VECTOR_OP, locations, 'AssignToTrunk');
 
+  % Determine originating branch for disambiguation
+  origin_branch = 0;
+  meta_name_tmp = emc.('subTomoMeta');
+  origin_tokens = regexp(meta_name_tmp, '_branch_(\d+)$', 'tokens');
+  if ~isempty(origin_tokens)
+    origin_branch = str2double(origin_tokens{1}{1});
+    if isnan(origin_branch) || origin_branch < 0, origin_branch = 0; end
+  end
+
   % Open one output file per branch in the working directory, prefixed by cycle number
   file_ids = cell(n_branches,1);
   lines_per_branch = zeros(n_branches,1);
     for b = 1:n_branches
-      out_path = sprintf('%s_trunk_%d.txt', cycleNumber, b);
+      out_path = sprintf('%s_trunk_%d_from_%d.txt', cycleNumber, b, origin_branch);
       fid = fopen(out_path, 'w');
       if fid == -1, error('AssignToTrunk: failed to open %s for writing', out_path); end
       fprintf(fid, '# tName\tsubtomoIDX\tmappedClass\n');
@@ -474,7 +490,7 @@ switch OPERATION
     % Close files
     for b = 1:n_branches
       fclose(file_ids{b});
-      fprintf('AssignToTrunk: wrote %s_trunk_%d.txt (rows=%d)\n', cycleNumber, b, lines_per_branch(b));
+      fprintf('AssignToTrunk: wrote %s_trunk_%d_from_%d.txt (rows=%d)\n', cycleNumber, b, origin_branch, lines_per_branch(b));
     end
     fprintf('AssignToTrunk: tiles ignored=%d\n', sum(tile_to_branch==0));
     for b = 1:n_branches
@@ -485,7 +501,7 @@ switch OPERATION
   % Merge assignments: choose current branch based on subTomoMeta name, then
   % for all cycle-prefixed mapping files, set class=b for matches and -9999 otherwise.
   % Contract:
-  % - Input files: cycleNNN_trunk_*.txt (TSV header + rows tName,subtomoIDX,mappedClass).
+  % - Input files: cycleNNN_trunk_<current_branch>_from_*.txt (TSV header + rows tName,subtomoIDX,mappedClass).
   % - Behavior: detect current branch from subTomoMeta suffix _branch_<num> and apply.
   % Failure modes: missing trunk files, invalid branch suffix, file read errors.
     if ~(strcmpi(STAGEofALIGNMENT, 'Cluster'))
@@ -501,40 +517,49 @@ switch OPERATION
       error('AssignAndMerge: invalid branch number parsed from subTomoMeta "%s"', meta_name);
     end
 
-    % Discover mapping files for this cycle
-  file_list = dir(sprintf('%s_trunk_*.txt', cycleNumber));
+    % Discover mapping files for this cycle with trunk matching current branch; origin wildcard
+    file_list = dir(sprintf('%s_trunk_%d_from_*.txt', cycleNumber, current_branch));
     if isempty(file_list)
-      error('AssignAndMerge: no mapping files found matching %s_trunk_*.txt', cycleNumber);
+      error('AssignAndMerge: no mapping files found for current branch. Expected files like %s_trunk_%d_from_*.txt', cycleNumber, current_branch);
     end
 
-    % Build a keep list (by tName) for current branch
+  % Build a keep list (by tName) for current branch
   keep_by_tomo = struct();
-    total_rows_current_branch = 0;
-    for file_i = 1:numel(file_list)
-      file_path = file_list(file_i).name;
-      fid = fopen(file_path, 'r');
-      if fid == -1, error('AssignAndMerge: failed to open %s', file_path); end
-      % header then rows: tName\tsubtomoIDX\tmappedClass
-      header_line = fgetl(fid); %#ok<NASGU>
-      parsed_cols = textscan(fid, '%s%d%d', 'Delimiter', '\t');
-      fclose(fid);
-      if isempty(parsed_cols{1}), continue; end
-      tomo_names = parsed_cols{1}; subtomo_ids = parsed_cols{2}; mapped_classes = parsed_cols{3};
-      % Filter to current branch
-      is_current_branch = (mapped_classes == current_branch);
-      tomo_names = tomo_names(is_current_branch); subtomo_ids = subtomo_ids(is_current_branch);
-      total_rows_current_branch = total_rows_current_branch + numel(subtomo_ids);
-      for id_i = 1:numel(subtomo_ids)
-        t_name = tomo_names{id_i};
-        if ~isfield(keep_by_tomo, t_name)
-          keep_by_tomo.(t_name) = subtomo_ids(id_i);
-        else
-          keep_by_tomo.(t_name) = unique([keep_by_tomo.(t_name); subtomo_ids(id_i)]);
-        end
+  total_rows_current_branch = 0;
+  for file_i = 1:numel(file_list)
+    file_path = file_list(file_i).name;
+    fid = fopen(file_path, 'r');
+    if fid == -1
+      error('AssignAndMerge: failed to open %s', file_path);
+    end
+    % header then rows: tName\tsubtomoIDX\tmappedClass
+    header_line = fgetl(fid); %#ok<NASGU>
+    parsed_cols = textscan(fid, '%s%d%d', 'Delimiter', '\t');
+    fclose(fid);
+    if isempty(parsed_cols{1})
+      continue;
+    end
+    tomo_names = parsed_cols{1};
+    subtomo_ids = parsed_cols{2};
+    mapped_classes = parsed_cols{3};
+    % Filter to current branch
+    is_current_branch = (mapped_classes == current_branch);
+    tomo_names = tomo_names(is_current_branch);
+    subtomo_ids = subtomo_ids(is_current_branch);
+    total_rows_current_branch = total_rows_current_branch + numel(subtomo_ids);
+    for id_i = 1:numel(subtomo_ids)
+      t_name = tomo_names{id_i};
+      if ~isfield(keep_by_tomo, t_name)
+        keep_by_tomo.(t_name) = subtomo_ids(id_i);
+      else
+        keep_by_tomo.(t_name) = unique([keep_by_tomo.(t_name); subtomo_ids(id_i)]);
       end
     end
+  end
 
-    % Apply to geometry: set -9999 by default; set class=current_branch for matches
+    % Apply to geometry:
+    % - Set -9999 by default for rows that were previously included
+    % - Assign class=current_branch for any mapped subtomoIDs (revive if previously -9999)
     total_kept = 0; total_ignored = 0;
     for iTomo = 1:nTomograms
       tName = tomoList{iTomo};
@@ -544,12 +569,14 @@ switch OPERATION
       position_list(included_mask,COL_CLASS) = -9999;
       if isfield(keep_by_tomo, tName)
         ids_to_keep = keep_by_tomo.(tName);
-        % match by column 4 (subtomoIDX)
+        % match by column 4 (subtomoIDX); revive even if previously -9999
         keep_mask = ismember(position_list(:,COL_SUBTOMO_IDX), ids_to_keep);
-        position_list(keep_mask,COL_CLASS) = current_branch;
+        position_list(keep_mask, COL_CLASS) = current_branch;
+        kept_here = sum(keep_mask);
+        ignored_here = numel(ids_to_keep) - kept_here;
+      else
+        kept_here = 0; ignored_here = 0;
       end
-      kept_here = sum(position_list(:,COL_CLASS) == current_branch);
-      ignored_here = sum(included_mask) - kept_here;
       total_kept = total_kept + kept_here; total_ignored = total_ignored + ignored_here;
       fprintf('AssignAndMerge: %s -> kept=%d, ignored=%d\n', tName, kept_here, ignored_here);
       geometry.(tName) = position_list;
@@ -715,6 +742,44 @@ switch OPERATION
 
     saveas(gcf, file_out,'pdf')
  
+  case 'TrimOldCycles'
+    % Trim subTomoMeta/masterTM by removing all cycleXXX structs with XXX <= VECTOR_OP(1)
+    trim_cycle = VECTOR_OP(1);
+    if isnan(trim_cycle) || trim_cycle < 0
+      error('TrimOldCycles: invalid cycle value %s', mat2str(VECTOR_OP));
+    end
+    flds = fieldnames(masterTM);
+    cycle_names = {};
+    cycle_ids = [];
+    for i = 1:numel(flds)
+      tok = regexp(flds{i}, '^cycle(\d{3})$', 'tokens');
+      if ~isempty(tok)
+        cid = str2double(tok{1}{1});
+        cycle_names{end+1} = flds{i}; %#ok<AGROW>
+        cycle_ids(end+1) = cid; %#ok<AGROW>
+      end
+    end
+    if isempty(cycle_ids)
+      warning('TrimOldCycles: no cycleXXX fields found to trim');
+    end
+    to_remove_mask = cycle_ids <= trim_cycle;
+    to_keep_mask   = cycle_ids >  trim_cycle;
+    n_remove = sum(to_remove_mask);
+    n_keep   = sum(to_keep_mask);
+    if n_remove > 0
+      rm_list = cycle_names(to_remove_mask);
+      masterTM = rmfield(masterTM, rm_list);
+      fprintf('TrimOldCycles: removed %d cycle(s) <= %03d\n', n_remove, trim_cycle);
+    else
+      fprintf('TrimOldCycles: nothing to remove at or below cycle %03d\n', trim_cycle);
+    end
+    if n_keep == 0
+      warning('TrimOldCycles: no cycleXXX fields remain greater than %03d', trim_cycle);
+    else
+      fprintf('TrimOldCycles: %d cycle(s) remain > %03d\n', n_keep, trim_cycle);
+    end
+    % geometry remains unchanged; final save below will persist masterTM
+    
     
     case 'RemoveIgnoredParticles'
       % Get distribution of CCC from given cycle rawAlignment
@@ -773,7 +838,7 @@ switch OPERATION
     fprintf(fID,'%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t\n%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t\n',percentiles');
     fclose(fID);
   otherwise
-  error('OPERATION must be WriteCsv, RemoveClasses, AssignToBranch, AssignToTrunk, AssignAndMerge, ShiftAll, RemoveFraction, RemoveIgnoredParticles, not %s', OPERATION)
+  error('OPERATION must be WriteCsv, RemoveClasses, AssignToBranch, AssignToTrunk, AssignAndMerge, ShiftAll, RemoveFraction, RemoveIgnoredParticles, TrimOldCycles, not %s', OPERATION)
 end 
 
 % Redundant for WriteCsv, otherwise update the new geometry, which was backed up
@@ -786,7 +851,6 @@ switch STAGEofALIGNMENT
   case 'RawAlignment'
     masterTM.(cycleNumber).RawAlign = geometry;
   case 'Cluster'
-
     masterTM.(cycleNumber).(clusterGeom) = geometry;
 
   otherwise
@@ -816,12 +880,11 @@ if assignBranchTriggered
     end
     subTomoMeta = branchMasterTM; %#ok<NASGU>
     outBase = sprintf('%s_branch_%d', emc.('subTomoMeta'), b);
-    save(outBase, 'subTomoMeta');
-    fprintf('AssignToBranch: wrote %s.mat\n', outBase);
+    save(outBase, 'subTomoMeta', '-v7.3');
   end
 else
   subTomoMeta = masterTM;
-  save(emc.('subTomoMeta'), 'subTomoMeta');
+  save(emc.('subTomoMeta'), 'subTomoMeta', '-v7.3');
 end
 end
 

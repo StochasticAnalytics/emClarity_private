@@ -307,8 +307,9 @@ parfor iParProc = 1:nParProcesses
       for iTomo = 1:nTomos
         % The order of tomo num could be off but only if all are present do we
         % skip.
-        checkRecon = sprintf('cache/%s_bin%d%s.rec',  tomoList{iTomo}, samplingRate, filtered);
-        if exist(checkRecon, 'file')
+        alt_cache = emc.alt_cache;
+        checkRecon = EMC_checkCacheForFile(alt_cache, sprintf('cache/%s_bin%d%s.rec',  tomoList{iTomo}, samplingRate, filtered));
+        if isfile(checkRecon)
           try 
             % Could have a corrupt file
             testread = MRCImage(checkRecon,0);
@@ -388,6 +389,7 @@ parfor iParProc = 1:nParProcesses
 
     
     if samplingRate > 1
+      % For now, we are only using the alt_cache for the tomos
       fullStack = sprintf('%aliStacks/%s_ali%d.fixed', tiltList{iTilt}, mapBackIter + 1);
       inputStack = sprintf('cache/%s_ali%d_bin%d.fixed', tiltList{iTilt}, mapBackIter + 1, samplingRate);
       if ~emc_check_for_valid_image_file(inputStack)
@@ -653,10 +655,11 @@ parfor iParProc = 1:nParProcesses
     for iTomo = 1:nTomos
       % Note that bh_global_turn_on_phase_plate could be true for any of the recon_for_stage bools, so it must
       % be checked first.
+      alt_cache = emc.alt_cache;
       if (bh_global_turn_on_phase_plate(1))
-        reconNameFull = sprintf('cache/%s_bin%d_filtered.rec', tomoList{iTomo}, samplingRate);
+        reconNameFull = EMC_setCacheForFile(alt_cache, sprintf('cache/%s_bin%d_filtered.rec', tomoList{iTomo}, samplingRate));
       else
-        reconNameFull = sprintf('cache/%s_bin%d.rec', tomoList{iTomo},samplingRate);
+        reconNameFull = EMC_setCacheForFile(alt_cache, sprintf('cache/%s_bin%d.rec', tomoList{iTomo},samplingRate));
       end
       fprintf('in ctf3d reconNameFull is %s\n\n',reconNameFull);
           

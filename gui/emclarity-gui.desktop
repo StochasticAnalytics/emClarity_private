@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=emClarity GUI
+Comment=Graphical interface for emClarity cryo-EM processing
+Exec=/sa_shared/git/emClarity/.venv/bin/python /sa_shared/git/emClarity/gui/launcher.py
+Icon=applications-science
+Terminal=false
+Categories=Science;Education;
+Keywords=emClarity;cryo-EM;electron;microscopy;tomography;

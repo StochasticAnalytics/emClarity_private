@@ -117,7 +117,7 @@ subTomoMeta.('cycle000').geometry=geometry;
 if (returnStruct)
   GEOMETRY_SPLIT = subTomoMeta;
 else
-  save(GEOMETRY, 'subTomoMeta');
+  save(GEOMETRY, 'subTomoMeta', '-v7.3');
 end
 
 end % end of fscSplit

@@ -412,7 +412,7 @@ for iGold = 1:1+flgGold
   
   subTomoMeta = masterTM;
   
-  save(emc.('subTomoMeta'), 'subTomoMeta');
+  save(emc.('subTomoMeta'), 'subTomoMeta', '-v7.3');
   
   %save(sprintf('%s_pca.mat',OUTPUT_PREFIX), 'nTOTAL','U', 'S', 'V', 'coeffs')
   fprintf('Total execution time on set %s: %f seconds\n', halfSet, seconds(datetime("now") - startTime));

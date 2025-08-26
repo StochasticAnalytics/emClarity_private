@@ -25,7 +25,7 @@ stringValues = {'subTomoMeta'; ...
   'Ali_mType';'Cls_mType';'Cls_mType';'Raw_mType';'Fsc_mType'; ...
   'Pca_distMeasure';'Kms_mType';'flgPrecision';'Tmp_xcfScale';...
   'fastScratchDisk';'Tmp_eraseMaskType';'startingDirection';'Peak_mType';'symmetry'; ...
-  'gmm_covariance_type';'distance_metric'};
+  'gmm_covariance_type';'distance_metric';'alt_cache'};
 for i = 1:size(p2,1)
   pNameVal = strsplit(p2{i,1},'=');
   if length(pNameVal) == 1
@@ -35,14 +35,18 @@ for i = 1:size(p2,1)
     fprintf("Last successfully parsed parameter: %s\n", string(last_parsed_parameter));
     error('To many colons in\n\t %s',char(pNameVal))
   else   
+
     if any(strcmpi(stringValues, pNameVal{1}))
       emc.(pNameVal{1}) = pNameVal{2};
     else
       emc.(pNameVal{1}) = EMC_str2double(pNameVal{2});
     end
+  
     last_parsed_parameter = pNameVal{1};
   end
 end
+
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Asserts on required parameters
@@ -205,6 +209,23 @@ if isfield(emc,'track_stats')
   EMC_assert_boolean(emc.track_stats)
 else
   emc.track_stats = false;
+end
+
+% alt_cache: optional list of writable cache directories
+if ~isfield(emc, 'alt_cache')
+  emc.alt_cache = {};
+else
+  t = strsplit(emc.alt_cache, ',');
+  % Clear and we'll repopulate as a cell
+  emc.alt_cache = cell(length(t),1);
+  for i = 1:length(t)
+    if ~(isfolder(t{i}))
+      error('alt_cache directory does not exist: %s', t{i});
+    else
+      emc.alt_cache{i} = t{i};
+    end
+  end
+
 end
 
 

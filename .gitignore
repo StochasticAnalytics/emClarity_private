@@ -18,4 +18,9 @@ testScripts/readme.txt
 testScripts/requiredMCRProducts.txt
 testScripts/unresolvedSymbols.txt
 
+# Python virtual environment
+.venv/
+venv/
+env/
+
 __pycache__/

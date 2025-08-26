@@ -916,7 +916,7 @@ for iRef = 1:nReferences
 end
 
 subTomoMeta = masterTM;
-save(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta');
+save(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta', '-v7.3');
 clearvars -except refWGT
 end
 

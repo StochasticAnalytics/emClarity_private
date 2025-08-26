@@ -54,7 +54,7 @@ else
     ['the former requires the latter to exist.\n']);
 end
 
-save(emc.('subTomoMeta'), 'subTomoMeta');
+save(emc.('subTomoMeta'), 'subTomoMeta', '-v7.3');
 
 
 end
