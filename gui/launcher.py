@@ -16,7 +16,18 @@ if str(gui_dir) not in sys.path:
 
 def main():
     """Main launcher function."""
+    import argparse
+    
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='emClarity GUI Launcher')
+    parser.add_argument('--rubber-band-mode', action='store_true',
+                       help='Enable rubber band selection tool for GUI development')
+    args = parser.parse_args()
+    
     print("Starting emClarity GUI...")
+    
+    if args.rubber_band_mode:
+        print("Rubber Band Mode requested - will be activated after GUI loads")
     
     # Check if we have display support
     if not os.environ.get('DISPLAY') and not os.environ.get('WAYLAND_DISPLAY'):
@@ -32,6 +43,9 @@ def main():
     
     try:
         import main
+        # Pass the arguments to main
+        if args.rubber_band_mode:
+            sys.argv.append('--rubber-band-mode')
         main.main()
     except ImportError as e:
         print(f"Error importing GUI modules: {e}")

@@ -10,19 +10,19 @@ function [ IMG_OUT ] = BH_multi_loadOrBuild(alt_cache, ...
 
 IMG_OUT = '';
 
-if nargin > 4
+if nargin > 5
   flgLoad = varargin{1};
 end
 
 recon = '';
-if nargin > 5
+if nargin > 6
   recon = varargin{2};
 end
 
 ali = 'ali';
 super_sample = ''; % not used
 expand_lines = '';
-if nargin > 6
+if nargin > 7
   if ~isempty(varargin{3})
     super_sample = varargin{3};
   end

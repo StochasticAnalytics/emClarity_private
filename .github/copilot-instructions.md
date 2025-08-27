@@ -103,3 +103,101 @@ python -c "from module import Class; test_basic_functionality()"
 - Project-aware state management with tab notification system
 
 ---
+
+#### 5. **Session 3 Learnings: Rubber Band Tool & Advanced UI Development**
+
+*Key insights from August 27, 2025 - Rubber Band selection tool and UI refinement session*
+
+**A. Layout Clearing vs Stacked Widget Approach**
+
+**Problem**: Attempted to implement dynamic panel switching by clearing and rebuilding Qt layouts, which caused segmentation faults and loss of widget state.
+
+**Dead End Approach**:
+```python
+# This approach failed - caused crashes and state loss
+def clear_layout(self):
+    layout = self.layout()
+    while layout.count():
+        child = layout.takeAt(0)
+        child.widget().setParent(None)  # Too aggressive
+```
+
+**Successful Solution**:
+```python
+# QStackedWidget approach - preserves widget state
+self.stacked_widget = QStackedWidget()
+# Create all panels once at startup
+self.tilt_series_panel = self.create_tilt_series_alignment_panel()
+self.stacked_widget.addWidget(self.tilt_series_panel)
+# Switch panels without destroying them
+self.stacked_widget.setCurrentWidget(self.tilt_series_panel)
+```
+
+**Key Learning**: For complex widget switching, use QStackedWidget to preserve state rather than destroying/recreating layouts.
+
+---
+
+**B. Iterative Problem Solving Pattern**
+
+**Effective Cycle**: 
+1. Small incremental changes (single button, single UI element)
+2. Immediate testing with `./gui/run_gui.sh --rubber-band-mode`
+3. Quick verification through rubber band tool analysis
+4. Fix issues before proceeding to next change
+
+**Example Success**: Through 3 rubber band prompts, we successfully:
+- Fixed title text cutoff (removed constraining CSS)
+- Added "Averaging" button and increased font sizes
+- Implemented complete Actions panel with dynamic switching
+
+**Impact**: This iterative approach prevented large-scale rollbacks and caught UI issues immediately.
+
+---
+
+**C. Function Key Reliability Issues**
+
+**Problem**: F1 key functionality was unreliable across different environments/terminals.
+
+**Solution Evolution**:
+- F1 → F15 → ESC key (for rubber band) + L key (for click logging)
+- Simple keys (ESC, L) proved much more reliable than function keys
+- Used ESC for toggle (natural "cancel" association)
+- Used L for "Logging" (mnemonic association)
+
+**Learning**: Avoid function keys for critical features; prefer simple letter keys with clear mnemonics.
+
+---
+
+**D. Rubber Band Tool as Development Multiplier**
+
+**Breakthrough**: The rubber band tool became a development force multiplier by:
+- Generating AI-friendly prompts with precise coordinates
+- Moving REQUEST section to top of prompts (eliminated scrolling)
+- Enabling rapid UI issue identification and fixes
+- Providing structured context for AI assistance
+
+**Workflow Innovation**: "Use rubber band tool to identify issues → Generate prompt → Apply AI-suggested fixes → Test with rubber band tool again"
+
+**Impact**: This created a feedback loop that accelerated UI development significantly.
+
+---
+
+**E. File Organization & Cleanup Best Practices**
+
+**Pattern**: Regular cleanup prevents project bloat:
+```bash
+# Organize test files
+mkdir gui/tests gui/docs
+mv test_*.py gui/tests/
+mv *_GUIDE.md *_SUMMARY.md gui/docs/
+
+# Remove dead-end files
+rm unused_temp_files.py duplicate_new_versions.py
+
+# Check for unused imports before removing
+grep -r "import filename" gui/*.py
+```
+
+**Learning**: Regular file organization prevents confusion and makes project navigation easier for both human and AI collaborators.
+
+---

@@ -34,6 +34,10 @@ from state_manager import GUIStateManager
 from profile_widgets import RunProfileWidget
 from autoalign_widget import AutoAlignWidget
 from tilt_series_assets import TiltSeriesAssetsWidget
+from sidebar_layout import SidebarNavigationWidget
+from top_toolbar import TopToolbar
+from rubber_band_tool import create_rubber_band_tool
+import debug_instrumentation
 
 
 class CommandRunner(QThread):
@@ -172,6 +176,7 @@ class EmClarityWindow(QMainWindow):
         self.config = None
         self.command_runner = None
         self.parameter_manager = EmClarityParameters()
+        self.rubber_band_tool = None  # Initialize rubber band tool
         
         # Setup UI
         self.setup_ui()
@@ -211,37 +216,21 @@ class EmClarityWindow(QMainWindow):
             font_size = QApplication.instance().font().pointSize()
             keep_on_top = self.keep_on_top_checkbox.isChecked() if hasattr(self, 'keep_on_top_checkbox') else False
             
-            # Get splitter sizes from current tab
+            # No splitter sizes for now with sidebar layout
             splitter_sizes = ""
-            current_tab = self.tab_widget.currentWidget()
-            if hasattr(current_tab, 'get_splitter_sizes'):
-                splitter_sizes = current_tab.get_splitter_sizes()
             
             self.state_manager.save_window_state(
                 geometry, window_state, font_size, keep_on_top, splitter_sizes
             )
             
-            # Save tab states and parameters
-            for i in range(self.tab_widget.count()):
-                tab = self.tab_widget.widget(i)
-                tab_name = self.tab_widget.tabText(i)
-                
-                # Tab expansion state
-                expanded_panels = []
-                if hasattr(tab, 'expanded_panels'):
-                    expanded_panels = list(tab.expanded_panels)
-                
+            # Save sidebar panel state
+            if hasattr(self, 'sidebar_widget'):
+                current_panel = self.sidebar_widget.current_panel
                 self.state_manager.save_tab_state(
-                    tab_name, 
-                    i == self.tab_widget.currentIndex(),
-                    expanded_panels
+                    f"sidebar_{current_panel}",
+                    True,  # is_active
+                    []     # no expanded_panels for sidebar
                 )
-                
-                # Parameter values
-                if hasattr(tab, 'parameter_panel') and tab.parameter_panel:
-                    params = tab.parameter_panel.get_parameter_values()
-                    if params:
-                        self.state_manager.save_parameter_values(tab_name, params)
                         
         except Exception as e:
             print(f"Error saving state: {e}")
@@ -272,6 +261,25 @@ class EmClarityWindow(QMainWindow):
         """Handle window close event - save state before closing."""
         self.save_current_state()
         super().closeEvent(event)
+    
+    def keyPressEvent(self, event):
+        """Handle key press events."""
+        # Handle L key for click logging toggle (when in rubber band mode)
+        if hasattr(self, 'rubber_band_mode') and self.rubber_band_mode and event.key() == Qt.Key_L:
+            print("🔑 L key detected - attempting to toggle click logging...")
+            try:
+                import debug_instrumentation
+                result = debug_instrumentation.toggle_click_logging()
+                status = "ENABLED" if result else "DISABLED"
+                print(f"🎯 Click logging {status} (L key pressed)")
+            except Exception as e:
+                print(f"⚠️ Error toggling click logging: {e}")
+                import traceback
+                traceback.print_exc()
+            return
+        
+        # Pass other key events to parent
+        super().keyPressEvent(event)
         
     def setup_ui(self):
         """Setup the main UI."""
@@ -286,39 +294,34 @@ class EmClarityWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
 
-        # Header with version info
-        self.setup_header(main_layout)
-
-        # Project path label
-        self.project_path_label = QLabel("No project open.")
-        self.project_path_label.setStyleSheet("font-style: italic; color: gray;")
-        main_layout.addWidget(self.project_path_label)
+        # Header with version info (simplified)
+        self.setup_simplified_header(main_layout)
         
-        # Main content splitter (vertical)
+        # Top toolbar for asset types / panel-specific buttons
+        self.top_toolbar = TopToolbar()
+        self.top_toolbar.button_clicked.connect(self.handle_toolbar_button_click)
+        main_layout.addWidget(self.top_toolbar)
+        
+        # Main content splitter (vertical) for sidebar + output
         content_splitter = QSplitter(Qt.Vertical)
         
-        # Tabbed interface
-        self.tab_widget = QTabWidget()
-        self.setup_tabs()
-        self.tab_widget.setEnabled(False) # Disable tabs initially
-        content_splitter.addWidget(self.tab_widget)
+        # Sidebar navigation widget
+        self.sidebar_widget = SidebarNavigationWidget(self)
+        self.sidebar_widget.panel_changed.connect(self.handle_panel_change)
+        self.sidebar_widget.project_requested.connect(self.handle_project_request)
+        content_splitter.addWidget(self.sidebar_widget)
         
         # Output panel
         self.setup_output_panel(content_splitter)
         
-        
-        # Set content splitter proportions
-        content_splitter.setSizes([400, 150, 100])
+        # Set content splitter proportions (give most space to sidebar widget)
+        content_splitter.setSizes([800, 150])
         main_layout.addWidget(content_splitter)
         
         # Apply styling
         self.setup_styling()
         
-        # Load saved state
-        self.load_saved_state()
-        
         # Connect signals for state saving
-        self.tab_widget.currentChanged.connect(self.schedule_state_save)
         if hasattr(self, 'keep_on_top_checkbox'):
             self.keep_on_top_checkbox.toggled.connect(self.schedule_state_save)
     
@@ -329,14 +332,130 @@ class EmClarityWindow(QMainWindow):
             self.restore_window_state()
             self._state_restored = True
             
-            # Auto-open project dialog on first show
-            QTimer.singleShot(100, self.auto_open_project)
+            # Load configuration after window is shown
+            QTimer.singleShot(100, self.load_config)
     
     def auto_open_project(self):
         """Automatically open project dialog when GUI starts."""
         if not hasattr(self, 'project_path'):
             self.open_project()
         
+    def setup_simplified_header(self, layout):
+        """Setup simplified header with basic controls."""
+        header_widget = QWidget()
+        header_layout = QHBoxLayout(header_widget)
+        
+        # Project path label
+        self.project_path_label = QLabel("No project open.")
+        self.project_path_label.setStyleSheet("font-style: italic; color: gray; font-size: 12px;")
+        header_layout.addWidget(self.project_path_label)
+        
+        header_layout.addStretch()
+        
+        # Keep on top toggle
+        self.keep_on_top_checkbox = QCheckBox("Keep on Top")
+        self.keep_on_top_checkbox.setToolTip("Keep this window on top of all other windows")
+        self.keep_on_top_checkbox.stateChanged.connect(self.toggle_keep_on_top)
+        header_layout.addWidget(self.keep_on_top_checkbox)
+        
+        # Debug toggle
+        self.debug_checkbox = QCheckBox("Debug Mode")
+        self.debug_checkbox.setToolTip("Enable debug output in console")
+        header_layout.addWidget(self.debug_checkbox)
+        
+        layout.addWidget(header_widget)
+        
+    def handle_panel_change(self, panel_name: str):
+        """Handle panel change in sidebar navigation."""
+        print(f"Switched to panel: {panel_name}")
+        
+        # Update top toolbar for the new panel
+        if hasattr(self, 'top_toolbar'):
+            self.top_toolbar.update_toolbar_for_panel(panel_name)
+        
+        # Schedule state save when panels change
+        self.schedule_state_save()
+    
+    def handle_toolbar_button_click(self, panel_type: str, button_id: str):
+        """Handle clicks from the top toolbar buttons."""
+        print(f"Toolbar button clicked - Panel: {panel_type}, Button: {button_id}")
+        
+        # Forward the toolbar selection to the appropriate panel
+        if hasattr(self, 'sidebar_widget') and hasattr(self.sidebar_widget, 'panels'):
+            current_panel = self.sidebar_widget.panels.get(panel_type)
+            
+            # Handle asset panel toolbar selections
+            if panel_type == "assets" and hasattr(current_panel, 'handle_asset_type_change'):
+                current_panel.handle_asset_type_change(button_id)
+            
+            # Handle results panel toolbar selections
+            elif panel_type == "results" and hasattr(current_panel, 'handle_action_type_change'):
+                current_panel.handle_action_type_change(button_id)
+            
+            # Handle settings panel toolbar selections
+            elif panel_type == "settings" and hasattr(current_panel, 'handle_settings_type_change'):
+                current_panel.handle_settings_type_change(button_id)
+            
+            # Handle actions panel toolbar selections
+            elif panel_type == "actions" and hasattr(current_panel, 'handle_action_type_change'):
+                current_panel.handle_action_type_change(button_id)
+            
+            # Handle other panel types as they are implemented
+            elif panel_type == "overview":
+                print(f"Overview panel: {button_id} selected")
+            elif panel_type == "experimental":
+                print(f"Experimental panel: {button_id} selected")
+        
+        # Schedule state save
+        self.schedule_state_save()
+        
+    def handle_project_request(self, action: str):
+        """Handle project-related requests from sidebar."""
+        if action == "new":
+            self.create_new_project()
+        elif action == "open":
+            self.open_project()
+        elif action.startswith("/"):  # Assume it's a file path
+            self.open_specific_project(action)
+            
+    def create_new_project(self):
+        """Create a new project."""
+        # For now, just open the regular project dialog
+        # In the future, this could open a project creation wizard
+        self.open_project()
+        
+    def open_specific_project(self, project_path: str):
+        """Open a specific project by path."""
+        project_path_obj = Path(project_path)
+        if project_path_obj.exists() and project_path_obj.is_dir():
+            if not os.access(project_path_obj, os.W_OK):
+                QMessageBox.warning(self, "Permission Denied", "The selected directory is not writable.")
+                return
+
+            self.project_path = project_path_obj
+            self.project_path_label.setText(f"Project: {self.project_path}")
+            self.project_path_label.setStyleSheet("font-size: 12px; color: #333;")  # Reset style
+            self.setWindowTitle(f"emClarity GUI - {self.project_path.name}")
+            
+            # Update recent projects
+            self.state_manager.save_recent_project(
+                self.project_path.name,
+                str(self.project_path),
+                "Created via GUI"
+            )
+            
+            # Refresh recent projects in sidebar
+            self.sidebar_widget.refresh_recent_projects()
+            
+            # Notify panels that project has been opened
+            self.sidebar_widget.notify_panels_project_opened()
+            
+            # Switch to assets panel after opening project
+            self.sidebar_widget.switch_panel("assets")
+            
+        else:
+            QMessageBox.warning(self, "Error", f"Project path does not exist or is not accessible: {project_path}")
+    
     def setup_header(self, layout):
         """Setup header with version information."""
         header_widget = QWidget()
@@ -373,35 +492,67 @@ class EmClarityWindow(QMainWindow):
         layout.addWidget(header_widget)
         
     def setup_menu_bar(self):
-        """Setup the menu bar with View menu for font size control."""
+        """Setup the menu bar with Project, Workflow, and Help menus."""
         menubar = self.menuBar()
         
-        # File menu
-        file_menu = menubar.addMenu("&File")
+        # Project menu
+        project_menu = menubar.addMenu("&Project")
+        
+        new_project_action = QAction("New Project...", self)
+        new_project_action.triggered.connect(self.create_new_project)
+        project_menu.addAction(new_project_action)
+        
         open_project_action = QAction("Open Project...", self)
         open_project_action.triggered.connect(self.open_project)
-        file_menu.addAction(open_project_action)
+        project_menu.addAction(open_project_action)
+        
+        project_menu.addSeparator()
+        
+        # Recent projects submenu
+        recent_menu = project_menu.addMenu("Recent Projects")
+        self.update_recent_projects_menu(recent_menu)
+        
+        # Workflow menu
+        workflow_menu = menubar.addMenu("&Workflow")
+        
+        # Add workflow actions - these can be expanded later
+        assets_action = QAction("Manage Assets", self)
+        assets_action.triggered.connect(lambda: self.sidebar_widget.switch_panel("assets"))
+        workflow_menu.addAction(assets_action)
+        
+        actions_action = QAction("Run Actions", self)
+        actions_action.triggered.connect(lambda: self.sidebar_widget.switch_panel("actions"))
+        workflow_menu.addAction(actions_action)
+        
+        results_action = QAction("View Results", self)
+        results_action.triggered.connect(lambda: self.sidebar_widget.switch_panel("results"))
+        workflow_menu.addAction(results_action)
 
-        # View menu
+        # Help menu
+        help_menu = menubar.addMenu("&Help")
+        
+        about_action = QAction("About emClarity", self)
+        about_action.triggered.connect(self.show_about)
+        help_menu.addAction(about_action)
+        
+        tutorial_action = QAction("Tutorial", self)
+        tutorial_action.triggered.connect(self.show_tutorial)
+        help_menu.addAction(tutorial_action)
+        
+        # View menu (keeping for font size control)
         view_menu = menubar.addMenu("&View")
+        
+        # Rubber band mode toggle
+        self.rubber_band_action = QAction("Toggle Rubber Band Mode", self)
+        self.rubber_band_action.setCheckable(True)
+        self.rubber_band_action.setToolTip("Enable/disable rubber band selection tool for GUI development")
+        self.rubber_band_action.triggered.connect(self.toggle_rubber_band_mode)
+        view_menu.addAction(self.rubber_band_action)
+        
+        view_menu.addSeparator()
         
         # Font size submenu
         font_menu = view_menu.addMenu("Font Size")
-        
-        # Parameters menu
-        params_menu = menubar.addMenu("&Parameters")
-        
-        # Load example parameters action
-        load_example_action = QAction("Load Example Parameters", self)
-        load_example_action.setToolTip("Load example parameters based on gen_param.m")
-        load_example_action.triggered.connect(self.load_example_parameters)
-        params_menu.addAction(load_example_action)
-        
-        # Export all parameters action
-        export_all_action = QAction("Export All Parameters", self)
-        export_all_action.setToolTip("Export parameters from all tabs to a single file")
-        export_all_action.triggered.connect(self.export_all_parameters)
-        params_menu.addAction(export_all_action)
         
         # Font size options
         font_sizes = [8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24]
@@ -419,6 +570,51 @@ class EmClarityWindow(QMainWindow):
             font_menu.addAction(action)
             self.font_size_actions.append(action)
     
+    def update_recent_projects_menu(self, menu):
+        """Update the recent projects menu."""
+        menu.clear()
+        recent_projects = self.state_manager.get_recent_projects(5)
+        
+        if recent_projects:
+            for project in recent_projects:
+                action = QAction(project['path'], self)
+                action.triggered.connect(lambda checked, path=project['path']: self.open_specific_project(path))
+                menu.addAction(action)
+        else:
+            no_recent_action = QAction("No recent projects", self)
+            no_recent_action.setEnabled(False)
+            menu.addAction(no_recent_action)
+    
+    def show_about(self):
+        """Show about dialog."""
+        version_info = "Unknown"
+        if self.config:
+            version_info = self.config.get_version_info()
+            version_text = f"emClarity {version_info['version']}"
+        else:
+            version_text = "emClarity"
+            
+        QMessageBox.about(self, "About emClarity", 
+            f"{version_text}\n\n"
+            "Computational Imaging System for Transmission Electron Microscopy\n\n"
+            "For more information, visit: https://emclarity.org")
+    
+    def show_tutorial(self):
+        """Show tutorial information."""
+        QMessageBox.information(self, "Tutorial", 
+            "For tutorials and documentation, please visit:\n\n"
+            "https://emclarity.org\n\n"
+            "Additional resources are available in the docs/ directory of your emClarity installation.")
+    
+    def toggle_rubber_band_mode(self):
+        """Toggle rubber band mode on/off."""
+        if hasattr(self, 'rubber_band_tool') and self.rubber_band_tool and self.rubber_band_tool.is_active:
+            self.disable_rubber_band_mode()
+            self.rubber_band_action.setChecked(False)
+        else:
+            self.enable_rubber_band_mode()
+            self.rubber_band_action.setChecked(True)
+
     def change_font_size(self, size):
         """Change the font size for the entire GUI."""
         # Update all font size actions to reflect the new selection
@@ -443,168 +639,20 @@ class EmClarityWindow(QMainWindow):
     
     def load_example_parameters(self):
         """Load example parameters from gen_param.m file."""
-        try:
-            # Example parameters based on the gen_param.m file
-            example_params = {
-                'subTomoMeta': 'full_enchilada_2_1_branch_5',
-                'nGPUs': 4,
-                'nCpuCores': 16,
-                'n_tilt_workers': 4,
-                'fastScratchDisk': 'ram',
-                'PIXEL_SIZE': 2.50e-10,
-                'Cs': 2.7e-3,
-                'VOLTAGE': 300e3,
-                'AMPCONT': 0.04,
-                'defEstimate': 3.5e-6,
-                'defWindow': 1.75e-6,
-                'defCutOff': 6e-10,
-                'max_ctf3dDepth': 100e-9,
-                'whitenPS': [0, 0, 0.5],
-                'Ali_samplingRate': 3,
-                'Ali_mType': 'cylinder',
-                'Ali_mRadius': [220, 220, 164],
-                'Ali_mCenter': [0, 0, 0],
-                'symmetry': 'C12',
-                'particleRadius': [180, 180, 150],
-                'particleMass': 3.2,
-                'Cls_mType': 'cylinder',
-                'Cls_mRadius': [220, 220, 164],
-                'Cls_mCenter': [0, 0, 0],
-                'Cls_samplingRate': 3,
-                'Peak_mType': 'cylinder',
-                'Peak_mRadius': [40, 40, 40],
-                'Tmp_samplingRate': 5,
-                'Tmp_bandpass': [0.01, 1200, 25],
-                'Tmp_threshold': 1500,
-                'Tmp_angleSearch': [180, 12, 180, 12],
-                'Tmp_targetSize': [512, 512, 768],
-                'nPeaks': 1,
-                'Fsc_bfactor': 10,
-                'CUM_e_DOSE': 180,
-                'beadDiameter': 10e-9,
-                'startingDirection': 'pos',
-            }
-            
-            # Apply parameters to all tabs
-            for i in range(self.tab_widget.count()):
-                tab = self.tab_widget.widget(i)
-                if hasattr(tab, 'parameter_panel') and tab.parameter_panel:
-                    # Filter parameters for this tab
-                    tab_params = {}
-                    for param_name, value in example_params.items():
-                        if param_name in tab.parameter_panel.param_widgets:
-                            tab_params[param_name] = value
-                    
-                    if tab_params:
-                        tab.parameter_panel.set_parameter_values(tab_params)
-            
-            QMessageBox.information(self, "Success", "Example parameters loaded successfully!")
-            
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to load example parameters:\n{str(e)}")
-    
+        QMessageBox.information(self, "Info", "Example parameters loading not yet implemented in sidebar layout.")
+        
     def export_all_parameters(self):
-        """Export parameters from all tabs to a single parameter file."""
-        try:
-            # Collect parameters from all tabs
-            all_params = {}
-            tab_names = []
-            
-            for i in range(self.tab_widget.count()):
-                tab = self.tab_widget.widget(i)
-                tab_name = self.tab_widget.tabText(i)
-                tab_names.append(tab_name)
-                
-                if hasattr(tab, 'parameter_panel') and tab.parameter_panel:
-                    params = tab.parameter_panel.get_parameter_values()
-                    all_params.update(params)
-            
-            if not all_params:
-                QMessageBox.warning(self, "Warning", "No parameters to export")
-                return
-            
-            # Create parameter file
-            param_manager = EmClarityParameters()
-            content, filename = param_manager.create_parameter_file(all_params, "gui_export")
-            
-            # Save file dialog
-            save_path, _ = QFileDialog.getSaveFileName(
-                self, "Export All Parameters", filename, "MATLAB files (*.m);;All files (*)"
-            )
-            
-            if save_path:
-                with open(save_path, 'w') as f:
-                    f.write(content)
-                QMessageBox.information(self, "Success", 
-                    f"Parameters from {len(tab_names)} tabs exported to {save_path}")
-                
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to export parameters:\n{str(e)}")
+        """Export parameters from all panels to a single parameter file."""
+        QMessageBox.information(self, "Info", "Parameter export not yet implemented in sidebar layout.")
         
-    def setup_tabs(self):
-        """Setup all tabs using dynamic command system."""
-        commands_obj = EmClarityCommands()
-        categories = commands_obj.get_commands_by_category()
+    # Legacy tab-related methods - keeping for potential future use
+    # def setup_tabs(self):
+    #     """Setup all tabs using dynamic command system - LEGACY."""
+    #     pass
         
-        # Define tab order (user requested order)
-        tab_order = [
-            'TiltSeriesAssets',  # New tab for asset management
-            'Alignment', 
-            'CTF', 
-            'Template Search', 
-            'Processing', 
-            'Reconstruction', 
-            'Utilities',
-            'System',
-            'Project Setup'
-        ]
-        
-        for category in tab_order:
-            if category == 'TiltSeriesAssets':
-                tab = TiltSeriesAssetsWidget(self)
-                self.tab_widget.addTab(tab, "Tilt-Series Assets")
-            elif category in categories:
-                if category == 'System':
-                    tab = QWidget()
-                    layout = QVBoxLayout(tab)
-                    layout.addWidget(RunProfileWidget(self))
-                    self.tab_widget.addTab(tab, "System")
-                elif category == 'Alignment':
-                    tab = AutoAlignWidget(self)
-                    self.tab_widget.addTab(tab, "Tilt-Series Alignment")
-                else:
-                    tab = DynamicCommandTab(category, categories[category], self)
-                    self.tab_widget.addTab(tab, category)
-        
-        # Restore saved tab states after all tabs are created
-        self.restore_tab_states()
-        
-    def restore_tab_states(self):
-        """Restore saved states for all tabs."""
-        try:
-            for i in range(self.tab_widget.count()):
-                tab = self.tab_widget.widget(i)
-                tab_name = self.tab_widget.tabText(i)
-                
-                # Load tab state
-                tab_state = self.state_manager.load_tab_state(tab_name)
-                if tab_state:
-                    # Restore expanded panels
-                    expanded_panels = tab_state.get('expanded_panels', [])
-                    if hasattr(tab, 'restore_panel_states'):
-                        tab.restore_panel_states(expanded_panels)
-                    
-                    # Restore parameter values
-                    params = self.state_manager.load_parameter_values(tab_name)
-                    if params and hasattr(tab, 'parameter_panel') and tab.parameter_panel:
-                        tab.parameter_panel.set_parameter_values(params)
-                        
-                    # Set active tab if it was active before
-                    if tab_state.get('is_active', False):
-                        self.tab_widget.setCurrentIndex(i)
-                        
-        except Exception as e:
-            print(f"Error restoring tab states: {e}")
+    # def restore_tab_states(self):
+    #     """Restore saved states for all tabs - LEGACY.""" 
+    #     pass
         
     def setup_output_panel(self, splitter):
         """Setup output panel for command results."""
@@ -749,13 +797,18 @@ class EmClarityWindow(QMainWindow):
             self.config = get_default_config()
             version_info = self.config.get_version_info()
             
-            self.version_label.setText(
-                f"emClarity {version_info['version']} | {version_info['root']}"
-            )
+            version_text = f"emClarity {version_info['version']} | {version_info['root']}"
+            
+            # Set version info in sidebar overview panel
+            if hasattr(self, 'sidebar_widget'):
+                overview_panel = self.sidebar_widget.get_overview_panel()
+                overview_panel.set_version_info(version_text)
             
         except Exception as e:
-            self.version_label.setText(f"Configuration Error: {str(e)}")
-            self.version_label.setStyleSheet("color: red;")
+            error_text = f"Configuration Error: {str(e)}"
+            if hasattr(self, 'sidebar_widget'):
+                overview_panel = self.sidebar_widget.get_overview_panel()
+                overview_panel.set_version_info(error_text)
     
     def handle_workflow_step(self, step_id: str, tab_name: str):
         """Handle workflow step selection - switch to appropriate tab."""
@@ -840,6 +893,55 @@ class EmClarityWindow(QMainWindow):
             cursor.movePosition(QTextCursor.End)
             self.output_text.setTextCursor(cursor)
     
+    def enable_rubber_band_mode(self):
+        """Enable rubber band selection tool for GUI development."""
+        try:
+            # Set rubber band mode flag
+            self.rubber_band_mode = True
+            
+            # Initialize debug instrumentation for click tracking
+            debug_instrumentation.init_rubber_band_debug(enabled=True)
+            
+            # Setup L shortcut for click logging toggle
+            debug_instrumentation.setup_click_logging_shortcut(self)
+            
+            if not self.rubber_band_tool:
+                self.rubber_band_tool = create_rubber_band_tool(self)
+                # Setup keyboard shortcut when rubber band mode is enabled
+                self.rubber_band_tool.setup_keyboard_shortcut()
+            
+            # DON'T auto-activate - wait for user to press the key
+            # self.rubber_band_tool.activate()
+            
+            # Update window title to indicate rubber band mode is available
+            current_title = self.windowTitle()
+            if "- Rubber Band Mode" not in current_title:
+                self.setWindowTitle(f"{current_title} - Rubber Band Mode")
+                
+            # Add rubber band mode indicator to output
+            self.output_text.append("🎯 Rubber Band Mode READY!")
+            self.output_text.append("Press ESC to activate rubber band selection tool")
+            self.output_text.append("Once active: Click+Drag to select GUI regions")
+            self.output_text.append("Use L to toggle click logging for capturing interaction context")
+            self.output_text.append("Press ESC again to deactivate")
+            self.output_text.append("-" * 50)
+            
+        except Exception as e:
+            print(f"Error enabling rubber band mode: {e}")
+            QMessageBox.warning(self, "Error", f"Failed to enable rubber band mode: {e}")
+    
+    def disable_rubber_band_mode(self):
+        """Disable rubber band selection tool."""
+        if self.rubber_band_tool:
+            self.rubber_band_tool.deactivate()
+            
+            # Update window title
+            current_title = self.windowTitle()
+            if "- Rubber Band Mode" in current_title:
+                self.setWindowTitle(current_title.replace(" - Rubber Band Mode", ""))
+                
+            self.output_text.append("Rubber Band Mode deactivated.")
+
     def debug_output_end_method(self):
         """Add spacing after a method's debug output."""
         if hasattr(self, 'debug_checkbox') and self.debug_checkbox.isChecked():
@@ -856,39 +958,50 @@ class EmClarityWindow(QMainWindow):
 
             self.project_path = project_path
             self.project_path_label.setText(f"Project: {self.project_path}")
-            self.project_path_label.setStyleSheet("")  # Reset style
-            self.tab_widget.setEnabled(True)
+            self.project_path_label.setStyleSheet("font-size: 12px; color: #333;")  # Reset style
             self.setWindowTitle(f"emClarity GUI - {self.project_path.name}")
             
-            # Notify all tabs that a project has been opened
-            self.notify_tabs_project_opened()
+            # Update recent projects
+            self.state_manager.save_recent_project(
+                self.project_path.name,
+                str(self.project_path),
+                "Opened via GUI"
+            )
             
-    def notify_tabs_project_opened(self):
-        """Notify all tabs that a project has been opened so they can load their data."""
-        for i in range(self.tab_widget.count()):
-            widget = self.tab_widget.widget(i)
+            # Refresh recent projects in sidebar
+            self.sidebar_widget.refresh_recent_projects()
             
-            # Check if the widget has a method to handle project opening
-            if hasattr(widget, 'on_project_opened'):
-                try:
-                    widget.on_project_opened()
-                except Exception as e:
-                    print(f"Error notifying tab {i} of project opening: {e}")
+            # Notify panels that project has been opened
+            self.sidebar_widget.notify_panels_project_opened()
             
-            # For nested widgets (like System tab with RunProfileWidget)
-            if hasattr(widget, 'layout') and widget.layout():
-                for j in range(widget.layout().count()):
-                    child_widget = widget.layout().itemAt(j).widget()
-                    if child_widget and hasattr(child_widget, 'on_project_opened'):
-                        try:
-                            child_widget.on_project_opened()
-                        except Exception as e:
-                            print(f"Error notifying child widget of project opening: {e}")
+            # Switch to assets panel after opening project
+            self.sidebar_widget.switch_panel("assets")
+            
+    # Legacy method for tab notification - keeping for reference
+    # def notify_tabs_project_opened(self):
+    #     """Notify all tabs that a project has been opened - LEGACY."""
+    #     pass
 
 def main():
     """Main entry point."""
+    import argparse
+    
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='emClarity GUI')
+    parser.add_argument('--rubber-band-mode', action='store_true',
+                       help='Enable rubber band selection tool for GUI development')
+    args = parser.parse_args()
+    
     app = QApplication(sys.argv)
     window = EmClarityWindow()
+    
+    # Enable rubber band mode if requested
+    if args.rubber_band_mode:
+        print("Starting emClarity GUI in Rubber Band Mode...")
+        print("Use Click+Drag to select GUI regions for analysis")
+        print("Use L to toggle click logging for capturing interaction context")
+        window.enable_rubber_band_mode()
+    
     window.show()
     sys.exit(app.exec())
 

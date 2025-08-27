@@ -1,0 +1,1 @@
+remembering #file:copilot-instructions.md #file:emClarity_Tutorial.md #file:GUI_IMPLEMENTATION_SUMMARY.md 

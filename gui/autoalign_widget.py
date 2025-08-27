@@ -275,8 +275,49 @@ class AutoAlignWidget(QWidget):
         self.load_asset_groups()
         
     def setup_ui(self):
-        """Set up the user interface."""
-        layout = QVBoxLayout(self)
+        """Set up the user interface with stacked widget for different action types."""
+        # Create main layout
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Create stacked widget to hold different panels
+        from PySide6.QtWidgets import QStackedWidget
+        self.stacked_widget = QStackedWidget()
+        self.main_layout.addWidget(self.stacked_widget)
+        
+        # Create the tilt-series alignment panel (original functionality)
+        self.tilt_series_panel = self.create_tilt_series_alignment_panel()
+        self.stacked_widget.addWidget(self.tilt_series_panel)
+        
+        # Create under construction panels
+        self.preprocess_panel = self.create_under_construction_panel("Preprocess", "Data preprocessing pipeline coming soon")
+        self.stacked_widget.addWidget(self.preprocess_panel)
+        
+        self.subtomo_align_panel = self.create_under_construction_panel("Subtomo Alignment", "Subtomogram alignment tools coming soon")
+        self.stacked_widget.addWidget(self.subtomo_align_panel)
+        
+        self.averaging_panel = self.create_under_construction_panel("Averaging", "Particle averaging tools coming soon")
+        self.stacked_widget.addWidget(self.averaging_panel)
+        
+        self.classify_panel = self.create_under_construction_panel("Classification", "Particle classification tools coming soon")
+        self.stacked_widget.addWidget(self.classify_panel)
+        
+        self.reconstruct_panel = self.create_under_construction_panel("Reconstruction", "3D reconstruction pipeline coming soon")
+        self.stacked_widget.addWidget(self.reconstruct_panel)
+        
+        self.refine_panel = self.create_under_construction_panel("Refinement", "Structure refinement tools coming soon")
+        self.stacked_widget.addWidget(self.refine_panel)
+        
+        self.validate_panel = self.create_under_construction_panel("Validation", "Quality validation tools coming soon")
+        self.stacked_widget.addWidget(self.validate_panel)
+        
+        # Default to tilt-series alignment panel
+        self.stacked_widget.setCurrentWidget(self.tilt_series_panel)
+        
+    def create_tilt_series_alignment_panel(self):
+        """Create the original tilt-series alignment panel."""
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
         layout.setSpacing(15)
         
         # Title
@@ -318,6 +359,50 @@ class AutoAlignWidget(QWidget):
         
         self.stop_button = QPushButton("Stop")
         self.stop_button.setStyleSheet("background-color: #dc3545; color: white; font-weight: bold; padding: 10px;")
+        self.stop_button.clicked.connect(self.stop_alignment)
+        self.stop_button.setEnabled(False)
+        run_layout.addWidget(self.stop_button)
+        
+        layout.addLayout(run_layout)
+        
+        return panel
+        
+    def create_under_construction_panel(self, title, message):
+        """Create an under construction panel with given title and message."""
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        layout.setAlignment(Qt.AlignCenter)
+        layout.setSpacing(20)
+        
+        # Title
+        title_label = QLabel(title)
+        title_label.setFont(QFont("Arial", 18, QFont.Bold))
+        title_label.setAlignment(Qt.AlignCenter)
+        title_label.setStyleSheet("color: #2c5aa0; margin: 20px;")
+        layout.addWidget(title_label)
+        
+        # Under construction icon and message
+        icon_label = QLabel("🚧")
+        icon_label.setFont(QFont("Arial", 48))
+        icon_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(icon_label)
+        
+        message_label = QLabel(message)
+        message_label.setFont(QFont("Arial", 14))
+        message_label.setAlignment(Qt.AlignCenter)
+        message_label.setStyleSheet("color: #666; margin: 20px;")
+        message_label.setWordWrap(True)
+        layout.addWidget(message_label)
+        
+        # Coming soon message
+        coming_soon = QLabel("This feature is under development and will be available in a future release.")
+        coming_soon.setFont(QFont("Arial", 12))
+        coming_soon.setAlignment(Qt.AlignCenter)
+        coming_soon.setStyleSheet("color: #888; font-style: italic; margin: 10px;")
+        coming_soon.setWordWrap(True)
+        layout.addWidget(coming_soon)
+        
+        return panel
         self.stop_button.clicked.connect(self.stop_alignment)
         self.stop_button.setEnabled(False)
         run_layout.addWidget(self.stop_button)
@@ -954,4 +1039,29 @@ class AutoAlignWidget(QWidget):
                 self.scratch_display.setText("No profile selected")
         except Exception as e:
             self.scratch_display.setText(f"Error: {e}")
+    
+    def handle_action_type_change(self, action_type):
+        """Handle action type selection from external toolbar."""
+        print(f"Actions panel: Action type changed to {action_type}")
+        
+        # Switch to the appropriate panel using the stacked widget
+        if action_type == "preprocess":
+            self.stacked_widget.setCurrentWidget(self.preprocess_panel)
+        elif action_type == "align":
+            self.stacked_widget.setCurrentWidget(self.tilt_series_panel)
+        elif action_type == "subtomo_align":
+            self.stacked_widget.setCurrentWidget(self.subtomo_align_panel)
+        elif action_type == "averaging":
+            self.stacked_widget.setCurrentWidget(self.averaging_panel)
+        elif action_type == "classify":
+            self.stacked_widget.setCurrentWidget(self.classify_panel)
+        elif action_type == "reconstruct":
+            self.stacked_widget.setCurrentWidget(self.reconstruct_panel)
+        elif action_type == "refine":
+            self.stacked_widget.setCurrentWidget(self.refine_panel)
+        elif action_type == "validate":
+            self.stacked_widget.setCurrentWidget(self.validate_panel)
+        else:
+            # Default to tilt-series alignment
+            self.stacked_widget.setCurrentWidget(self.tilt_series_panel)
 
