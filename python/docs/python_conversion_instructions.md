@@ -10,6 +10,12 @@
 
 - update an overall README at python/docs/agent_notes.md that includes useful information about the conversion process, any challenges encountered, and other details that will help future agent work on the project.
 
+## Temporary File Management
+
+- **All temporary files must go in /tmp/copilot-test/**: Never create temporary test files, demo data, star files, CSV files, or experimental files directly in the project directories. Always use `/tmp/copilot-test/` for any temporary files during development and testing. This keeps the project clean and prevents accidental commits of temporary data.
+
+- **Clean up after testing**: Remove temporary files from `/tmp/copilot-test/` when testing is complete, or document their purpose if they need to be preserved.
+
 ## Naming Conventions
 
 - Use `emc_` prefix for Python modules (e.g., `BH_parseParameterFile.m` → `emc_parameter_converter.py`)
@@ -179,3 +185,114 @@ This conversion serves as the template for future module conversions.
 - **Learning**: Extensive testing catches edge cases and validates design decisions
 
 These learnings should guide future conversion sessions to minimize iteration cycles and improve code quality.
+
+## Session-Specific Learnings (September 3, 2025)
+
+### Key Insights from BH_runAutoAlign → EMC_runAutoAlign Conversion
+
+**Effective Pattern: Function Rename + Integration Architecture Shift**
+
+**Challenge**: Converting MATLAB function that relied on external shell scripts (`emC_autoAlign`, `emC_findBeads`)
+- **Initial Approach**: Direct translation maintaining external script dependencies
+- **Evolution**: Integrated shell script functionality directly into Python implementation
+- **Final Result**: Simplified interface with better error handling and no external dependencies
+
+**Key Decision Points**:
+1. **External vs Integrated**: Initially kept external script paths, then realized integration would provide better user experience
+2. **Function Signature Evolution**: Removed `run_path` and `find_beads_path` parameters, simplifying the interface
+3. **Shell Script Translation**: Implemented `_run_integrated_patch_tracking()` and `_run_integrated_bead_finding()` as native Python methods
+
+**Learning**: When converting functions with external dependencies, consider whether those dependencies can be integrated for a cleaner Python API.
+
+---
+
+**Communication Pattern: Incremental Refactoring with User Input**
+
+**Effective Cycle**:
+1. **Initial Conversion**: Direct MATLAB-to-Python translation maintaining original architecture
+2. **User Feedback**: "Rather than have this separate functionality, let's make them methods"
+3. **Architecture Shift**: Integrated external shell scripts as Python methods
+4. **Naming Convention**: Applied consistent `emc_` prefix throughout
+
+**Impact**: This pattern caught a major architectural improvement opportunity that would have been missed with a pure translation approach.
+
+**Learning**: Always present initial conversion for user review before finalizing - users often have insights about better integration patterns.
+
+---
+
+**Technical Challenge: Complex Shell Script Integration**
+
+**Problem**: The `emC_autoAlign` shell script contained complex bash logic with:
+- Multi-level binning loops with mathematical calculations
+- Conditional iteration logic based on alignment quality
+- External tool coordination (newstack, tiltxcorr, tiltalign, etc.)
+- File management and cleanup
+
+**Solution Strategy**:
+1. **Analyze shell script structure**: Identified main loops and decision points
+2. **Translate bash constructs**: Converted shell math and loops to Python equivalents
+3. **Subprocess management**: Maintained calls to IMOD tools with proper error handling
+4. **Helper function decomposition**: Split complex logic into `_run_first_iteration_alignment()`, `_run_subsequent_iteration_alignment()`, etc.
+
+**Key Code Pattern**:
+```python
+# Bash: for iBin in $(seq $binHigh $binInc $binLow)
+# Python: 
+bin_sequence = list(range(binning_params['bin_high'], 
+                         binning_params['bin_low'] + binning_params['bin_inc'], 
+                         binning_params['bin_inc']))
+for i_bin in bin_sequence:
+    # Process each binning level
+```
+
+**Learning**: Complex shell scripts can be successfully translated to Python with careful analysis of control flow and proper helper function decomposition.
+
+---
+
+**File Management Anti-Pattern: Temporary File Proliferation**
+
+**Problem Observed**: Throughout the session, multiple temporary files were created in project directories:
+- Test files in root directory (`test_*.py`, `test_*.m`)
+- Demo data in `python/metaData/` (`demo_*.py`, `*.png`, `*.csv`)
+- Star file test data (`test_star_data/` directories)
+
+**Solution Implemented**: 
+- **Cleanup Rule**: All temporary files must go in `/tmp/copilot-test/`
+- **Documentation**: Added rule to both instruction files
+- **Retroactive Cleanup**: Removed all temporary files from project directories
+
+**Learning**: Establish temporary file management rules early in development to prevent project bloat and ensure clean git history.
+
+---
+
+**Testing Strategy: Comprehensive Validation with Renamed Functions**
+
+**Challenge**: After renaming functions and changing signatures, all references needed updating:
+- Test files importing old function names
+- Command line interface changes
+- Documentation updates
+
+**Effective Approach**:
+1. **Update function definition first**
+2. **Update imports systematically** 
+3. **Test immediately after each change**
+4. **Update CLI and help text**
+5. **Validate with comprehensive test suite**
+
+**Key Success**: The test suite caught all reference errors immediately, preventing runtime failures.
+
+**Learning**: When making breaking changes like function renames, update and test incrementally rather than changing everything at once.
+
+---
+
+**Documentation Pattern: Multiple Documentation Types for Complex Changes**
+
+**Effective Pattern**: Created multiple documentation artifacts:
+- `FUNCTION_RENAME_NOTES.md`: Specific to the naming convention change
+- `EMC_INTEGRATION_COMPLETE.md`: Comprehensive implementation summary
+- `CONVERSION_COMPLETE.md`: Original completion documentation
+- Updated `README.md` files: User-facing documentation
+
+**Benefit**: Different audiences (users, developers, future AI sessions) each get appropriate level of detail.
+
+**Learning**: For significant architectural changes, create multiple documentation types rather than trying to fit everything in one document.

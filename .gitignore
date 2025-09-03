@@ -9,6 +9,15 @@ testScripts/EMC_test/fixtures
 *.orig
 .vscode
 
+*.db
+*.png
+*.tif*
+*.mrc
+*.st
+*.jpg
+
+python/metaData/*.star
+
 # Things leftover from partial builds
 testScripts/emClarity_*
 testScripts/run_emClarity_*

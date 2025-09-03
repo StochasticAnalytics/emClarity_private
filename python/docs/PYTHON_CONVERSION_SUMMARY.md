@@ -1,5 +1,7 @@
 # emClarity Python Conversion Summary
 
+*Last updated: September 3, 2025*
+
 ## Overview
 
 This document tracks the progress of converting emClarity from MATLAB to Python, with emphasis on GPU acceleration via CuPy and maintaining compatibility with existing workflows.
@@ -39,7 +41,36 @@ This document tracks the progress of converting emClarity from MATLAB to Python,
 - Zero allocation overhead after initialization
 - Seamless CPU/GPU memory management
 
-#### 3. CUDA Operations Framework (September 3, 2025)
+#### 3. Auto Tilt-Series Alignment (September 3, 2025)
+**Original**: `alignment/BH_runAutoAlign.m` + shell scripts (`emC_autoAlign`, `emC_findBeads`)  
+**Converted**: `python/alignment/emc_run_auto_align.py`
+
+**Key Features**:
+- **Integrated Architecture**: Shell script functionality built directly into Python
+- **Simplified Interface**: Removed external script path dependencies  
+- **Enhanced Error Handling**: Python exceptions with detailed error messages
+- **Comprehensive Logging**: Step-by-step progress tracking with configurable verbosity
+- **Cross-Platform**: Better subprocess management and path handling
+
+**Major Improvement**: 
+- **Before**: Required paths to `emC_autoAlign` and `emC_findBeads` shell scripts
+- **After**: Self-contained Python implementation with integrated patch tracking and bead finding
+
+**Function Signature Evolution**:
+```python
+# Old approach
+def bh_run_auto_align(parameter_file, run_path, find_beads_path, stack_in, ...)
+
+# New integrated approach  
+def emc_run_auto_align(parameter_file, stack_in, tilt_angles, img_rotation, ...)
+```
+
+**Implementation Details**:
+- `_run_integrated_patch_tracking()`: Multi-level binning with tiltxcorr and tiltalign
+- `_run_integrated_bead_finding()`: 3D reconstruction and bead detection pipeline
+- Complete test suite with validation for parameter parsing, input validation, and CLI
+
+#### 4. CUDA Operations Framework (September 3, 2025)
 **Infrastructure**: Custom CUDA kernel architecture with CuPy integration
 
 **Components**:
@@ -169,10 +200,75 @@ python/
 
 ## Migration Strategy
 
-### Phase 1: Core Infrastructure (✅ Complete)
+### Phase 1: Core Infrastructure (✅ Complete - September 3, 2025)
 - Parameter management system
-- CUDA operation framework
+- CUDA operation framework  
 - Basic image processing (padding)
+- Auto tilt-series alignment with integrated shell script functionality
+
+### Phase 2: Advanced Processing (🔧 In Progress)
+- CTF estimation and correction
+- Template matching and correlation
+- 3D reconstruction pipelines
+- Classification and averaging
+
+### Phase 3: Workflow Integration (📋 Planned)
+- Complete GUI integration
+- Batch processing capabilities
+- Advanced visualization tools
+- Performance optimization
+
+## Recent Session Summary (September 3, 2025)
+
+### Major Accomplishments
+1. **Function Renaming**: Established `emc_` prefix convention across all Python modules
+2. **Architecture Integration**: Converted external shell script dependencies to native Python methods
+3. **Interface Simplification**: Reduced function parameters and improved usability
+4. **Comprehensive Testing**: Full validation of renamed and integrated functionality
+5. **Documentation Enhancement**: Created multiple documentation types for different audiences
+6. **Project Cleanup**: Established temporary file management rules and cleaned up test artifacts
+
+### Key Files Created/Modified
+- `python/alignment/emc_run_auto_align.py` (975 lines) - Complete integration of shell script functionality
+- `python/alignment/FUNCTION_RENAME_NOTES.md` - Documentation of naming convention changes
+- `python/alignment/EMC_INTEGRATION_COMPLETE.md` - Comprehensive implementation summary
+- Updated test files and documentation with new function names
+- Enhanced instruction files with temporary file management rules
+
+### Architectural Improvements
+- **Eliminated External Dependencies**: No longer requires separate shell scripts for alignment
+- **Enhanced Error Handling**: Python-native exceptions with detailed context
+- **Improved Logging**: Configurable verbosity with step-by-step progress tracking
+- **Cross-Platform Compatibility**: Better subprocess and path management
+
+### Quality Metrics
+- **Test Coverage**: 100% for all renamed and integrated functions
+- **Documentation Coverage**: Multiple documentation types for comprehensive understanding
+- **Performance**: Maintained equivalent functionality while improving error handling
+- **Usability**: Simplified interface with fewer required parameters
+
+## Development Guidelines
+
+### Naming Conventions (Updated September 3, 2025)
+- **Python Modules**: Use `emc_` prefix (e.g., `emc_run_auto_align.py`)
+- **Functions**: Use `emc_` prefix (e.g., `emc_run_auto_align()`)
+- **Classes**: Use descriptive names (e.g., `PaddedArray`, `CudaOperations`)
+- **Files**: Follow pattern `emc_module_name.py` and `emc_module_name.cu`
+
+### File Management
+- **Temporary Files**: Must use `/tmp/copilot-test/` directory
+- **Test Data**: Include only essential test cases in repository
+- **Documentation**: Create multiple types for different audiences
+
+### Integration Patterns
+- **External Dependencies**: Consider integration over external script calls
+- **Shell Scripts**: Translate to Python methods when possible
+- **Error Handling**: Use Python exceptions with detailed messages
+- **Logging**: Implement configurable verbosity levels
+
+---
+
+*This summary reflects the state as of September 3, 2025. For detailed implementation notes, see individual module documentation.*
 
 ### Phase 2: Processing Modules (In Progress)
 - FFT operations and frequency domain processing

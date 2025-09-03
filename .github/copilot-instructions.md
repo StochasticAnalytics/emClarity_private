@@ -34,6 +34,8 @@
 
 - **Never alter production database**: Never modify the database schema or delete/alter contents of the production database for development purposes. Always work on copies of the database when testing or debugging. Use commands like `cp emclarity_gui_state.db emclarity_gui_state_backup.db` before any database operations.
 
+- **All temporary files must go in /tmp/copilot-test/**: Never create temporary test files, demo data, or experimental files directly in the project directories. Always use `/tmp/copilot-test/` for any temporary files during development and testing. This keeps the project clean and prevents accidental commits of temporary data.
+
 - Start with the simplest solution and if you think you need to be more creative or expand scope, explain why and we can discuss if we proceed.
 
 - Following any major work, like a GUI rubber band prompt, you should check to see if we are satisified, if so create a WIP commit with a short message using git. But only with permission!
