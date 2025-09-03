@@ -14,7 +14,7 @@ python_root = Path(__file__).parent.parent.parent
 if str(python_root) not in sys.path:
     sys.path.insert(0, str(python_root))
 
-from gui.commands import EMCLARITY_COMMANDS, EmClarityCommand
+from gui.commands import EmClarityCommand, EmClarityCommands
 from gui.config import EmClarityConfig, get_default_config
 
 
