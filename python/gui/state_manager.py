@@ -7,7 +7,6 @@ tab states, parameter values, and panel expansions.
 import json
 import os
 import sqlite3
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 

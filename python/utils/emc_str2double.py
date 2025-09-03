@@ -7,8 +7,6 @@ Converts string to double with error handling.
 
 from typing import Union
 
-import numpy as np
-
 
 def emc_str2double(value: Union[str, float, int]) -> float:
     """

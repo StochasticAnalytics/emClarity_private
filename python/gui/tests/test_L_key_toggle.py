@@ -3,7 +3,6 @@
 Test L key toggle functionality for click logging
 """
 
-import os
 import sys
 
 # Add GUI module to path

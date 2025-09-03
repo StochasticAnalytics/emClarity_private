@@ -8,12 +8,11 @@ for layout changes and GUI element identification.
 
 import inspect
 import json
-import os
 import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 
 import debug_instrumentation
 from PySide6.QtCore import QPoint, QRect, Qt, QTimer, Signal
@@ -24,11 +23,8 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFormLayout,
     QGroupBox,
-    QHBoxLayout,
     QLabel,
-    QLineEdit,
     QPushButton,
-    QSpinBox,
     QTextEdit,
     QVBoxLayout,
     QWidget,

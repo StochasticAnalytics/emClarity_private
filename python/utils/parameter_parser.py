@@ -9,7 +9,7 @@ For a full implementation, see the complete parser in testScripts/python/metaDat
 import ast
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Union
 
 
 def parse_parameter_file(parameter_file: Union[str, Path]) -> Dict[str, Any]:
@@ -241,7 +241,7 @@ def test_parameter_parser():
         # Test defaults
         assert params["autoAli_min_sampling_rate"] == 10.0
         assert params["nPeaks"] == 1
-        assert params["flgProjectVolumes"] == False
+        assert params["flgProjectVolumes"] is False
 
         print("✅ All tests passed!")
 

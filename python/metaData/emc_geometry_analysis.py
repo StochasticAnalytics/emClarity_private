@@ -460,7 +460,7 @@ class EmClarityGeometryAnalyzer:
 
                 # Combine legends
                 lines = line1 + line2
-                labels = [l.get_label() for l in lines]
+                labels = [line.get_label() for line in lines]
                 ax4.legend(lines, labels, loc="upper left")
 
                 ax4.set_title(f"Tilt Series Analysis\n{len(tilt_angles)} tilts")

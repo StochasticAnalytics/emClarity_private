@@ -5,7 +5,6 @@ Test script for emClarity GUI components.
 This script tests the configuration and command parsing without the GUI.
 """
 
-import os
 import sys
 from pathlib import Path
 
@@ -14,8 +13,8 @@ python_root = Path(__file__).parent.parent.parent
 if str(python_root) not in sys.path:
     sys.path.insert(0, str(python_root))
 
-from gui.commands import EmClarityCommand, EmClarityCommands
-from gui.config import EmClarityConfig, get_default_config
+from gui.commands import EmClarityCommands
+from gui.config import get_default_config
 
 # Create commands instance for testing
 EMCLARITY_COMMANDS = EmClarityCommands()

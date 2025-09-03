@@ -562,7 +562,7 @@ def _run_first_iteration_alignment(
     ]
 
     try:
-        result = subprocess.run(
+        subprocess.run(
             cmd, check=True, capture_output=True, text=True, timeout=1800
         )
         logger.info("tiltxcorr completed successfully")
@@ -912,7 +912,7 @@ def _copy_final_alignment_results(paths: dict, final_round: int) -> None:
         )
 
         # Add base name to list
-        with open(f"../fixedStacks/baseName.list", "a") as f:
+        with open("../fixedStacks/baseName.list", "a") as f:
             f.write(f"{base_name}\n")
 
         logger.info("Final alignment results copied successfully")
@@ -1161,7 +1161,7 @@ def _run_bead_refinement(
         logger.warning(
             "Bead refinement requires BH_refine_on_beads - using placeholder"
         )
-        min_sampling_rate = 5
+        # min_sampling_rate = 5  # TODO: Use when implementing bead refinement
         too_few_beads = False  # Placeholder
 
         if not too_few_beads:

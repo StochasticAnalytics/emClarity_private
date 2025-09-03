@@ -107,7 +107,7 @@ def check_dependencies(verbose: bool = False) -> Dict[str, bool]:
             print("⚠️ WARNING: Missing required dependencies.")
             print("Run: pip install -r requirements.txt")
 
-        print(f"\nStatus Summary:")
+        print("\nStatus Summary:")
         print(
             f'  - Core packages: {"✓" if status["core"] else "❌"} {"Ready" if status["core"] else "Missing dependencies"}'
         )

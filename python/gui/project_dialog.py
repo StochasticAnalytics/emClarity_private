@@ -1,5 +1,4 @@
 import json
-import os
 from pathlib import Path
 
 from PySide6.QtWidgets import (
@@ -7,7 +6,6 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QListWidget,
-    QListWidgetItem,
     QPushButton,
     QVBoxLayout,
 )

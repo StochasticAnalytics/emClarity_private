@@ -9,7 +9,6 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QFormLayout,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -17,9 +16,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QPushButton,
-    QSizePolicy,
-    QSpacerItem,
-    QSplitter,
     QStackedWidget,
     QTableWidget,
     QTableWidgetItem,

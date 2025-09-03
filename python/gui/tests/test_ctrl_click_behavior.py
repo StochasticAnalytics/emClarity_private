@@ -3,7 +3,6 @@
 Test the new Ctrl+Click behavior for debug instrumentation.
 """
 
-import os
 import sys
 from pathlib import Path
 

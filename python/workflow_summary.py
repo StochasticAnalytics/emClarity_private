@@ -5,8 +5,6 @@ GitHub Actions workflow summary for emClarity Python.
 This script provides a quick overview of what the CI workflows will test.
 """
 
-import sys
-
 
 def show_workflow_summary():
     """Display what the CI workflows will test."""

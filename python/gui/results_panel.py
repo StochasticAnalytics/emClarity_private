@@ -6,7 +6,7 @@ processing results including aligned movie spectra, plots, and navigation contro
 """
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPainter
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QButtonGroup,
     QFrame,
@@ -17,9 +17,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QPushButton,
     QRadioButton,
-    QScrollArea,
     QSplitter,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
