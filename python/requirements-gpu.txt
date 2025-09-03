@@ -1,0 +1,10 @@
+# emClarity Python GPU Dependencies
+# Install these if you want CUDA acceleration
+
+# CUDA support - choose appropriate version for your CUDA installation
+cupy-cuda12x>=12.0.0  # For CUDA 12.x
+# cupy-cuda11x>=11.0.0  # For CUDA 11.x
+# cupy-cuda10x>=10.0.0  # For CUDA 10.x
+
+# Additional GPU-related packages
+numba>=0.56.0  # For additional GPU kernel compilation options

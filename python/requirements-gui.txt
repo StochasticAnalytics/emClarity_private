@@ -1,0 +1,9 @@
+# emClarity Python GUI-only Dependencies
+# Install these only if you're using the GUI
+
+# Qt-based GUI framework
+PySide6>=6.0.0
+
+# Additional GUI enhancements
+qtawesome>=1.0.0  # For icons
+qdarkstyle>=3.0.0  # For dark theme support

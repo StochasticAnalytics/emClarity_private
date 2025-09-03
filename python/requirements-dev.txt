@@ -1,0 +1,33 @@
+# emClarity Python Development Dependencies
+
+# Testing framework
+pytest>=6.0.0
+pytest-cov>=2.0.0
+pytest-qt>=4.0.0         # For GUI testing
+coverage>=5.0.0
+unittest-xml-reporting>=3.0.0  # For CI XML reports
+
+# Code formatting and linting
+black>=21.0.0
+flake8>=3.8.0
+isort>=5.0.0
+
+# Security scanning
+safety>=2.0.0
+bandit>=1.7.0
+
+# Type checking
+mypy>=0.910
+
+# Documentation
+sphinx>=4.0.0
+sphinx-rtd-theme>=1.0.0
+
+# Build tools
+setuptools>=45.0.0
+wheel>=0.36.0
+twine>=3.4.0
+
+# Additional development tools
+pre-commit>=2.15.0        # Git hooks for code quality
+tox>=3.24.0              # Testing across Python versions

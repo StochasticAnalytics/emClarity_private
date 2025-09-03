@@ -1,0 +1,25 @@
+# emClarity Python Core Dependencies
+# These are required for basic functionality
+
+# Core scientific computing
+numpy>=1.16.0
+scipy>=1.6.0
+
+# Image/file I/O
+mrcfile>=1.5.0
+pillow>=8.0.0               # Note: imports as PIL
+
+# Parameter validation and configuration
+jsonschema>=4.0.0
+
+# GPU acceleration (required for emClarity performance)
+cupy-cuda12x>=12.0.0        # Note: adjust CUDA version as needed
+
+# GUI framework (required for emClarity GUI)
+PySide6>=6.0.0
+
+# Additional scientific computing
+matplotlib>=3.0.0
+
+# Path handling (built-in for Python 3.4+, but explicit for clarity)
+pathlib2>=2.3.0; python_version<"3.4"
