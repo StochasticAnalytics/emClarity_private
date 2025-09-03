@@ -16,11 +16,13 @@ from pathlib import Path
 import cupy as cp
 import numpy as np
 
-# Add the parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Add the python package root to path for proper imports
+python_root = Path(__file__).parent.parent.parent
+if str(python_root) not in sys.path:
+    sys.path.insert(0, str(python_root))
 
 try:
-    from basic_array_ops import (
+    from cuda_ops.basic_array_ops import (
         BasicArrayOps,
         cuda_array_add,
         cuda_array_scale,

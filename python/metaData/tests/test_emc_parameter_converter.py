@@ -13,12 +13,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-# Add the python package root to path for proper imports
-python_root = Path(__file__).parent.parent.parent
-if str(python_root) not in sys.path:
-    sys.path.insert(0, str(python_root))
-
-from metaData.emc_parameter_converter import ParameterConverter, ParameterInfo
+# Use relative import - proper Python package approach
+from ..emc_parameter_converter import ParameterConverter, ParameterInfo
 
 
 class TestParameterConverter(unittest.TestCase):

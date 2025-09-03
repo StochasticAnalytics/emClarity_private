@@ -1,3 +1,64 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "emclarity"
+version = "1.7.0"
+description = "Python conversion of emClarity cryo-EM processing toolkit"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "emClarity Development Team"},
+]
+keywords = ["cryo-em", "electron-microscopy", "image-processing"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+]
+dependencies = [
+    "numpy>=1.19.0",
+    "scipy>=1.5.0",
+    "PySide6>=6.0.0",
+    "matplotlib>=3.0.0",
+]
+
+[project.optional-dependencies]
+gpu = ["cupy>=9.0.0"]
+dev = [
+    "pytest>=6.0.0",
+    "pytest-qt>=4.0.0",
+    "black>=22.0.0",
+    "isort>=5.10.0",
+    "flake8>=4.0.0",
+    "mypy>=0.900",
+    "pre-commit>=2.15.0",
+]
+test = [
+    "pytest>=6.0.0",
+    "pytest-qt>=4.0.0",
+    "pytest-cov>=3.0.0",
+]
+
+[project.scripts]
+emclarity-gui = "gui.main:main"
+
+[project.urls]
+"Homepage" = "https://github.com/StochasticAnalytics/emClarity"
+"Bug Reports" = "https://github.com/StochasticAnalytics/emClarity/issues"
+"Source" = "https://github.com/StochasticAnalytics/emClarity"
+
+[tool.setuptools.packages.find]
+where = ["python"]
+
 [tool.isort]
 profile = "black"
 multi_line_output = 3
@@ -11,6 +72,11 @@ ensure_newline_before_comments = true
 line-length = 88
 target-version = ['py38']
 
-[tool.flake8]
-max-line-length = 88
-extend-ignore = ["E203", "W503"]
+# Flake8 configuration in setup.cfg due to compatibility issues
+
+[tool.pytest.ini_options]
+testpaths = ["python"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"

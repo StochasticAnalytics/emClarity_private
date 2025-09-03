@@ -9,14 +9,16 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+# Add the python package root to path for proper imports
+python_root = Path(__file__).parent.parent
+if str(python_root) not in sys.path:
+    sys.path.insert(0, str(python_root))
+
 from parameters import (
     ParameterDefinition,
     UnifiedParameterManager,
     get_parameter_manager,
 )
-
-# Import from parent python package
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 class GUIParameterManager:

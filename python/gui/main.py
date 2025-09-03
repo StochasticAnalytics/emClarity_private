@@ -55,11 +55,6 @@ from widgets import (
     ScrollableTab,
 )
 
-# Add gui directory to path
-gui_dir = Path(__file__).parent.absolute()
-if str(gui_dir) not in sys.path:
-    sys.path.insert(0, str(gui_dir))
-
 
 class CommandRunner(QThread):
     """Thread for running emClarity commands without blocking the GUI."""

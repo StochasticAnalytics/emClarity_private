@@ -12,10 +12,13 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from padded_array import PaddedArray
 
-# Add the masking module to path
-sys.path.append(str(Path(__file__).parent))
+# Add the python package root to path for proper imports
+python_root = Path(__file__).parent.parent
+if str(python_root) not in sys.path:
+    sys.path.insert(0, str(python_root))
+
+from masking.padded_array import PaddedArray
 
 
 try:

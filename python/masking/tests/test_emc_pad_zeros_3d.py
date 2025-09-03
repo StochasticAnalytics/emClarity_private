@@ -15,25 +15,26 @@ import unittest
 from pathlib import Path
 
 import numpy as np
-from emc_pad_zeros_3d import BH_padZeros3d, emc_pad_zeros_3d
+
+# Add the python package root to path for proper imports
+python_root = Path(__file__).parent.parent.parent
+if str(python_root) not in sys.path:
+    sys.path.insert(0, str(python_root))
+
+from masking.emc_pad_zeros_3d import BH_padZeros3d, emc_pad_zeros_3d
 
 # Try to import required packages
 try:
     import mrcfile
-
     HAS_MRCFILE = True
 except ImportError:
     HAS_MRCFILE = False
 
 try:
     import cupy as cp
-
     HAS_CUPY = True
 except ImportError:
     HAS_CUPY = False
-
-# Add parent directory for imports
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 
 class TestPadZeros3D(unittest.TestCase):

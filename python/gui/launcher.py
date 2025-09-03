@@ -9,10 +9,10 @@ import os
 import sys
 from pathlib import Path
 
-# Add the gui directory to the Python path
-gui_dir = Path(__file__).parent.absolute()
-if str(gui_dir) not in sys.path:
-    sys.path.insert(0, str(gui_dir))
+# Add the python package root to path for proper imports
+python_root = Path(__file__).parent.parent
+if str(python_root) not in sys.path:
+    sys.path.insert(0, str(python_root))
 
 
 def main():
@@ -48,7 +48,7 @@ def main():
             os.environ["QT_QPA_PLATFORM"] = "wayland"
 
     try:
-        import main
+        import gui.main as main
 
         # Pass the arguments to main
         if args.rubber_band_mode:

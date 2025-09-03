@@ -12,17 +12,16 @@ Author: emClarity Python Conversion
 Date: September 2025
 """
 
-import sys
 import time
-from pathlib import Path
 
 import numpy as np
-from emc_pad_zeros_3d import emc_pad_zeros_3d
-from padded_array import BH_padZeros3d_class, PaddedArray, create_padded_array_once
 
-# Add the masking module to path
-sys.path.append(str(Path(__file__).parent))
-
+# Clean package imports - no sys.path manipulation needed
+from masking.emc_pad_zeros_3d import emc_pad_zeros_3d
+from masking.padded_array import (
+    PaddedArray,
+    create_padded_array_once,
+)
 
 # Try to import CuPy
 try:
@@ -234,7 +233,7 @@ def benchmark_vs_original():
         image = np.random.rand(*image_shape).astype(np.float32)
 
         start_time = time.perf_counter()
-        result_orig = emc_pad_zeros_3d(image, pad_low, pad_top, method="CPU")
+        _result_orig = emc_pad_zeros_3d(image, pad_low, pad_top, method="CPU")
         orig_time = time.perf_counter() - start_time
         original_times.append(orig_time)
 
@@ -246,7 +245,7 @@ def benchmark_vs_original():
         image = np.random.rand(*image_shape).astype(np.float32)
 
         start_time = time.perf_counter()
-        result_single = create_padded_array_once(image, pad_low, pad_top, method="CPU")
+        _result_single = create_padded_array_once(image, pad_low, pad_top, method="CPU")
         single_time = time.perf_counter() - start_time
         single_times.append(single_time)
 
@@ -270,7 +269,7 @@ def benchmark_vs_original():
             padder.zero_stored_array()
 
         start_time = time.perf_counter()
-        result_persistent = padder.pad_image(image, pad_low, pad_top)
+        _result_persistent = padder.pad_image(image, pad_low, pad_top)
         persistent_time = time.perf_counter() - start_time
         persistent_times.append(persistent_time)
 
