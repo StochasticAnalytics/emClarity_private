@@ -1,14 +1,15 @@
-import os
 import json
+import os
 from pathlib import Path
-from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QListWidget, QPushButton, QFileDialog,
-    QDialogButtonBox, QListWidgetItem
-)
+
+from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFileDialog,
+                               QListWidget, QListWidgetItem, QPushButton,
+                               QVBoxLayout)
 
 RECENT_PROJECTS_DIR = Path.home() / ".emClarity"
 RECENT_PROJECTS_FILE = RECENT_PROJECTS_DIR / "recent_projects.json"
 MAX_RECENT_PROJECTS = 10
+
 
 class ProjectDialog(QDialog):
     def __init__(self, parent=None):
@@ -20,7 +21,7 @@ class ProjectDialog(QDialog):
 
     def setup_ui(self):
         self.layout = QVBoxLayout(self)
-        
+
         self.list_widget = QListWidget()
         self.list_widget.itemDoubleClicked.connect(self.accept)
         self.layout.addWidget(self.list_widget)
@@ -38,7 +39,7 @@ class ProjectDialog(QDialog):
         if not RECENT_PROJECTS_FILE.exists():
             return
         try:
-            with open(RECENT_PROJECTS_FILE, 'r') as f:
+            with open(RECENT_PROJECTS_FILE, "r") as f:
                 recent_projects = json.load(f)
             for project in recent_projects:
                 self.list_widget.addItem(project)
@@ -72,15 +73,15 @@ class ProjectDialog(QDialog):
         recent_projects = []
         if RECENT_PROJECTS_FILE.exists():
             try:
-                with open(RECENT_PROJECTS_FILE, 'r') as f:
+                with open(RECENT_PROJECTS_FILE, "r") as f:
                     recent_projects = json.load(f)
             except (json.JSONDecodeError, IOError):
                 pass
-        
+
         if project_path in recent_projects:
             recent_projects.remove(project_path)
-        
+
         recent_projects.insert(0, project_path)
-        
-        with open(RECENT_PROJECTS_FILE, 'w') as f:
+
+        with open(RECENT_PROJECTS_FILE, "w") as f:
             json.dump(recent_projects[:MAX_RECENT_PROJECTS], f, indent=4)

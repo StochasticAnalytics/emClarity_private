@@ -4,13 +4,15 @@ emClarity Python metaData package
 This package contains Python conversions of emClarity's metadata handling functionality.
 
 Note: The parameter conversion functionality has been moved to the unified
-parameters module at the package root. The old ParameterConverter is 
+parameters module at the package root. The old ParameterConverter is
 available for backward compatibility but deprecated.
 """
 
-import warnings
 import sys
+import warnings
 from pathlib import Path
+
+from .emc_parameter_converter import ParameterConverter, ParameterInfo
 
 # Add parent directory to path for unified parameter system access
 parent_dir = Path(__file__).parent.parent
@@ -18,7 +20,8 @@ if str(parent_dir) not in sys.path:
     sys.path.insert(0, str(parent_dir))
 
 try:
-    from parameters import UnifiedParameterManager, ParameterDefinition, get_parameter_manager
+    from parameters import (ParameterDefinition, UnifiedParameterManager,
+                            get_parameter_manager)
 except ImportError:
     # Fallback if parameters module not available
     UnifiedParameterManager = None
@@ -26,15 +29,16 @@ except ImportError:
     get_parameter_manager = None
 
 # Backward compatibility - deprecated
-from .emc_parameter_converter import ParameterConverter, ParameterInfo
+
 
 def deprecated_parameter_converter_warning():
     warnings.warn(
         "ParameterConverter is deprecated. Use UnifiedParameterManager from the "
         "root parameters module instead. This will be removed in version 2.0.0.",
         DeprecationWarning,
-        stacklevel=3
+        stacklevel=3,
     )
+
 
 # Override to show deprecation warning
 class DeprecatedParameterConverter(ParameterConverter):
@@ -42,18 +46,14 @@ class DeprecatedParameterConverter(ParameterConverter):
         deprecated_parameter_converter_warning()
         super().__init__(*args, **kwargs)
 
+
 # Export both old and new systems
-__all__ = [
-    'ParameterConverter',  # Deprecated
-    'ParameterInfo'  # Deprecated
-]
+__all__ = ["ParameterConverter", "ParameterInfo"]  # Deprecated  # Deprecated
 
 # Add unified system if available
 if UnifiedParameterManager is not None:
-    __all__.extend([
-        'UnifiedParameterManager', 
-        'ParameterDefinition', 
-        'get_parameter_manager'
-    ])
+    __all__.extend(
+        ["UnifiedParameterManager", "ParameterDefinition", "get_parameter_manager"]
+    )
 
-__version__ = '1.0.0'
+__version__ = "1.0.0"

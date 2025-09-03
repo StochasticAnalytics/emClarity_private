@@ -8,23 +8,26 @@ Author: emClarity Python Conversion
 Date: September 2025
 """
 
-from setuptools import setup, find_packages, Extension
-from pybind11.setup_helpers import Pybind11Extension, build_ext
-from pybind11 import get_cmake_dir
-import pybind11
-import numpy
 import os
 import subprocess
+
+import numpy
+import pybind11
+from pybind11 import get_cmake_dir
+from pybind11.setup_helpers import Pybind11Extension, build_ext
+from setuptools import Extension, find_packages, setup
+
 
 # Check for CUDA availability
 def check_cuda():
     """Check if CUDA is available and get version."""
     try:
-        result = subprocess.run(['nvcc', '--version'], 
-                              capture_output=True, text=True, check=True)
+        result = subprocess.run(
+            ["nvcc", "--version"], capture_output=True, text=True, check=True
+        )
         print("CUDA compiler found:")
-        for line in result.stdout.split('\n'):
-            if 'release' in line:
+        for line in result.stdout.split("\n"):
+            if "release" in line:
                 print(f"  {line.strip()}")
                 return True
     except (subprocess.CalledProcessError, FileNotFoundError):
@@ -32,59 +35,65 @@ def check_cuda():
         return False
     return False
 
+
 # CUDA compilation flags matching mexCompile.m
 def get_cuda_compile_args():
     """Get CUDA compilation arguments matching the MATLAB mexCompile.m setup."""
     cuda_args = [
-        '-std=c++14',
-        '--use_fast_math',
-        '--default-stream', 'per-thread',
-        '-m64',
-        '--extra-device-vectorization', 
-        '--expt-relaxed-constexpr',
-        '-t8',
-        '--gpu-architecture=compute_86',
-        '--restrict',
-        '-Xptxas', '--warn-on-spills',
-        '-gencode=arch=compute_70,code=sm_70',
-        '-gencode=arch=compute_80,code=sm_80', 
-        '-gencode=arch=compute_75,code=sm_75',
-        '-gencode=arch=compute_86,code=sm_86',
-        '-gencode=arch=compute_89,code=sm_89'
+        "-std=c++14",
+        "--use_fast_math",
+        "--default-stream",
+        "per-thread",
+        "-m64",
+        "--extra-device-vectorization",
+        "--expt-relaxed-constexpr",
+        "-t8",
+        "--gpu-architecture=compute_86",
+        "--restrict",
+        "-Xptxas",
+        "--warn-on-spills",
+        "-gencode=arch=compute_70,code=sm_70",
+        "-gencode=arch=compute_80,code=sm_80",
+        "-gencode=arch=compute_75,code=sm_75",
+        "-gencode=arch=compute_86,code=sm_86",
+        "-gencode=arch=compute_89,code=sm_89",
     ]
     return cuda_args
+
 
 # Get CUDA paths
 def get_cuda_paths():
     """Get CUDA library and include paths."""
-    cuda_home = os.environ.get('CUDA_HOME', '/usr/local/cuda')
-    
-    cuda_include = os.path.join(cuda_home, 'include')
-    cuda_lib = os.path.join(cuda_home, 'lib64')
-    
+    cuda_home = os.environ.get("CUDA_HOME", "/usr/local/cuda")
+
+    cuda_include = os.path.join(cuda_home, "include")
+    cuda_lib = os.path.join(cuda_home, "lib64")
+
     if not os.path.exists(cuda_include):
-        cuda_include = '/usr/local/cuda/include'
+        cuda_include = "/usr/local/cuda/include"
     if not os.path.exists(cuda_lib):
-        cuda_lib = '/usr/local/cuda/lib64'
-        
+        cuda_lib = "/usr/local/cuda/lib64"
+
     return cuda_include, cuda_lib
+
 
 def create_cuda_extension():
     """Create CUDA extension if CUDA is available."""
     if not check_cuda():
         print("CUDA not available, skipping CUDA extensions")
         return []
-    
+
     cuda_include, cuda_lib = get_cuda_paths()
-    
+
     # For now, we're using CuPy RawKernel so no actual compilation needed
     # This setup is prepared for future Pybind11 CUDA extensions
-    
+
     print(f"CUDA setup prepared:")
     print(f"  Include path: {cuda_include}")
     print(f"  Library path: {cuda_lib}")
-    
+
     return []
+
 
 # Package metadata
 setup(
@@ -97,7 +106,7 @@ setup(
     long_description_content_type="text/markdown",
     packages=find_packages(),
     package_data={
-        'cuda_ops': ['*.cu', '*.cuh'],
+        "cuda_ops": ["*.cu", "*.cuh"],
     },
     include_package_data=True,
     ext_modules=create_cuda_extension(),
@@ -114,7 +123,7 @@ setup(
     python_requires=">=3.8",
     classifiers=[
         "Development Status :: 3 - Alpha",
-        "Intended Audience :: Science/Research", 
+        "Intended Audience :: Science/Research",
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.8",

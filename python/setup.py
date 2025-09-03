@@ -2,8 +2,9 @@
 Setup configuration for emClarity Python package.
 """
 
-from setuptools import setup, find_packages
 from pathlib import Path
+
+from setuptools import find_packages, setup
 
 # Read the README file
 readme_path = Path(__file__).parent / "docs" / "README.md"
@@ -12,24 +13,26 @@ if readme_path.exists():
 else:
     long_description = "Python conversion of emClarity cryo-EM processing tools"
 
+
 # Read requirements
 def read_requirements(filename):
     """Read requirements from file, filtering out comments and empty lines."""
     req_path = Path(__file__).parent / filename
     if not req_path.exists():
         return []
-    
+
     with open(req_path) as f:
         requirements = []
         for line in f:
             line = line.strip()
-            if line and not line.startswith('#') and not line.startswith('-'):
+            if line and not line.startswith("#") and not line.startswith("-"):
                 # Handle conditional requirements
-                if ';' in line:
+                if ";" in line:
                     requirements.append(line)
                 else:
                     requirements.append(line)
         return requirements
+
 
 setup(
     name="emclarity-python",
@@ -41,26 +44,24 @@ setup(
     url="https://github.com/StochasticAnalytics/emClarity",
     packages=find_packages(),
     python_requires=">=3.8",
-    
     # Core dependencies
     install_requires=read_requirements("requirements.txt"),
-    
     # Optional dependencies
     extras_require={
         "gui": read_requirements("requirements-gui.txt"),
         "gpu": read_requirements("requirements-gpu.txt"),
         "dev": read_requirements("requirements-dev.txt"),
-        "all": (read_requirements("requirements-gui.txt") + 
-                read_requirements("requirements-gpu.txt")),
+        "all": (
+            read_requirements("requirements-gui.txt")
+            + read_requirements("requirements-gpu.txt")
+        ),
     },
-    
     # Package data
     package_data={
         "cuda_ops": ["*.cu", "*.cuh", ".clang-format"],
         "gui": ["*.json", "*.ui", "*.qrc"],
         "docs": ["*.md"],
     },
-    
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: Science/Research",
@@ -75,7 +76,6 @@ setup(
         "Operating System :: OS Independent",
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
     ],
-    
     # Console scripts
     entry_points={
         "console_scripts": [
@@ -84,7 +84,6 @@ setup(
             "emclarity-test=test_runner:main",
         ],
     },
-    
     # Include all package files
     include_package_data=True,
     zip_safe=False,

@@ -10,28 +10,25 @@ Date: September 2025
 
 try:
     import cupy as cp
+
     CUDA_AVAILABLE = True
 except ImportError:
     CUDA_AVAILABLE = False
 
 if CUDA_AVAILABLE:
-    from .basic_array_ops import (
-        BasicArrayOps,
-        cuda_array_add,
-        cuda_array_scale, 
-        cuda_transpose_2d,
-        cuda_transpose_3d_xy
-    )
-    
+    from .basic_array_ops import (BasicArrayOps, cuda_array_add,
+                                  cuda_array_scale, cuda_transpose_2d,
+                                  cuda_transpose_3d_xy)
+
     __all__ = [
-        'BasicArrayOps',
-        'cuda_array_add',
-        'cuda_array_scale',
-        'cuda_transpose_2d', 
-        'cuda_transpose_3d_xy',
-        'CUDA_AVAILABLE'
+        "BasicArrayOps",
+        "cuda_array_add",
+        "cuda_array_scale",
+        "cuda_transpose_2d",
+        "cuda_transpose_3d_xy",
+        "CUDA_AVAILABLE",
     ]
 else:
-    __all__ = ['CUDA_AVAILABLE']
+    __all__ = ["CUDA_AVAILABLE"]
 
-__version__ = '0.1.0'
+__version__ = "0.1.0"

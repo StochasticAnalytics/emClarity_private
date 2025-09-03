@@ -5,17 +5,17 @@ Test script for emClarity GUI components.
 This script tests the configuration and command parsing without the GUI.
 """
 
-import sys
 import os
+import sys
 from pathlib import Path
+
+from commands import EMCLARITY_COMMANDS, EmClarityCommand
+from config import EmClarityConfig, get_default_config
 
 # Add the gui directory to the Python path
 gui_dir = Path(__file__).parent.absolute()
 if str(gui_dir) not in sys.path:
     sys.path.insert(0, str(gui_dir))
-
-from config import EmClarityConfig, get_default_config
-from commands import EMCLARITY_COMMANDS, EmClarityCommand
 
 
 def test_config():
@@ -25,20 +25,20 @@ def test_config():
         config = get_default_config()
         print(f"✓ Configuration loaded successfully")
         print(f"  emClarity root: {config.emclarity_root}")
-        
+
         # Test environment info
         env_info = config.get_environment_info()
         print(f"✓ Environment info retrieved")
         for key, value in env_info.items():
             print(f"  {key}: {value}")
-        
+
         # Test binary detection
         binaries = config.get_available_binaries()
         print(f"✓ Found {len(binaries)} binaries")
-        
+
         latest = config.get_latest_binary()
         print(f"  Latest binary: {latest}")
-        
+
         return True
     except Exception as e:
         print(f"✗ Configuration failed: {e}")
@@ -55,16 +55,16 @@ def test_commands():
         for cat in categories:
             commands = EMCLARITY_COMMANDS.get_commands_by_category(cat)
             print(f"  {cat}: {len(commands)} commands")
-        
+
         # Test specific command
-        help_cmd = EMCLARITY_COMMANDS.get_command('help')
+        help_cmd = EMCLARITY_COMMANDS.get_command("help")
         if help_cmd:
             print(f"✓ Help command found: {help_cmd.description}")
-        
+
         # Test all commands
         all_commands = EMCLARITY_COMMANDS.get_all_commands()
         print(f"✓ Total commands available: {len(all_commands)}")
-        
+
         return True
     except Exception as e:
         print(f"✗ Command testing failed: {e}")
@@ -75,10 +75,10 @@ def main():
     """Main test function."""
     print("emClarity GUI Component Test")
     print("=" * 40)
-    
+
     config_ok = test_config()
     commands_ok = test_commands()
-    
+
     if config_ok and commands_ok:
         print("\n✓ All tests passed! The GUI components are working correctly.")
         return 0
