@@ -6,15 +6,10 @@ validation, and unit conversions.
 """
 
 import json
-import os
-import os
-import sys
-import tempfile
 import unittest
-from pathlib import Path
 
 # Use relative import - proper Python package approach
-from ..emc_parameter_converter import ParameterConverter, ParameterInfo
+from ..emc_parameter_converter import ParameterConverter
 
 
 class TestParameterConverter(unittest.TestCase):

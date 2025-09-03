@@ -6,9 +6,7 @@ tilt-series assets including Images, Particle Positions, 3D Volumes, Refine Pack
 Atomic Coordinates, and MT Packages.
 """
 
-import json
 import os
-import shutil
 from datetime import datetime
 
 import mrcfile
@@ -16,11 +14,8 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QCheckBox,
-    QFileDialog,
     QFont,
     QFormLayout,
-    QFrame,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -29,7 +24,6 @@ from PySide6.QtWidgets import (
     QListWidget,
     QMessageBox,
     QPushButton,
-    QRadioButton,
     QSizePolicy,
     QSplitter,
     QTableWidget,

@@ -12,7 +12,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Union
 
 import numpy as np
 from image_io.mrc_image import OPEN_IMG, SAVE_IMG, MRCImage

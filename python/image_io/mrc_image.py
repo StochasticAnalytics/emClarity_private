@@ -18,11 +18,8 @@ Based on: PEET MRCImage class with BAH performance optimizations
 """
 
 import logging
-import os
-import sys
-import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import mrcfile
 import numpy as np

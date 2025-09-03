@@ -20,7 +20,6 @@ if str(python_root) not in sys.path:
 
 from masking.padded_array import PaddedArray
 
-
 try:
     import cupy as cp
 

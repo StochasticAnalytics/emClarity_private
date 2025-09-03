@@ -17,6 +17,9 @@ if str(python_root) not in sys.path:
 from gui.commands import EmClarityCommand, EmClarityCommands
 from gui.config import EmClarityConfig, get_default_config
 
+# Create commands instance for testing
+EMCLARITY_COMMANDS = EmClarityCommands()
+
 
 def test_config():
     """Test the configuration setup."""

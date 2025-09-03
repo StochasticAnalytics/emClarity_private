@@ -12,7 +12,7 @@ Usage:
 
 import argparse
 import sys
-from typing import Dict, List, Tuple
+from typing import Dict
 
 
 def check_dependencies(verbose: bool = False) -> Dict[str, bool]:

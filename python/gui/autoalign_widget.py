@@ -8,13 +8,12 @@ Includes validation, progress tracking, and real-time status updates using Pytho
 import multiprocessing as mp
 import os
 import subprocess
-import threading
 import time
-from multiprocessing import Process, Queue, Value
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from multiprocessing import Process
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from profile_widgets import RunProfileWidget
-from PySide6.QtCore import Qt, QThread, QTimer, Signal
+from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QComboBox,
@@ -25,8 +24,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QListWidget,
-    QListWidgetItem,
     QMessageBox,
     QProgressBar,
     QProgressDialog,

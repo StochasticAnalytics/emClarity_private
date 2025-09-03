@@ -8,7 +8,6 @@ Tests include:
 - Various padding modes and parameters
 """
 
-import os
 import sys
 import tempfile
 import unittest
@@ -26,12 +25,14 @@ from masking.emc_pad_zeros_3d import BH_padZeros3d, emc_pad_zeros_3d
 # Try to import required packages
 try:
     import mrcfile
+
     HAS_MRCFILE = True
 except ImportError:
     HAS_MRCFILE = False
 
 try:
     import cupy as cp
+
     HAS_CUPY = True
 except ImportError:
     HAS_CUPY = False

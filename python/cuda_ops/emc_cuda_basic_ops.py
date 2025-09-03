@@ -5,13 +5,10 @@ This module provides GPU-accelerated implementations of basic array operations
 using CuPy's RawKernel interface to load custom CUDA kernels.
 """
 
-import os
 from pathlib import Path
-from typing import Optional, Tuple, Union
+from typing import Tuple
 
 import cupy as cp
-import numpy as np
-from cupy.cuda import compiler
 
 __all__ = ["CudaBasicOps"]
 

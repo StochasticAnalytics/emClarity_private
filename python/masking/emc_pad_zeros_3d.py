@@ -11,7 +11,6 @@ Original MATLAB equivalent: masking/BH_padZeros3d.m
 """
 
 import logging
-import warnings
 from typing import Any, Literal, Optional, Tuple, Union
 
 import numpy as np
