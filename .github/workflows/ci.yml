@@ -52,13 +52,6 @@ jobs:
           libegl1-mesa-dev \
           libgl1-mesa-dev \
           libglib2.0-0 \
-          libxrandr2 \
-          libxss1 \
-          libxcursor1 \
-          libxcomposite1 \
-          libasound2 \
-          libxi6 \
-          libxtst6 \
           qt6-base-dev
 
     - name: Install Python dependencies
