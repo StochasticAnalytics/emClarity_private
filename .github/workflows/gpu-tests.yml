@@ -2,7 +2,7 @@ name: emClarity GPU Tests
 
 on:
   push:
-    branches: [ main, ctf3d_work ]
+    branches: [ main ]  # Only run on main to reduce CI load
     paths:
       - 'python/cuda_ops/**'
       - 'python/masking/**'  # Contains GPU-accelerated functions

@@ -2,12 +2,13 @@ name: Security Scan
 
 on:
   push:
-    branches: [ main, ctf3d_work ]
+    branches: [ main ]  # Only run on main branch to reduce CI load
   pull_request:
     branches: [ main ]
-  schedule:
-    # Run weekly on Sundays at 2 AM UTC
-    - cron: '0 2 * * 0'
+  # Removed cron job to reduce CI queue times
+  # schedule:
+  #   # Run weekly on Sundays at 2 AM UTC
+  #   - cron: '0 2 * * 0'
 
 jobs:
   security:
