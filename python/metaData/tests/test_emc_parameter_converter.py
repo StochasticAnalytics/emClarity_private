@@ -7,15 +7,18 @@ validation, and unit conversions.
 
 import json
 import os
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-from emc_parameter_converter import ParameterConverter, ParameterInfo
+# Add the python package root to path for proper imports
+python_root = Path(__file__).parent.parent.parent
+if str(python_root) not in sys.path:
+    sys.path.insert(0, str(python_root))
 
-# Add the parent directory to the path to import emc_parameter_converter
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+from metaData.emc_parameter_converter import ParameterConverter, ParameterInfo
 
 
 class TestParameterConverter(unittest.TestCase):

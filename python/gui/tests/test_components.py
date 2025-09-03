@@ -9,13 +9,13 @@ import os
 import sys
 from pathlib import Path
 
-from commands import EMCLARITY_COMMANDS, EmClarityCommand
-from config import EmClarityConfig, get_default_config
+# Add the python package root to path for proper imports
+python_root = Path(__file__).parent.parent.parent
+if str(python_root) not in sys.path:
+    sys.path.insert(0, str(python_root))
 
-# Add the gui directory to the Python path
-gui_dir = Path(__file__).parent.absolute()
-if str(gui_dir) not in sys.path:
-    sys.path.insert(0, str(gui_dir))
+from gui.commands import EMCLARITY_COMMANDS, EmClarityCommand
+from gui.config import EmClarityConfig, get_default_config
 
 
 def test_config():

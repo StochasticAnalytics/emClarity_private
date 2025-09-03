@@ -7,13 +7,13 @@ Run this to see just the Assets panel in isolation.
 import sys
 from pathlib import Path
 
-from assets_panel import AssetsPanel
-from PySide6.QtWidgets import QApplication
+# Add the python package root to path for proper imports
+python_root = Path(__file__).parent.parent.parent
+if str(python_root) not in sys.path:
+    sys.path.insert(0, str(python_root))
 
-# Add gui directory to path
-gui_dir = Path(__file__).parent
-if str(gui_dir) not in sys.path:
-    sys.path.insert(0, str(gui_dir))
+from gui.assets_panel import AssetsPanel
+from PySide6.QtWidgets import QApplication
 
 
 def main():

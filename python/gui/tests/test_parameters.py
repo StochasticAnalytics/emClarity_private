@@ -5,13 +5,15 @@ Test script to demonstrate the enhanced emClarity GUI with parameter configurati
 
 import os
 import sys
+from pathlib import Path
 
-from parameters import EmClarityParameters
+# Add the python package root to path for proper imports
+python_root = Path(__file__).parent.parent.parent
+if str(python_root) not in sys.path:
+    sys.path.insert(0, str(python_root))
+
+from gui.parameters import EmClarityParameters
 from PySide6.QtWidgets import QApplication, QMessageBox
-
-# Add the gui directory to the path
-gui_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, gui_dir)
 
 
 def test_parameter_system():

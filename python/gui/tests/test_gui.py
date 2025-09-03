@@ -9,16 +9,16 @@ import os
 import sys
 from pathlib import Path
 
-# Add the gui directory to the Python path
-gui_dir = Path(__file__).parent.absolute()
-if str(gui_dir) not in sys.path:
-    sys.path.insert(0, str(gui_dir))
+# Add the python package root to path for proper imports
+python_root = Path(__file__).parent.parent.parent
+if str(python_root) not in sys.path:
+    sys.path.insert(0, str(python_root))
 
 # Set up for headless testing
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
 try:
-    from main import EmClarityMainWindow
+    from gui.main import EmClarityMainWindow
     from PySide6.QtWidgets import QApplication
 
     def test_gui_creation():
