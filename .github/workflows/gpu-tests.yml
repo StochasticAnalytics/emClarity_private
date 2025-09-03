@@ -19,7 +19,7 @@ jobs:
     # This job requires self-hosted runners with GPU support
     # Comment out the runs-on line below if no GPU runners are available
     # runs-on: [self-hosted, gpu]
-    runs-on: ubuntu-20.04  # Fallback to regular runner for now
+    runs-on: ubuntu-latest  # Fallback to regular runner for now
     
     steps:
     - uses: actions/checkout@v4

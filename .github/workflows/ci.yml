@@ -19,7 +19,7 @@ on:
 
 jobs:
   test-and-lint:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -40,10 +40,10 @@ jobs:
       uses: actions/cache@v3
       with:
         path: ~/.cache/pip
-        key: ubuntu-20.04-pip-3.12-${{ hashFiles('python/requirements*.txt') }}
+        key: ubuntu-latest-pip-3.12-${{ hashFiles('python/requirements*.txt') }}
         restore-keys: |
-          ubuntu-20.04-pip-3.12-
-          ubuntu-20.04-pip-
+          ubuntu-latest-pip-3.12-
+          ubuntu-latest-pip-
 
     - name: Install system dependencies
       run: |
