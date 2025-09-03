@@ -10,11 +10,16 @@ import sys
 sys.path.insert(0, "/sa_shared/git/emClarity/gui")
 
 try:
-    from debug_instrumentation import (setup_click_logging_shortcut,
-                                       toggle_click_logging)
+    from debug_instrumentation import setup_click_logging_shortcut, toggle_click_logging
     from PySide6.QtCore import Qt
-    from PySide6.QtWidgets import (QApplication, QLabel, QMainWindow,
-                                   QPushButton, QVBoxLayout, QWidget)
+    from PySide6.QtWidgets import (
+        QApplication,
+        QLabel,
+        QMainWindow,
+        QPushButton,
+        QVBoxLayout,
+        QWidget,
+    )
 
     class SimpleTestWindow(QMainWindow):
         def __init__(self):

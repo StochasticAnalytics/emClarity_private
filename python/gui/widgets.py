@@ -6,12 +6,28 @@ from typing import Any, Dict, List
 
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QRect, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QPalette
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox,
-                               QFileDialog, QFormLayout, QFrame, QGridLayout,
-                               QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-                               QPushButton, QScrollArea, QSizePolicy, QSpinBox,
-                               QSplitter, QTextEdit, QToolButton, QVBoxLayout,
-                               QWidget)
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QDoubleSpinBox,
+    QFileDialog,
+    QFormLayout,
+    QFrame,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QSpinBox,
+    QSplitter,
+    QTextEdit,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 
 class ParameterWidget(QWidget):

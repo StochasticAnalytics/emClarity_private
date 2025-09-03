@@ -9,8 +9,11 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from parameters import (ParameterDefinition, UnifiedParameterManager,
-                        get_parameter_manager)
+from parameters import (
+    ParameterDefinition,
+    UnifiedParameterManager,
+    get_parameter_manager,
+)
 
 # Import from parent python package
 sys.path.insert(0, str(Path(__file__).parent.parent))

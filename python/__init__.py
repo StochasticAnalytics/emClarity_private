@@ -9,9 +9,13 @@ __author__ = "emClarity Development Team"
 
 # Top-level imports for commonly used modules
 from .masking import emc_pad_zeros_3d
+
 # Core parameter management system
-from .parameters import (ParameterDefinition, UnifiedParameterManager,
-                         get_parameter_manager)
+from .parameters import (
+    ParameterDefinition,
+    UnifiedParameterManager,
+    get_parameter_manager,
+)
 
 # Optional CUDA support
 try:

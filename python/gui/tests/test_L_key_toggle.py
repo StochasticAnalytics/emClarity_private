@@ -12,15 +12,24 @@ sys.path.insert(0, "/sa_shared/git/emClarity/gui")
 try:
     # Set rubber band mode for testing
     import debug_instrumentation
-    from debug_instrumentation import (_CLICK_LOGGING_ENABLED, _QT_AVAILABLE,
-                                       _RUBBER_BAND_MODE,
-                                       install_global_event_filter,
-                                       setup_click_logging_shortcut,
-                                       toggle_click_logging)
+    from debug_instrumentation import (
+        _CLICK_LOGGING_ENABLED,
+        _QT_AVAILABLE,
+        _RUBBER_BAND_MODE,
+        install_global_event_filter,
+        setup_click_logging_shortcut,
+        toggle_click_logging,
+    )
     from PySide6.QtCore import Qt
     from PySide6.QtGui import QKeySequence
-    from PySide6.QtWidgets import (QApplication, QLabel, QMainWindow,
-                                   QPushButton, QVBoxLayout, QWidget)
+    from PySide6.QtWidgets import (
+        QApplication,
+        QLabel,
+        QMainWindow,
+        QPushButton,
+        QVBoxLayout,
+        QWidget,
+    )
 
     debug_instrumentation._RUBBER_BAND_MODE = True
 

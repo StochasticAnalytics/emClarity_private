@@ -18,8 +18,7 @@ from pathlib import Path
 
 import numpy as np
 from emc_pad_zeros_3d import emc_pad_zeros_3d
-from padded_array import (BH_padZeros3d_class, PaddedArray,
-                          create_padded_array_once)
+from padded_array import BH_padZeros3d_class, PaddedArray, create_padded_array_once
 
 # Add the masking module to path
 sys.path.append(str(Path(__file__).parent))

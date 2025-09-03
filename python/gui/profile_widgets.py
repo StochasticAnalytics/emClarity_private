@@ -5,10 +5,22 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from PySide6.QtCore import Qt, QThread, Signal
-from PySide6.QtWidgets import (QComboBox, QHBoxLayout, QHeaderView, QLabel,
-                               QLineEdit, QMessageBox, QPushButton, QSpinBox,
-                               QTableWidget, QTableWidgetItem, QTreeWidget,
-                               QTreeWidgetItem, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (
+    QComboBox,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QSpinBox,
+    QTableWidget,
+    QTableWidgetItem,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
 
 
 class ProfileValidator(QThread):

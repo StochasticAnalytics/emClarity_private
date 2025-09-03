@@ -20,9 +20,13 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 try:
-    from basic_array_ops import (BasicArrayOps, cuda_array_add,
-                                 cuda_array_scale, cuda_transpose_2d,
-                                 cuda_transpose_3d_xy)
+    from basic_array_ops import (
+        BasicArrayOps,
+        cuda_array_add,
+        cuda_array_scale,
+        cuda_transpose_2d,
+        cuda_transpose_3d_xy,
+    )
 
     CUDA_AVAILABLE = True
 except ImportError as e:

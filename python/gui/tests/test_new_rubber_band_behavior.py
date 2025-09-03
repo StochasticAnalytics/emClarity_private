@@ -10,8 +10,14 @@ import time
 
 from PySide6.QtCore import QPoint, QRect, Qt
 from PySide6.QtGui import QMouseEvent
-from PySide6.QtWidgets import (QApplication, QLabel, QMainWindow, QPushButton,
-                               QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (
+    QApplication,
+    QLabel,
+    QMainWindow,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 # Add GUI module to path
 sys.path.insert(0, "/sa_shared/git/emClarity/gui")

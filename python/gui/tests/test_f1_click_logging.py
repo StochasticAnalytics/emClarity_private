@@ -7,18 +7,26 @@ import sys
 import time
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import (QApplication, QLabel, QMainWindow, QPushButton,
-                               QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (
+    QApplication,
+    QLabel,
+    QMainWindow,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 # Add GUI module to path
 sys.path.insert(0, "/sa_shared/git/emClarity/gui")
 
 try:
-    from debug_instrumentation import (get_latest_click_data,
-                                       init_rubber_band_debug,
-                                       is_click_logging_enabled,
-                                       setup_click_logging_shortcut,
-                                       toggle_click_logging)
+    from debug_instrumentation import (
+        get_latest_click_data,
+        init_rubber_band_debug,
+        is_click_logging_enabled,
+        setup_click_logging_shortcut,
+        toggle_click_logging,
+    )
 
     class TestWindow(QMainWindow):
         def __init__(self):

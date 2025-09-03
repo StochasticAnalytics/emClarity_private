@@ -17,19 +17,42 @@ from profile_widgets import RunProfileWidget
 from project_dialog import ProjectDialog
 from PySide6.QtCore import Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QAction, QColor, QFont, QPalette, QTextCursor
-from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFileDialog,
-                               QFormLayout, QGridLayout, QGroupBox,
-                               QHBoxLayout, QLabel, QLineEdit, QMainWindow,
-                               QMenu, QMenuBar, QMessageBox, QProgressBar,
-                               QPushButton, QSpinBox, QSplitter, QTabWidget,
-                               QTextEdit, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QFileDialog,
+    QFormLayout,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QMenu,
+    QMenuBar,
+    QMessageBox,
+    QProgressBar,
+    QPushButton,
+    QSpinBox,
+    QSplitter,
+    QTabWidget,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
 from rubber_band_tool import create_rubber_band_tool
 from sidebar_layout import SidebarNavigationWidget
 from state_manager import GUIStateManager
 from tilt_series_assets import TiltSeriesAssetsWidget
 from top_toolbar import TopToolbar
-from widgets import (CollapsibleCommandPanel, CommandPanel, EnhancedTab,
-                     ParameterConfigPanel, ScrollableTab)
+from widgets import (
+    CollapsibleCommandPanel,
+    CommandPanel,
+    EnhancedTab,
+    ParameterConfigPanel,
+    ScrollableTab,
+)
 
 from parameters import EmClarityParameters
 

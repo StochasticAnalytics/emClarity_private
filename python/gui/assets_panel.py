@@ -14,13 +14,30 @@ from datetime import datetime
 import mrcfile
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
-from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QFileDialog,
-                               QFont, QFormLayout, QFrame, QGroupBox,
-                               QHBoxLayout, QHeaderView, QLabel, QLineEdit,
-                               QListWidget, QMessageBox, QPushButton,
-                               QRadioButton, QSizePolicy, QSplitter,
-                               QTableWidget, QTableWidgetItem, QToolButton,
-                               QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QCheckBox,
+    QFileDialog,
+    QFont,
+    QFormLayout,
+    QFrame,
+    QGroupBox,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QMessageBox,
+    QPushButton,
+    QRadioButton,
+    QSizePolicy,
+    QSplitter,
+    QTableWidget,
+    QTableWidgetItem,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 
 class AssetTypeToolbar(QWidget):

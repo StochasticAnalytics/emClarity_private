@@ -6,8 +6,16 @@ Shows a placeholder panel for features that are under development.
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor, QFont, QPainter, QPixmap
-from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QProgressBar,
-                               QPushButton, QTextEdit, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QProgressBar,
+    QPushButton,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
 
 
 class UnderDevelopmentPanel(QWidget):

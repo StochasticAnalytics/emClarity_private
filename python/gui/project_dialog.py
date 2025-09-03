@@ -2,9 +2,15 @@ import json
 import os
 from pathlib import Path
 
-from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFileDialog,
-                               QListWidget, QListWidgetItem, QPushButton,
-                               QVBoxLayout)
+from PySide6.QtWidgets import (
+    QDialog,
+    QDialogButtonBox,
+    QFileDialog,
+    QListWidget,
+    QListWidgetItem,
+    QPushButton,
+    QVBoxLayout,
+)
 
 RECENT_PROJECTS_DIR = Path.home() / ".emClarity"
 RECENT_PROJECTS_FILE = RECENT_PROJECTS_DIR / "recent_projects.json"

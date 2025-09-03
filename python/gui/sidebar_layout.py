@@ -11,10 +11,22 @@ from typing import Any, Dict, List, Optional
 from project_dialog import ProjectDialog
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QFont, QIcon, QPainter, QPalette, QPixmap
-from PySide6.QtWidgets import (QFrame, QGridLayout, QGroupBox, QHBoxLayout,
-                               QLabel, QMessageBox, QPushButton, QScrollArea,
-                               QSizePolicy, QSpacerItem, QStackedWidget,
-                               QTextEdit, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (
+    QFrame,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QSpacerItem,
+    QStackedWidget,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
 from state_manager import GUIStateManager
 
 

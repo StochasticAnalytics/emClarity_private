@@ -27,8 +27,7 @@ def test_debug_file_behavior():
     print("🧪 Testing debug file behavior...")
 
     try:
-        from debug_instrumentation import (init_rubber_band_debug,
-                                           instrument_click_event)
+        from debug_instrumentation import init_rubber_band_debug, instrument_click_event
 
         # Initialize debug mode
         init_rubber_band_debug(enabled=True)
@@ -98,8 +97,7 @@ def test_ctrl_behavior():
     print("\n🧪 Testing Ctrl behavior...")
 
     try:
-        from debug_instrumentation import (instrument_click_event,
-                                           is_ctrl_pressed)
+        from debug_instrumentation import instrument_click_event, is_ctrl_pressed
 
         print(f"Current Ctrl state: {is_ctrl_pressed()}")
 

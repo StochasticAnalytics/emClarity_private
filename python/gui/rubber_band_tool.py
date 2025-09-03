@@ -17,12 +17,22 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import debug_instrumentation
 from PySide6.QtCore import QPoint, QRect, Qt, QTimer, Signal
-from PySide6.QtGui import (QColor, QKeySequence, QMouseEvent, QPainter, QPen,
-                           QShortcut)
-from PySide6.QtWidgets import (QApplication, QDialog, QDialogButtonBox,
-                               QFormLayout, QGroupBox, QHBoxLayout, QLabel,
-                               QLineEdit, QPushButton, QSpinBox, QTextEdit,
-                               QVBoxLayout, QWidget)
+from PySide6.QtGui import QColor, QKeySequence, QMouseEvent, QPainter, QPen, QShortcut
+from PySide6.QtWidgets import (
+    QApplication,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QSpinBox,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
 
 
 class GuiContextAnalyzer:

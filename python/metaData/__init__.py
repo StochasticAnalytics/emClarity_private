@@ -20,8 +20,11 @@ if str(parent_dir) not in sys.path:
     sys.path.insert(0, str(parent_dir))
 
 try:
-    from parameters import (ParameterDefinition, UnifiedParameterManager,
-                            get_parameter_manager)
+    from parameters import (
+        ParameterDefinition,
+        UnifiedParameterManager,
+        get_parameter_manager,
+    )
 except ImportError:
     # Fallback if parameters module not available
     UnifiedParameterManager = None

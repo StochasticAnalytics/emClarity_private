@@ -7,12 +7,26 @@ configuration settings, and process management.
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
-from PySide6.QtWidgets import (QAbstractItemView, QFormLayout, QGroupBox,
-                               QHBoxLayout, QHeaderView, QLabel, QLineEdit,
-                               QListWidget, QPushButton, QSizePolicy,
-                               QSpacerItem, QSplitter, QStackedWidget,
-                               QTableWidget, QTableWidgetItem, QToolButton,
-                               QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QPushButton,
+    QSizePolicy,
+    QSpacerItem,
+    QSplitter,
+    QStackedWidget,
+    QTableWidget,
+    QTableWidgetItem,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 
 class ProfileManagementPanel(QWidget):
@@ -378,14 +392,14 @@ class SettingsPanel(QWidget):
     def _create_legacy_interface_panel(self):
         """Create the legacy tabbed interface panel (migrated from experimental)."""
         try:
-            from autoalign_widget import \
-                AutoAlignWidget as OriginalAutoAlignWidget
+            from autoalign_widget import AutoAlignWidget as OriginalAutoAlignWidget
             from commands import EmClarityCommands
             from main import DynamicCommandTab
             from profile_widgets import RunProfileWidget
             from PySide6.QtWidgets import QTabWidget
-            from tilt_series_assets import \
-                TiltSeriesAssetsWidget as OriginalTiltSeriesWidget
+            from tilt_series_assets import (
+                TiltSeriesAssetsWidget as OriginalTiltSeriesWidget,
+            )
 
             legacy_panel = QWidget()
             legacy_layout = QVBoxLayout(legacy_panel)

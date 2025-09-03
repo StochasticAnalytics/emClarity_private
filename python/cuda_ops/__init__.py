@@ -16,9 +16,13 @@ except ImportError:
     CUDA_AVAILABLE = False
 
 if CUDA_AVAILABLE:
-    from .basic_array_ops import (BasicArrayOps, cuda_array_add,
-                                  cuda_array_scale, cuda_transpose_2d,
-                                  cuda_transpose_3d_xy)
+    from .basic_array_ops import (
+        BasicArrayOps,
+        cuda_array_add,
+        cuda_array_scale,
+        cuda_transpose_2d,
+        cuda_transpose_3d_xy,
+    )
 
     __all__ = [
         "BasicArrayOps",

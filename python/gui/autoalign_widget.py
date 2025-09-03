@@ -16,12 +16,28 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from profile_widgets import RunProfileWidget
 from PySide6.QtCore import Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QFont
-from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QFileDialog,
-                               QFormLayout, QGroupBox, QHBoxLayout, QLabel,
-                               QLineEdit, QListWidget, QListWidgetItem,
-                               QMessageBox, QProgressBar, QProgressDialog,
-                               QPushButton, QSpinBox, QTextEdit, QTreeWidget,
-                               QTreeWidgetItem, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (
+    QComboBox,
+    QDoubleSpinBox,
+    QFileDialog,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMessageBox,
+    QProgressBar,
+    QProgressDialog,
+    QPushButton,
+    QSpinBox,
+    QTextEdit,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
 from state_manager import GUIStateManager
 
 if TYPE_CHECKING:

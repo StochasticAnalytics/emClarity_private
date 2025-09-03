@@ -14,8 +14,13 @@ if str(gui_dir) not in sys.path:
 
 try:
     from PySide6.QtCore import QTimer
-    from PySide6.QtWidgets import (QApplication, QLabel, QPushButton,
-                                   QVBoxLayout, QWidget)
+    from PySide6.QtWidgets import (
+        QApplication,
+        QLabel,
+        QPushButton,
+        QVBoxLayout,
+        QWidget,
+    )
     from rubber_band_tool import create_rubber_band_tool
 
     class TestWindow(QWidget):
