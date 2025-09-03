@@ -24,6 +24,20 @@
 - Copilot should not allow default values or other design patterns that could lead to ambiguity or confusion.
 - Copilot should prefer to fail fast and descriptively.
 
+## Special prompts
+
+- If copilot is asked to work on a rb prompt or a rubber band prompt, it should look in /tmp/emclarity_gui_prompts for the most recent prompt generated with the rubber band tool and use the text and context provided for the next set of work.
+
+## Critical Development Rules
+
+- **Never replace real panels/widgets with dummy versions**: Before swapping out any functional panel or widget for a placeholder, stub, or dummy version, always check with the user first. Real functionality should be preserved unless explicitly requested to be removed.
+
+- **Never alter production database**: Never modify the database schema or delete/alter contents of the production database for development purposes. Always work on copies of the database when testing or debugging. Use commands like `cp emclarity_gui_state.db emclarity_gui_state_backup.db` before any database operations.
+
+- Start with the simplest solution and if you think you need to be more creative or expand scope, explain why and we can discuss if we proceed.
+
+- Following any major work, like a GUI rubber band prompt, you should check to see if we are satisified, if so create a WIP commit with a short message using git. But only with permission!
+
 
 ## Development Environment Notes
 
@@ -51,6 +65,9 @@ cd /sa_shared/git/emClarity && source .venv/bin/activate && cd gui && python -c 
 
 # For GUI launches
 cd /sa_shared/git/emClarity && source .venv/bin/activate && cd gui && QT_QPA_PLATFORM=xcb python main.py &
+
+# When launching the gui for testing, always launch in rubberband mode that way I can add more context if needed.
+source .venv/bin/activate ./gui/run_gui.sh --rubber-band-mode
 ```
 
 **Impact**: This pattern eliminates 80% of "import not found" errors and ensures consistent testing environment.

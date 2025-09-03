@@ -226,7 +226,7 @@ class RunProfileWidget(QWidget):
             QMessageBox.warning(self, "Missing Information", "Please fill in all fields.")
             return
 
-        if not hasattr(self.parent_window, 'project_path'):
+        if not hasattr(self.parent_window, 'project_path') or not self.parent_window.project_path:
              QMessageBox.warning(self, "No Project Open", "Please open a project before adding a resource.")
              return
 
@@ -295,7 +295,7 @@ class RunProfileWidget(QWidget):
             QMessageBox.warning(self, "Missing Information", "Please fill in hostname and username.")
             return
 
-        if not hasattr(self.parent_window, 'project_path'):
+        if not hasattr(self.parent_window, 'project_path') or not self.parent_window.project_path:
              QMessageBox.warning(self, "No Project Open", "Please open a project before updating a resource.")
              return
 
@@ -496,7 +496,7 @@ class RunProfileWidget(QWidget):
             return
             
         # Check if project path is available
-        if not hasattr(self.parent_window, 'project_path'):
+        if not hasattr(self.parent_window, 'project_path') or not self.parent_window.project_path:
             QMessageBox.warning(self, "Warning", "No project path available. Please open a project first.")
             return
         

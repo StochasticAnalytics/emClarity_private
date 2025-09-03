@@ -16,7 +16,8 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
     QPushButton, QLineEdit, QDoubleSpinBox, QSpinBox, QComboBox,
     QFileDialog, QMessageBox, QLabel, QTextEdit, QProgressBar,
-    QListWidget, QListWidgetItem, QTreeWidget, QTreeWidgetItem
+    QListWidget, QListWidgetItem, QTreeWidget, QTreeWidgetItem,
+    QProgressDialog
 )
 from PySide6.QtCore import Qt, QThread, Signal, QTimer
 from PySide6.QtGui import QFont
@@ -455,48 +456,108 @@ class AutoAlignWidget(QWidget):
         
         # Alignment Parameters section  
         align_group = QGroupBox("Alignment Parameters")
-        align_layout = QFormLayout(align_group)
+        align_layout = QVBoxLayout(align_group)
+        align_layout.setSpacing(8)
         
-        # Project name
+        # Calculate consistent field width (leave space for button)
+        field_width = 120
+        button_width = 140
+        
+        # Project name row
+        proj_layout = QHBoxLayout()
+        proj_label = QLabel("Project Name:")
+        proj_label.setFixedWidth(140)
+        proj_layout.addWidget(proj_label)
         self.project_name = QLineEdit()
         self.project_name.setPlaceholderText("e.g., project_001")
         self.project_name.setText("project_001")
-        align_layout.addRow("Project Name:", self.project_name)
+        self.project_name.setFixedWidth(field_width)
+        proj_layout.addWidget(self.project_name)
+        proj_layout.addStretch()
+        align_layout.addLayout(proj_layout)
         
-        # Pixel sizes
+        # Unbinned pixel size row
+        unbinned_layout = QHBoxLayout()
+        unbinned_label = QLabel("Unbinned Pixel Size:")
+        unbinned_label.setFixedWidth(140)
+        unbinned_layout.addWidget(unbinned_label)
         self.unbinned_pixel_size = QDoubleSpinBox()
         self.unbinned_pixel_size.setRange(0.1, 10.0)
         self.unbinned_pixel_size.setValue(1.0)
         self.unbinned_pixel_size.setSuffix(" Å")
         self.unbinned_pixel_size.setDecimals(3)
-        align_layout.addRow("Unbinned Pixel Size:", self.unbinned_pixel_size)
+        self.unbinned_pixel_size.setFixedWidth(field_width)
+        unbinned_layout.addWidget(self.unbinned_pixel_size)
         
+        # Add stretch to push button to the right
+        unbinned_layout.addStretch()
+        
+        # Check pixel sizes button (right-justified)
+        self.check_pixel_size_button = QPushButton("Check Pixel Sizes")
+        self.check_pixel_size_button.setStyleSheet("background-color: #17a2b8; color: white; font-weight: bold; padding: 5px;")
+        self.check_pixel_size_button.clicked.connect(self.check_pixel_sizes)
+        self.check_pixel_size_button.setToolTip("Check that all assets in selected group have matching x/y pixel sizes")
+        self.check_pixel_size_button.setFixedWidth(button_width)
+        unbinned_layout.addWidget(self.check_pixel_size_button)
+        align_layout.addLayout(unbinned_layout)
+        
+        # Target pixel size row
+        target_layout = QHBoxLayout()
+        target_label = QLabel("Target Pixel Size:")
+        target_label.setFixedWidth(140)
+        target_layout.addWidget(target_label)
         self.target_pixel_size = QDoubleSpinBox()
         self.target_pixel_size.setRange(1.0, 20.0)
         self.target_pixel_size.setValue(4.0)
         self.target_pixel_size.setSuffix(" Å")
         self.target_pixel_size.setDecimals(1)
-        align_layout.addRow("Target Pixel Size:", self.target_pixel_size)
+        self.target_pixel_size.setFixedWidth(field_width)
+        target_layout.addWidget(self.target_pixel_size)
+        target_layout.addStretch()
+        align_layout.addLayout(target_layout)
         
-        # Microscope parameters
+        # Voltage row
+        voltage_layout = QHBoxLayout()
+        voltage_label = QLabel("Voltage:")
+        voltage_label.setFixedWidth(140)
+        voltage_layout.addWidget(voltage_label)
         self.voltage = QSpinBox()
         self.voltage.setRange(80, 300)
         self.voltage.setValue(300)
         self.voltage.setSuffix(" keV")
-        align_layout.addRow("Voltage:", self.voltage)
+        self.voltage.setFixedWidth(field_width)
+        voltage_layout.addWidget(self.voltage)
+        voltage_layout.addStretch()
+        align_layout.addLayout(voltage_layout)
         
+        # Cs row
+        cs_layout = QHBoxLayout()
+        cs_label = QLabel("Cs:")
+        cs_label.setFixedWidth(140)
+        cs_layout.addWidget(cs_label)
         self.cs = QDoubleSpinBox()
         self.cs.setRange(0.0, 5.0)
         self.cs.setValue(2.7)
         self.cs.setSuffix(" mm")
         self.cs.setDecimals(1)
-        align_layout.addRow("Cs:", self.cs)
+        self.cs.setFixedWidth(field_width)
+        cs_layout.addWidget(self.cs)
+        cs_layout.addStretch()
+        align_layout.addLayout(cs_layout)
         
+        # Amplitude contrast row
+        amp_layout = QHBoxLayout()
+        amp_label = QLabel("Amplitude Contrast:")
+        amp_label.setFixedWidth(140)
+        amp_layout.addWidget(amp_label)
         self.amplitude_contrast = QDoubleSpinBox()
         self.amplitude_contrast.setRange(0.0, 1.0)
         self.amplitude_contrast.setValue(0.07)
         self.amplitude_contrast.setDecimals(3)
-        align_layout.addRow("Amplitude Contrast:", self.amplitude_contrast)
+        self.amplitude_contrast.setFixedWidth(field_width)
+        amp_layout.addWidget(self.amplitude_contrast)
+        amp_layout.addStretch()
+        align_layout.addLayout(amp_layout)
         
         layout.addWidget(align_group)
         
@@ -691,7 +752,7 @@ class AutoAlignWidget(QWidget):
             return False, "Raw tilt file is required"
             
         # Check if project is open
-        if not hasattr(self.parent_window, 'project_path'):
+        if not hasattr(self.parent_window, 'project_path') or not self.parent_window.project_path:
             return False, "No project is open. Please open a project first."
             
         # Check if files exist
@@ -940,6 +1001,282 @@ class AutoAlignWidget(QWidget):
         if self.worker:
             self.worker.stop()
             self.worker.wait()
+            
+    def check_pixel_sizes(self):
+        """Check pixel sizes for all assets in the selected group using IMOD header command."""
+        if not self.selected_group:
+            QMessageBox.warning(self, "No Group Selected", "Please select an asset group first.")
+            return
+            
+        if self.selected_group not in self.group_assets or not self.group_assets[self.selected_group]:
+            QMessageBox.warning(self, "No Assets", "No assets found in the selected group.")
+            return
+            
+        # Get asset dictionary for the selected group
+        asset_dict = self.group_assets[self.selected_group]
+        asset_names = list(asset_dict.keys())
+        pixel_size_data = []
+        errors = []
+        
+        # Progress dialog
+        progress = QProgressDialog("Checking pixel sizes...", "Cancel", 0, len(asset_names), self)
+        progress.setWindowModality(Qt.WindowModal)
+        progress.show()
+        
+        for i, asset_name in enumerate(asset_names):
+            if progress.wasCanceled():
+                return
+                
+            progress.setValue(i)
+            progress.setLabelText(f"Checking asset: {asset_name}")
+            
+            # Get the asset data
+            asset_data = asset_dict[asset_name]
+            
+            # Try to construct full path to the MRC/ST file
+            try:
+                # Get the project path from parent window
+                project_path = None
+                if hasattr(self.parent_window, 'project_path') and self.parent_window.project_path:
+                    project_path = self.parent_window.project_path
+                elif hasattr(self.parent_window, 'get_project_path'):
+                    project_path = self.parent_window.get_project_path()
+                
+                if not project_path:
+                    errors.append(f"No project path available for {asset_name}")
+                    continue
+                
+                # Look for path or file info in asset data
+                asset_path = None
+                if 'file_path' in asset_data:
+                    asset_path = asset_data['file_path']
+                elif 'path' in asset_data:
+                    asset_path = asset_data['path']
+                elif 'file' in asset_data:
+                    asset_path = asset_data['file']
+                elif 'directory' in asset_data and 'name' in asset_data:
+                    # Try to construct path from directory and asset name
+                    asset_path = os.path.join(asset_data['directory'], f"{asset_data['name']}.st")
+                    if not os.path.exists(asset_path):
+                        asset_path = os.path.join(asset_data['directory'], f"{asset_data['name']}.mrc")
+                elif 'name' in asset_data:
+                    # Try to construct path from project and asset name
+                    asset_path = os.path.join(project_path, asset_data['name'])
+                    
+                if not asset_path:
+                    errors.append(f"Could not determine file path for {asset_name}")
+                    continue
+                
+                # Make sure path is absolute
+                if not os.path.isabs(asset_path):
+                    asset_path = os.path.join(project_path, asset_path)
+                
+                # If path is a directory, look for MRC/ST files
+                if os.path.isdir(asset_path):
+                    found_file = None
+                    for ext in ['.mrc', '.st']:
+                        for file in os.listdir(asset_path):
+                            if file.endswith(ext):
+                                found_file = os.path.join(asset_path, file)
+                                break
+                        if found_file:
+                            break
+                    if found_file:
+                        asset_path = found_file
+                    else:
+                        errors.append(f"No MRC/ST file found in directory: {asset_path}")
+                        continue
+                
+                # Check if file exists
+                if not os.path.exists(asset_path):
+                    errors.append(f"File not found: {asset_path}")
+                    continue
+                
+                if not (asset_path.endswith('.mrc') or asset_path.endswith('.st')):
+                    errors.append(f"File is not MRC/ST format: {asset_path}")
+                    continue
+                
+                # Use mrcfile to read pixel size and check file integrity
+                try:
+                    import mrcfile
+                    
+                    # Open file in header-only mode to avoid loading large data arrays
+                    with mrcfile.open(asset_path, mode='r', permissive=True, header_only=True) as mrc:
+                        # Check file integrity (if method exists)
+                        try:
+                            if hasattr(mrc, 'is_valid') and not mrc.is_valid():
+                                errors.append(f"Invalid MRC file: {asset_name}")
+                                continue
+                        except:
+                            # If validation fails, continue anyway - file might still be readable
+                            pass
+                        
+                        # Get pixel sizes from voxel_size (in angstroms)
+                        voxel_size = mrc.voxel_size
+                        if voxel_size is None:
+                            errors.append(f"No voxel size information in {asset_name}")
+                            continue
+                        
+                        try:
+                            x_pixel = float(voxel_size.x)
+                            y_pixel = float(voxel_size.y)
+                            z_pixel = float(voxel_size.z) if hasattr(voxel_size, 'z') else 0.0
+                        except AttributeError:
+                            # Fallback: try as array/tuple
+                            try:
+                                if len(voxel_size) >= 2:
+                                    x_pixel = float(voxel_size[0])
+                                    y_pixel = float(voxel_size[1])
+                                    z_pixel = float(voxel_size[2]) if len(voxel_size) > 2 else 0.0
+                                else:
+                                    errors.append(f"Insufficient voxel size data in {asset_name}")
+                                    continue
+                            except:
+                                errors.append(f"Could not parse voxel size in {asset_name}")
+                                continue
+                        
+                        # Get additional file info from header only
+                        dimensions = f"{mrc.header.nx}x{mrc.header.ny}x{mrc.header.nz}"
+                        data_type = mrc.header.mode
+                        
+                        pixel_size_data.append({
+                            'asset': asset_name,
+                            'path': asset_path,
+                            'x_pixel': x_pixel,
+                            'y_pixel': y_pixel,
+                            'z_pixel': z_pixel,
+                            'dimensions': dimensions,
+                            'data_type': data_type,
+                            'info': f"Pixel size: {x_pixel:.3f} x {y_pixel:.3f} x {z_pixel:.3f} Å, Dimensions: {dimensions}"
+                        })
+                        
+                except ImportError:
+                    # Fallback to IMOD header command if mrcfile is not available
+                    cmd = ['header', '-pixel', asset_path]
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                    
+                    if result.returncode != 0:
+                        errors.append(f"Header command failed for {asset_name}: {result.stderr}")
+                        continue
+                        
+                    # Parse the output to extract x,y pixel sizes
+                    output_lines = result.stdout.strip().split('\n')
+                    pixel_info = None
+                    for line in output_lines:
+                        if 'Pixel spacing' in line or 'angstrom' in line.lower():
+                            pixel_info = line
+                            break
+                    
+                    if not pixel_info:
+                        errors.append(f"Could not parse pixel size from header output for {asset_name}")
+                        continue
+                        
+                    # Extract numeric values (assuming format like "Pixel spacing: 1.23 1.23 1.23 angstrom")
+                    import re
+                    numbers = re.findall(r'[\d.]+', pixel_info)
+                    if len(numbers) >= 2:
+                        x_pixel = float(numbers[0])
+                        y_pixel = float(numbers[1])
+                        pixel_size_data.append({
+                            'asset': asset_name,
+                            'path': asset_path,
+                            'x_pixel': x_pixel,
+                            'y_pixel': y_pixel,
+                            'info': pixel_info.strip()
+                        })
+                    else:
+                        errors.append(f"Could not extract x,y pixel sizes for {asset_name}")
+                        
+                except Exception as e:
+                    # If mrcfile fails, try IMOD as fallback
+                    try:
+                        cmd = ['header', '-pixel', asset_path]
+                        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                        
+                        if result.returncode != 0:
+                            errors.append(f"Both mrcfile and header command failed for {asset_name}: {str(e)}")
+                            continue
+                            
+                        # Parse IMOD output
+                        output_lines = result.stdout.strip().split('\n')
+                        pixel_info = None
+                        for line in output_lines:
+                            if 'Pixel spacing' in line or 'angstrom' in line.lower():
+                                pixel_info = line
+                                break
+                        
+                        if pixel_info:
+                            import re
+                            numbers = re.findall(r'[\d.]+', pixel_info)
+                            if len(numbers) >= 2:
+                                x_pixel = float(numbers[0])
+                                y_pixel = float(numbers[1])
+                                pixel_size_data.append({
+                                    'asset': asset_name,
+                                    'path': asset_path,
+                                    'x_pixel': x_pixel,
+                                    'y_pixel': y_pixel,
+                                    'info': f"Pixel size: {x_pixel:.3f} x {y_pixel:.3f} Å (via IMOD)"
+                                })
+                            else:
+                                errors.append(f"Could not extract pixel sizes for {asset_name}")
+                        else:
+                            errors.append(f"mrcfile failed and no pixel info from IMOD for {asset_name}: {str(e)}")
+                    except Exception as fallback_error:
+                        errors.append(f"Both mrcfile and IMOD failed for {asset_name}: mrcfile={str(e)}, imod={str(fallback_error)}")
+                    
+            except subprocess.TimeoutExpired:
+                errors.append(f"Header command timed out for {asset_name}")
+            except Exception as e:
+                errors.append(f"Error processing {asset_name}: {str(e)}")
+        
+        progress.setValue(len(asset_names))
+        progress.close()
+        
+        # Analyze results
+        if not pixel_size_data:
+            QMessageBox.critical(self, "Check Failed", 
+                               f"Could not get pixel size data for any assets.\n\nErrors:\n" + 
+                               "\n".join(errors[:10]))  # Show first 10 errors
+            return
+            
+        # Check if all x,y pixel sizes match
+        first_x = pixel_size_data[0]['x_pixel']
+        first_y = pixel_size_data[0]['y_pixel']
+        
+        mismatches = []
+        for data in pixel_size_data:
+            if abs(data['x_pixel'] - first_x) > 0.001 or abs(data['y_pixel'] - first_y) > 0.001:
+                mismatches.append(f"{data['asset']}: {data['x_pixel']:.3f} x {data['y_pixel']:.3f}")
+        
+        # Display results
+        if mismatches:
+            result_msg = f"❌ Pixel size mismatch found!\n\n"
+            result_msg += f"Expected: {first_x:.3f} x {first_y:.3f} angstrom\n\n"
+            result_msg += "Mismatched assets:\n" + "\n".join(mismatches)
+            if errors:
+                result_msg += f"\n\nAdditional errors:\n" + "\n".join(errors[:5])
+            QMessageBox.warning(self, "Pixel Size Check", result_msg)
+        else:
+            # All pixel sizes match - update the unbinned pixel size field
+            self.unbinned_pixel_size.setValue(first_x)
+            
+            result_msg = f"✅ All pixel sizes match!\n\n"
+            result_msg += f"Pixel size: {first_x:.3f} x {first_y:.3f} angstrom\n"
+            result_msg += f"Checked {len(pixel_size_data)} assets successfully\n"
+            result_msg += f"\n📝 Updated unbinned pixel size field to {first_x:.3f} Å"
+            
+            # Add file integrity info if available
+            if pixel_size_data and 'dimensions' in pixel_size_data[0]:
+                result_msg += f"\n\nFile details:\n"
+                for data in pixel_size_data[:3]:  # Show first 3 assets
+                    result_msg += f"• {data['asset']}: {data['dimensions']}\n"
+                if len(pixel_size_data) > 3:
+                    result_msg += f"... and {len(pixel_size_data) - 3} more files\n"
+            
+            if errors:
+                result_msg += f"\nNote: {len(errors)} assets had errors and were skipped"
+            QMessageBox.information(self, "Pixel Size Check", result_msg)
             
     def on_progress_updated(self, progress: int, current_info: str):
         """Handle overall progress updates."""

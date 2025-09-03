@@ -86,9 +86,7 @@ if ( sysERR )
   fprintf('system command for mkdir failed for some reason\n');
   unix('mkdir -p logFile');
 end
-diary('logFile/emClarity.logfile')
-% Ensure diary/env are restored even on early returns or errors
-diaryCleanup = onCleanup(@() diary('off'));
+
 cudaCleanup  = onCleanup(@() setenv('CUDA_VISIBLE_DEVICES', origCUDA));
 timeStart = datetime();
 fprintf('\n\t\t***************************************\n\n');
@@ -141,6 +139,7 @@ end
 
 
 multiGPUs = 1;
+emc = struct();
 % Get program specific help with emClarity progName help. Otherwise, we parse the third argument
 if nArgs > 1 && ~(emcHelp || emcProgramHelp)
   switch varargin{1}
@@ -187,6 +186,17 @@ if nArgs > 1 && ~(emcHelp || emcProgramHelp)
     end
   end
 end
+
+% if the emc struct is not empty, grab the subTomoMeta name for logging
+if isempty(fieldnames(emc))
+  log_file_name = 'logFile/emClarity.logfile';
+else 
+  log_file_name = sprintf('logFile/emClarity_%s.logfile', emc.subTomoMeta);
+end
+
+diary(log_file_name)
+% Ensure diary/env are restored even on early returns or errors
+diaryCleanup = onCleanup(@() diary('off'));
 
 switch varargin{1}
   case 'help'

@@ -406,7 +406,8 @@ class GUIStateManager:
                     tilt_file TEXT,
                     status TEXT,
                     metadata TEXT,
-                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    pixel_size REAL
                 )
             ''')
             
@@ -417,8 +418,8 @@ class GUIStateManager:
             for asset_name, asset_data in assets.items():
                 cursor.execute('''
                     INSERT INTO tilt_series_assets 
-                    (asset_name, file_path, directory, tilt_file, status, metadata)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    (asset_name, file_path, directory, tilt_file, status, metadata, pixel_size)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     asset_name,
                     asset_data.get('file_path', ''),
@@ -426,7 +427,8 @@ class GUIStateManager:
                     asset_data.get('tilt_file', ''),
                     asset_data.get('status', 'Imported'),
                     json.dumps({k: v for k, v in asset_data.items() 
-                              if k not in ['file_path', 'directory', 'tilt_file', 'status']})
+                              if k not in ['file_path', 'directory', 'tilt_file', 'status', 'pixel_size']}),
+                    asset_data.get('pixel_size', None)
                 ))
             conn.commit()
     
@@ -445,7 +447,7 @@ class GUIStateManager:
                 return assets
                 
             cursor.execute('''
-                SELECT asset_name, file_path, directory, tilt_file, status, metadata
+                SELECT asset_name, file_path, directory, tilt_file, status, metadata, pixel_size
                 FROM tilt_series_assets
             ''')
             
@@ -459,6 +461,7 @@ class GUIStateManager:
                     'directory': row[2], 
                     'tilt_file': row[3],
                     'status': row[4],
+                    'pixel_size': row[6] if row[6] is not None else None,
                     **metadata
                 }
         return assets

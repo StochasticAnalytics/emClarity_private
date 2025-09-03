@@ -1576,7 +1576,6 @@ if ( flgReverseOrder || flgStartThird )
   fprintf('This multi-node run will not write the metaData\n');
 else
   
-  save('bestAnglesResults.mat', 'bestAnglesResults');
   bestAngles = struct();
   for iParProc = 1:nParProcesses
     for iTomo = iterList{iParProc}
@@ -1584,8 +1583,6 @@ else
       bestAngles.(tomoList{iTomo}) = bestAnglesResults{iParProc}.(tomoList{iTomo});
     end
   end
-  %   save('bestAnglesTemp.mat', 'bestAngles');
-  save('bestAngles.mat', 'bestAngles');
   
   [ rawAlign ] = BH_rawAlignmentsApply( gather(geometry), bestAngles, samplingRate, emc.nPeaks, rotConvention, emc.update_class_by_ccc);
   subTomoMeta.(cycleNumber).('RawAlign') = rawAlign;

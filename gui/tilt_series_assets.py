@@ -27,6 +27,7 @@ class TiltSeriesAssetsWidget(QWidget):
         super().__init__(parent)
         self.parent_window = parent
         self.assets: Dict[str, Dict[str, Any]] = {}  # asset_name -> asset_data
+        self.current_mode = "images"  # Default mode, can be changed by toolbar
         self.setup_ui()
         
         # Initialize groups dictionary but don't load assets until project is opened
@@ -36,6 +37,32 @@ class TiltSeriesAssetsWidget(QWidget):
         if "Default" not in self.groups:
             self.create_group("Default")
             
+    def handle_asset_type_change(self, asset_type: str):
+        """Handle changes from the top toolbar asset type selection."""
+        print(f"Assets panel switching to mode: {asset_type}")
+        self.current_mode = asset_type
+        self.update_right_panel_for_mode()
+        
+    def update_right_panel_for_mode(self):
+        """Update the right panel content based on current mode."""
+        if hasattr(self, 'right_panel_container'):
+            # Clear the current right panel content
+            layout = self.right_panel_container.layout()
+            if layout:
+                while layout.count():
+                    child = layout.takeAt(0)
+                    if child.widget():
+                        child.widget().setParent(None)
+            else:
+                layout = QVBoxLayout(self.right_panel_container)
+                self.right_panel_container.setLayout(layout)
+            
+            # Recreate the right panel based on current mode
+            if self.current_mode == "utils":
+                self.create_utils_right_panel(layout)
+            else:
+                self.create_standard_right_panel(layout)
+
     def showEvent(self, event):
         """Called when the widget becomes visible - load assets if project is available."""
         super().showEvent(event)
@@ -45,7 +72,10 @@ class TiltSeriesAssetsWidget(QWidget):
             
     def on_project_opened(self):
         """Called when a project is opened - load assets for the new project."""
-        self.load_assets()
+        if hasattr(self.parent_window, 'project_path') and self.parent_window.project_path:
+            self.load_assets()
+        else:
+            print("TiltSeriesAssetsWidget: No project path found or project_path is None")
         
     def setup_ui(self):
         """Set up the user interface."""
@@ -74,9 +104,12 @@ class TiltSeriesAssetsWidget(QWidget):
         left_panel = self.create_left_panel()
         main_layout.addWidget(left_panel, 2)  # 2/3 of width
         
-        # Right side - Asset details and import
-        right_panel = self.create_right_panel()
-        main_layout.addWidget(right_panel, 1)  # 1/3 of width
+        # Right side - Container for dynamic content based on mode
+        self.right_panel_container = QWidget()
+        main_layout.addWidget(self.right_panel_container, 1)  # 1/3 of width
+        
+        # Initialize right panel content
+        self.update_right_panel_for_mode()
         
         layout.addLayout(main_layout)
         
@@ -87,7 +120,7 @@ class TiltSeriesAssetsWidget(QWidget):
         
         # Asset tree
         self.assets_tree = QTreeWidget()
-        self.assets_tree.setHeaderLabels(["Group/Name", "Path", "Size (X,Y,Z)", "Stack", "Tilt"])
+        self.assets_tree.setHeaderLabels(["Group/Name", "Path", "Size (X,Y,Z)", "Stack", "Tilt", "Pixel Size"])
         
         # Enable multi-selection
         self.assets_tree.setSelectionMode(QTreeWidget.ExtendedSelection)
@@ -135,11 +168,8 @@ class TiltSeriesAssetsWidget(QWidget):
         
         return group
         
-    def create_right_panel(self) -> QGroupBox:
-        """Create the right panel with asset details."""
-        group = QGroupBox("Asset Details")
-        layout = QVBoxLayout(group)
-        
+    def create_standard_right_panel(self, layout: QVBoxLayout):
+        """Create the standard right panel with asset details and import controls."""
         # Asset form
         form_group = QGroupBox("Selected Asset")
         form_layout = QFormLayout(form_group)
@@ -262,11 +292,78 @@ class TiltSeriesAssetsWidget(QWidget):
         
         layout.addWidget(display_group)
         
-        return group
+    def create_utils_right_panel(self, layout: QVBoxLayout):
+        """Create the utils mode right panel with simplified controls."""
+        # Asset form (same as standard)
+        form_group = QGroupBox("Selected Asset")
+        form_layout = QFormLayout(form_group)
+        
+        # Asset name
+        self.name_input = QLineEdit()
+        self.name_input.setPlaceholderText("Asset name")
+        form_layout.addRow("Name:", self.name_input)
+        
+        # File path
+        self.path_input = QLineEdit()
+        self.path_input.setPlaceholderText("File or directory path")
+        form_layout.addRow("Path:", self.path_input)
+        
+        # Tilt file (if different)
+        self.tilt_file_input = QLineEdit()
+        self.tilt_file_input.setPlaceholderText("Auto-detected from stack name")
+        form_layout.addRow("Tilt File:", self.tilt_file_input)
+        
+        # Processing status
+        self.status_combo = QComboBox()
+        self.status_combo.addItems(["Imported", "Validated", "Aligned", "Processing", "Complete", "Error"])
+        form_layout.addRow("Status:", self.status_combo)
+        
+        layout.addWidget(form_group)
+        
+        # Update/Save buttons (same as standard)
+        save_layout = QHBoxLayout()
+        
+        self.update_button = QPushButton("Update Selected")
+        self.update_button.clicked.connect(self.update_selected)
+        self.update_button.setEnabled(False)
+        save_layout.addWidget(self.update_button)
+        
+        self.clear_button = QPushButton("Clear Form")
+        self.clear_button.clicked.connect(self.clear_form)
+        save_layout.addWidget(self.clear_button)
+        
+        layout.addLayout(save_layout)
+        
+        # NEW: Pixel Size Update section (this is the key addition for utils mode)
+        pixel_group = QGroupBox("Pixel Size Update")
+        pixel_layout = QVBoxLayout(pixel_group)
+        
+        # Instructions
+        pixel_instruction = QLabel("Update pixel size for selected assets:")
+        pixel_instruction.setStyleSheet("color: #666; font-style: italic;")
+        pixel_layout.addWidget(pixel_instruction)
+        
+        # Pixel size input and update button
+        pixel_input_layout = QHBoxLayout()
+        
+        self.pixel_size_input = QLineEdit()
+        self.pixel_size_input.setPlaceholderText("Enter pixel size (e.g., 0.6431)")
+        pixel_input_layout.addWidget(self.pixel_size_input)
+        
+        self.update_pixel_size_button = QPushButton("Update Pixel Size")
+        self.update_pixel_size_button.clicked.connect(self.update_pixel_size_selected)
+        self.update_pixel_size_button.setEnabled(False)  # Enable when assets are selected
+        pixel_input_layout.addWidget(self.update_pixel_size_button)
+        
+        # Make both buttons same size as the update/clear buttons above
+        self.update_pixel_size_button.setMinimumSize(self.update_button.sizeHint())
+        
+        pixel_layout.addLayout(pixel_input_layout)
+        layout.addWidget(pixel_group)
         
     def import_assets(self):
         """Import tilt-series assets from files or directories into selected group."""
-        if not hasattr(self.parent_window, 'project_path'):
+        if not hasattr(self.parent_window, 'project_path') or not self.parent_window.project_path:
             QMessageBox.warning(self, "No Project", "Please open a project first.")
             return
         
@@ -548,6 +645,8 @@ class TiltSeriesAssetsWidget(QWidget):
         z_dim = asset_data.get('z_dim', 0)
         if x_dim > 0 and y_dim > 0 and z_dim > 0:
             asset_item.setText(2, f"{x_dim},{y_dim},{z_dim}")
+            # Reset to normal color for valid dimensions
+            asset_item.setForeground(2, QColor(0, 0, 0))  # Black for valid dimensions
         else:
             asset_item.setText(2, "Unknown")
             asset_item.setForeground(2, QColor(139, 0, 0))  # Dark red for unknown dimensions
@@ -556,7 +655,8 @@ class TiltSeriesAssetsWidget(QWidget):
         stack_validated = asset_data.get('stack_validated', False)
         if stack_validated:
             asset_item.setText(3, "Stack")
-            # Normal color for validated stack
+            # Reset to normal color for validated stack
+            asset_item.setForeground(3, QColor(0, 0, 0))  # Black for validated stack
         else:
             asset_item.setText(3, "Stack")
             # Dark red for unvalidated stack
@@ -567,7 +667,8 @@ class TiltSeriesAssetsWidget(QWidget):
         tilt_validated = asset_data.get('tilt_validated', False)
         if tilt_file and tilt_validated:
             asset_item.setText(4, "Tilt")
-            # Normal color for validated tilt file
+            # Reset to normal color for validated tilt file
+            asset_item.setForeground(4, QColor(0, 0, 0))  # Black for validated tilt file
         elif tilt_file:
             asset_item.setText(4, "Tilt")
             # Dark red for unvalidated tilt file
@@ -576,6 +677,15 @@ class TiltSeriesAssetsWidget(QWidget):
             asset_item.setText(4, "None")
             # Dark red for no tilt file
             asset_item.setForeground(4, QColor(139, 0, 0))
+            
+        # Pixel Size column
+        pixel_size = asset_data.get('pixel_size', None)
+        if pixel_size is not None and pixel_size > 0:
+            asset_item.setText(5, f"{pixel_size:.3f}")
+            asset_item.setForeground(5, QColor(0, 0, 0))  # Black for valid pixel size
+        else:
+            asset_item.setText(5, "Unknown")
+            asset_item.setForeground(5, QColor(139, 0, 0))  # Dark red for missing pixel size
         
         # Store asset name for later reference
         asset_item.setData(0, Qt.UserRole, asset_data['name'])
@@ -656,15 +766,60 @@ class TiltSeriesAssetsWidget(QWidget):
         if group_name not in self.groups:
             return
             
+        print(f"Validating assets in group: {group_name}")
+        
         for asset_name, asset_data in self.groups[group_name].items():
-            # Basic validation - check if files exist
-            if os.path.isfile(asset_data['file_path']):
-                if asset_data.get('tilt_file') and not os.path.isfile(asset_data['tilt_file']):
-                    asset_data['status'] = 'Missing Tilt'
-                else:
-                    asset_data['status'] = 'Validated'
+            print(f"Validating asset: {asset_name}")
+            
+            # Re-validate stack file and get dimensions
+            stack_file = asset_data['file_path']
+            x_dim, y_dim, z_dim = 0, 0, 0
+            stack_validated = False
+            
+            if os.path.isfile(stack_file):
+                # Get stack dimensions
+                x_dim, y_dim, z_dim = self.get_stack_dimensions(stack_file)
+                stack_validated = x_dim > 0 and y_dim > 0 and z_dim > 0
+                print(f"  Stack dimensions: {x_dim}x{y_dim}x{z_dim}, validated: {stack_validated}")
+                
+                # Update asset data with current dimensions
+                asset_data['x_dim'] = x_dim
+                asset_data['y_dim'] = y_dim
+                asset_data['z_dim'] = z_dim
+                asset_data['stack_validated'] = stack_validated
             else:
+                print(f"  Stack file not found: {stack_file}")
+                # File doesn't exist
+                asset_data['stack_validated'] = False
+                
+            # Re-validate tilt file
+            tilt_file = asset_data.get('tilt_file', '')
+            tilt_validated = False
+            
+            if tilt_file and os.path.isfile(tilt_file) and z_dim > 0:
+                tilt_validated = self.validate_tilt_file(tilt_file, z_dim)
+                asset_data['tilt_validated'] = tilt_validated
+                print(f"  Tilt file: {tilt_file}, validated: {tilt_validated}")
+            else:
+                asset_data['tilt_validated'] = False
+                if tilt_file:
+                    print(f"  Tilt file not found or invalid: {tilt_file}")
+                else:
+                    print(f"  No tilt file specified")
+                
+            # Update status based on validation results
+            if not os.path.isfile(stack_file):
                 asset_data['status'] = 'Missing File'
+            elif not stack_validated:
+                asset_data['status'] = 'Invalid Stack'
+            elif tilt_file and not os.path.isfile(tilt_file):
+                asset_data['status'] = 'Missing Tilt'
+            elif tilt_file and not tilt_validated:
+                asset_data['status'] = 'Invalid Tilt'
+            else:
+                asset_data['status'] = 'Validated'
+                
+            print(f"  Final status: {asset_data['status']}")
                 
         # Update tree display
         self.update_tree_display()
@@ -734,22 +889,173 @@ class TiltSeriesAssetsWidget(QWidget):
                 
             self.update_tree_display()
             
-    def validate_selected(self):
-        """Validate the selected asset (stub for now)."""
-        selected_item = self.assets_tree.currentItem()
-        if not selected_item or selected_item.parent():
-            QMessageBox.information(self, "No Selection", "Please select an asset to validate.")
+    def update_pixel_size_selected(self):
+        """Update pixel size for selected assets or groups."""
+        pixel_size_text = self.pixel_size_input.text().strip()
+        
+        if not pixel_size_text:
+            QMessageBox.warning(self, "No Pixel Size", "Please enter a pixel size value.")
             return
             
-        asset_name = selected_item.text(0)
-        if hasattr(self.parent_window, 'output_text'):
-            self.parent_window.output_text.append(f"Validation for '{asset_name}' - STUB: Not yet implemented")
+        try:
+            pixel_size = float(pixel_size_text)
+            if pixel_size <= 0:
+                raise ValueError("Pixel size must be positive")
+        except ValueError:
+            QMessageBox.warning(self, "Invalid Input", "Please enter a valid positive number for pixel size.")
+            return
             
-        # Update status to validated (placeholder)
-        if asset_name in self.assets:
-            self.assets[asset_name]["status"] = "Validated"
-            self.update_assets_tree()
-            self.save_assets()
+        assets_to_process, operation_description = self.get_target_assets_for_operation()
+        
+        if not assets_to_process:
+            QMessageBox.information(self, "No Selection", "Please select assets or groups to update pixel size.")
+            return
+            
+        print(f"Updating pixel size to {pixel_size} for {operation_description}")
+        
+        updated_count = 0
+        
+        for group_name, asset_name, asset_data in assets_to_process:
+            asset_data['pixel_size'] = pixel_size
+            updated_count += 1
+            print(f"  Updated pixel size for {asset_name}: {pixel_size}")
+            
+        # Update tree display and save
+        self.update_tree_display()
+        self.save_assets()
+        
+        # Clear the input field
+        self.pixel_size_input.clear()
+        
+        # Show results
+        QMessageBox.information(self, "Pixel Size Updated", 
+                              f"Updated pixel size to {pixel_size} for {updated_count} assets from {operation_description}.")
+
+    def get_target_assets_for_operation(self):
+        """Get the assets that should be targeted for operations based on current selection.
+        
+        Returns:
+            tuple: (assets_to_process, operation_description)
+            assets_to_process: list of (group_name, asset_name, asset_data) tuples
+            operation_description: string describing what will be processed
+        """
+        selected_items = self.assets_tree.selectedItems()
+        
+        if not selected_items:
+            return [], "No selection"
+            
+        # Separate groups and assets
+        group_items = [item for item in selected_items if item.parent() is None]
+        asset_items = [item for item in selected_items if item.parent() is not None]
+        
+        assets_to_process = []
+        descriptions = []
+        
+        # Process selected groups (all assets in those groups)
+        for group_item in group_items:
+            group_name = group_item.text(0)
+            if group_name in self.groups:
+                group_assets = self.groups[group_name]
+                for asset_name, asset_data in group_assets.items():
+                    assets_to_process.append((group_name, asset_name, asset_data))
+                descriptions.append(f"group '{group_name}' ({len(group_assets)} assets)")
+        
+        # Process selected individual assets
+        for asset_item in asset_items:
+            asset_name = asset_item.data(0, Qt.UserRole)
+            group_name = asset_item.data(1, Qt.UserRole)
+            
+            if group_name and group_name in self.groups and asset_name in self.groups[group_name]:
+                asset_data = self.groups[group_name][asset_name]
+                assets_to_process.append((group_name, asset_name, asset_data))
+                
+        if asset_items:
+            descriptions.append(f"{len(asset_items)} selected assets")
+            
+        # Build description
+        if descriptions:
+            operation_description = " and ".join(descriptions)
+        else:
+            operation_description = "No valid selection"
+            
+        return assets_to_process, operation_description
+
+    def validate_selected(self):
+        """Validate the selected assets or all assets in selected groups."""
+        assets_to_process, operation_description = self.get_target_assets_for_operation()
+        
+        if not assets_to_process:
+            QMessageBox.information(self, "No Selection", "Please select assets or groups to validate.")
+            return
+            
+        print(f"Validating {operation_description}")
+        
+        # Track validation results
+        validated_count = 0
+        total_count = len(assets_to_process)
+        groups_to_update = set()
+        
+        for group_name, asset_name, asset_data in assets_to_process:
+            print(f"Validating asset: {asset_name} in group: {group_name}")
+            
+            # Re-validate stack file and get dimensions
+            stack_file = asset_data['file_path']
+            x_dim, y_dim, z_dim = 0, 0, 0
+            stack_validated = False
+            
+            if os.path.isfile(stack_file):
+                # Get stack dimensions
+                x_dim, y_dim, z_dim = self.get_stack_dimensions(stack_file)
+                stack_validated = x_dim > 0 and y_dim > 0 and z_dim > 0
+                print(f"  Stack dimensions: {x_dim}x{y_dim}x{z_dim}, validated: {stack_validated}")
+                
+                # Update asset data with current dimensions
+                asset_data['x_dim'] = x_dim
+                asset_data['y_dim'] = y_dim
+                asset_data['z_dim'] = z_dim
+                asset_data['stack_validated'] = stack_validated
+            else:
+                print(f"  Stack file not found: {stack_file}")
+                asset_data['stack_validated'] = False
+                
+            # Re-validate tilt file
+            tilt_file = asset_data.get('tilt_file', '')
+            tilt_validated = False
+            
+            if tilt_file and os.path.isfile(tilt_file) and z_dim > 0:
+                tilt_validated = self.validate_tilt_file(tilt_file, z_dim)
+                asset_data['tilt_validated'] = tilt_validated
+                print(f"  Tilt file: {tilt_file}, validated: {tilt_validated}")
+            else:
+                asset_data['tilt_validated'] = False
+                if tilt_file:
+                    print(f"  Tilt file not found or invalid: {tilt_file}")
+                else:
+                    print(f"  No tilt file specified")
+                
+            # Update status based on validation results
+            if not os.path.isfile(stack_file):
+                asset_data['status'] = 'Missing File'
+            elif not stack_validated:
+                asset_data['status'] = 'Invalid Stack'
+            elif tilt_file and not os.path.isfile(tilt_file):
+                asset_data['status'] = 'Missing Tilt'
+            elif tilt_file and not tilt_validated:
+                asset_data['status'] = 'Invalid Tilt'
+            else:
+                asset_data['status'] = 'Validated'
+                validated_count += 1
+                
+            print(f"  Final status: {asset_data['status']}")
+            groups_to_update.add(group_name)
+            
+        # Update tree display and save
+        self.update_tree_display()
+        self.save_assets()
+        
+        # Show results
+        QMessageBox.information(self, "Validation Complete", 
+                              f"Validated {validated_count} of {total_count} assets from {operation_description}.")
             
     def validate_all_assets(self):
         """Validate all imported assets."""
@@ -860,13 +1166,16 @@ class TiltSeriesAssetsWidget(QWidget):
                 self.copy_to_group_button.setEnabled(False)
             if hasattr(self, 'display_button'):
                 self.display_button.setEnabled(False)
+            if hasattr(self, 'update_pixel_size_button'):
+                self.update_pixel_size_button.setEnabled(False)
             return
             
         # Filter to only asset items (not group items)
         asset_items = [item for item in selected_items if item.parent() is not None]
+        group_items = [item for item in selected_items if item.parent() is None]
         
-        if not asset_items:
-            # Only groups selected
+        if not asset_items and not group_items:
+            # Nothing selected
             self.clear_form()
             self.update_info_display(None)
             if hasattr(self, 'update_button'):
@@ -875,6 +1184,42 @@ class TiltSeriesAssetsWidget(QWidget):
                 self.copy_to_group_button.setEnabled(False)
             if hasattr(self, 'display_button'):
                 self.display_button.setEnabled(False)
+            if hasattr(self, 'validate_button'):
+                self.validate_button.setEnabled(False)
+            if hasattr(self, 'update_pixel_size_button'):
+                self.update_pixel_size_button.setEnabled(False)
+            return
+            
+        if not asset_items and group_items:
+            # Only groups selected - enable validation but disable other operations
+            self.clear_form()
+            self.update_info_display(None)
+            if hasattr(self, 'update_button'):
+                self.update_button.setEnabled(False)
+            if hasattr(self, 'copy_to_group_button'):
+                try:
+                    self.copy_to_group_button.setEnabled(False)
+                except RuntimeError:
+                    # Widget deleted during mode switch
+                    pass
+            if hasattr(self, 'display_button'):
+                try:
+                    self.display_button.setEnabled(False)  # Can't display multiple assets
+                except RuntimeError:
+                    # Widget deleted during mode switch
+                    pass
+            if hasattr(self, 'validate_button'):
+                try:
+                    self.validate_button.setEnabled(True)  # Enable validation for groups
+                except RuntimeError:
+                    # Widget deleted during mode switch
+                    pass
+            if hasattr(self, 'update_pixel_size_button'):
+                try:
+                    self.update_pixel_size_button.setEnabled(True)  # Enable pixel size update for groups
+                except RuntimeError:
+                    # Widget deleted during mode switch
+                    pass
             return
         
         # Handle single vs multiple selection
@@ -891,9 +1236,29 @@ class TiltSeriesAssetsWidget(QWidget):
                 if hasattr(self, 'update_button'):
                     self.update_button.setEnabled(True)
                 if hasattr(self, 'copy_to_group_button'):
-                    self.copy_to_group_button.setEnabled(True)
+                    try:
+                        self.copy_to_group_button.setEnabled(True)
+                    except RuntimeError:
+                        # Widget deleted during mode switch
+                        pass
                 if hasattr(self, 'display_button'):
-                    self.display_button.setEnabled(True)
+                    try:
+                        self.display_button.setEnabled(True)
+                    except RuntimeError:
+                        # Widget deleted during mode switch
+                        pass
+                if hasattr(self, 'validate_button'):
+                    try:
+                        self.validate_button.setEnabled(True)
+                    except RuntimeError:
+                        # Widget deleted during mode switch
+                        pass
+                if hasattr(self, 'update_pixel_size_button'):
+                    try:
+                        self.update_pixel_size_button.setEnabled(True)
+                    except RuntimeError:
+                        # Widget deleted during mode switch
+                        pass
             else:
                 self.clear_form()
                 self.update_info_display(None)
@@ -903,6 +1268,10 @@ class TiltSeriesAssetsWidget(QWidget):
                     self.copy_to_group_button.setEnabled(False)
                 if hasattr(self, 'display_button'):
                     self.display_button.setEnabled(False)
+                if hasattr(self, 'validate_button'):
+                    self.validate_button.setEnabled(False)
+                if hasattr(self, 'update_pixel_size_button'):
+                    self.update_pixel_size_button.setEnabled(False)
         else:
             # Multiple selection - show summary and enable limited actions
             self.clear_form()
@@ -910,60 +1279,84 @@ class TiltSeriesAssetsWidget(QWidget):
             if hasattr(self, 'update_button'):
                 self.update_button.setEnabled(False)  # Disable for multi-selection
             if hasattr(self, 'copy_to_group_button'):
-                self.copy_to_group_button.setEnabled(True)  # Allow multi-copy
+                try:
+                    self.copy_to_group_button.setEnabled(True)  # Allow multi-copy
+                except RuntimeError:
+                    # Widget deleted during mode switch
+                    pass
             if hasattr(self, 'display_button'):
-                self.display_button.setEnabled(False)  # Disable for multi-selection
+                try:
+                    self.display_button.setEnabled(False)  # Disable for multi-selection
+                except RuntimeError:
+                    # Widget deleted during mode switch
+                    pass
+            if hasattr(self, 'validate_button'):
+                try:
+                    self.validate_button.setEnabled(True)  # Enable validation for multi-selection
+                except RuntimeError:
+                    # Widget deleted during mode switch
+                    pass
+            if hasattr(self, 'update_pixel_size_button'):
+                try:
+                    self.update_pixel_size_button.setEnabled(True)  # Enable pixel size update for multi-selection
+                except RuntimeError:
+                    # Widget deleted during mode switch
+                    pass
                 
     def update_info_display_multiple(self, asset_items):
         """Update info display for multiple selected assets."""
-        if not hasattr(self, 'info_display'):
+        if not hasattr(self, 'info_display') or not self.info_display:
             return
             
-        asset_count = len(asset_items)
-        group_counts = {}
-        total_validated = 0
-        total_with_tilt = 0
-        
-        for item in asset_items:
-            asset_name = item.data(0, Qt.UserRole)
-            group_name = item.data(1, Qt.UserRole)
+        try:
+            asset_count = len(asset_items)
+            group_counts = {}
+            total_validated = 0
+            total_with_tilt = 0
             
-            if group_name and group_name in self.groups and asset_name in self.groups[group_name]:
-                asset_data = self.groups[group_name][asset_name]
+            for item in asset_items:
+                asset_name = item.data(0, Qt.UserRole)
+                group_name = item.data(1, Qt.UserRole)
                 
-                # Count by group
-                group_counts[group_name] = group_counts.get(group_name, 0) + 1
-                
-                # Count validated assets
-                if asset_data.get('stack_validated', False):
-                    total_validated += 1
+                if group_name and group_name in self.groups and asset_name in self.groups[group_name]:
+                    asset_data = self.groups[group_name][asset_name]
                     
-                # Count assets with tilt files
-                if asset_data.get('tilt_file'):
-                    total_with_tilt += 1
-        
-        # Build summary info
-        info_lines = []
-        info_lines.append(f"<b>Selected Assets:</b> {asset_count}")
-        
-        # Group breakdown
-        if len(group_counts) > 1:
-            group_info = []
-            for group, count in group_counts.items():
-                group_info.append(f"{group} ({count})")
-            info_lines.append(f"<b>Groups:</b> {', '.join(group_info)}")
-        
-        # Validation summary
-        validation_color = "darkgreen" if total_validated == asset_count else "darkorange" if total_validated > 0 else "darkred"
-        info_lines.append(f"<b>Validated:</b> <span style='color: {validation_color};'>{total_validated}/{asset_count}</span>")
-        
-        # Tilt file summary
-        tilt_color = "darkgreen" if total_with_tilt == asset_count else "darkorange" if total_with_tilt > 0 else "darkred"
-        info_lines.append(f"<b>With Tilt Files:</b> <span style='color: {tilt_color};'>{total_with_tilt}/{asset_count}</span>")
-        
-        info_lines.append("<br><i>Use Ctrl+click or Shift+click for multi-selection</i>")
-        
-        self.info_display.setText("<br>".join(info_lines))
+                    # Count by group
+                    group_counts[group_name] = group_counts.get(group_name, 0) + 1
+                    
+                    # Count validated assets
+                    if asset_data.get('stack_validated', False):
+                        total_validated += 1
+                        
+                    # Count assets with tilt files
+                    if asset_data.get('tilt_file'):
+                        total_with_tilt += 1
+            
+            # Build summary info
+            info_lines = []
+            info_lines.append(f"<b>Selected Assets:</b> {asset_count}")
+            
+            # Group breakdown
+            if len(group_counts) > 1:
+                group_info = []
+                for group, count in group_counts.items():
+                    group_info.append(f"{group} ({count})")
+                info_lines.append(f"<b>Groups:</b> {', '.join(group_info)}")
+            
+            # Validation summary
+            validation_color = "darkgreen" if total_validated == asset_count else "darkorange" if total_validated > 0 else "darkred"
+            info_lines.append(f"<b>Validated:</b> <span style='color: {validation_color};'>{total_validated}/{asset_count}</span>")
+            
+            # Tilt file summary
+            tilt_color = "darkgreen" if total_with_tilt == asset_count else "darkorange" if total_with_tilt > 0 else "darkred"
+            info_lines.append(f"<b>With Tilt Files:</b> <span style='color: {tilt_color};'>{total_with_tilt}/{asset_count}</span>")
+            
+            info_lines.append("<br><i>Use Ctrl+click or Shift+click for multi-selection</i>")
+            
+            self.info_display.setText("<br>".join(info_lines))
+        except RuntimeError:
+            # Widget has been deleted during mode switching, ignore
+            pass
         
     def update_selected(self):
         """Update the selected asset with form data."""
@@ -1042,45 +1435,49 @@ class TiltSeriesAssetsWidget(QWidget):
         
     def update_info_display(self, asset_data: Optional[Dict[str, Any]]):
         """Update the info display area with asset details."""
-        if not hasattr(self, 'info_display'):
+        if not hasattr(self, 'info_display') or not self.info_display:
             return
             
-        if asset_data is None:
-            self.info_display.setText("Select an asset to view details...")
-            return
+        try:
+            if asset_data is None:
+                self.info_display.setText("Select an asset to view details...")
+                return
             
-        # Build info text
-        info_lines = []
-        info_lines.append(f"<b>Asset:</b> {asset_data.get('name', 'Unknown')}")
-        info_lines.append(f"<b>Path:</b> {asset_data.get('file_path', 'Unknown')}")
-        
-        # Dimensions
-        x_dim = asset_data.get('x_dim', 0)
-        y_dim = asset_data.get('y_dim', 0) 
-        z_dim = asset_data.get('z_dim', 0)
-        if x_dim > 0 and y_dim > 0 and z_dim > 0:
-            info_lines.append(f"<b>Dimensions:</b> {x_dim} × {y_dim} × {z_dim}")
-        else:
-            info_lines.append("<b>Dimensions:</b> <span style='color: darkred;'>Unknown</span>")
+            # Build info text
+            info_lines = []
+            info_lines.append(f"<b>Asset:</b> {asset_data.get('name', 'Unknown')}")
+            info_lines.append(f"<b>Path:</b> {asset_data.get('file_path', 'Unknown')}")
             
-        # Stack validation
-        stack_validated = asset_data.get('stack_validated', False)
-        if stack_validated:
-            info_lines.append("<b>Stack:</b> ✓ Validated")
-        else:
-            info_lines.append("<b>Stack:</b> <span style='color: darkred;'>⚠ Not validated</span>")
-            
-        # Tilt file
-        tilt_file = asset_data.get('tilt_file', '')
-        tilt_validated = asset_data.get('tilt_validated', False)
-        if tilt_file and tilt_validated:
-            info_lines.append("<b>Tilt file:</b> ✓ Validated")
-        elif tilt_file:
-            info_lines.append("<b>Tilt file:</b> <span style='color: darkred;'>⚠ Found but not validated</span>")
-        else:
-            info_lines.append("<b>Tilt file:</b> <span style='color: darkred;'>✗ Not found</span>")
-            
-        self.info_display.setText("<br>".join(info_lines))
+            # Dimensions
+            x_dim = asset_data.get('x_dim', 0)
+            y_dim = asset_data.get('y_dim', 0) 
+            z_dim = asset_data.get('z_dim', 0)
+            if x_dim > 0 and y_dim > 0 and z_dim > 0:
+                info_lines.append(f"<b>Dimensions:</b> {x_dim} × {y_dim} × {z_dim}")
+            else:
+                info_lines.append("<b>Dimensions:</b> <span style='color: darkred;'>Unknown</span>")
+                
+            # Stack validation
+            stack_validated = asset_data.get('stack_validated', False)
+            if stack_validated:
+                info_lines.append("<b>Stack:</b> ✓ Validated")
+            else:
+                info_lines.append("<b>Stack:</b> <span style='color: darkred;'>⚠ Not validated</span>")
+                
+            # Tilt file
+            tilt_file = asset_data.get('tilt_file', '')
+            tilt_validated = asset_data.get('tilt_validated', False)
+            if tilt_file and tilt_validated:
+                info_lines.append("<b>Tilt file:</b> ✓ Validated")
+            elif tilt_file:
+                info_lines.append("<b>Tilt file:</b> <span style='color: darkred;'>⚠ Found but not validated</span>")
+            else:
+                info_lines.append("<b>Tilt file:</b> <span style='color: darkred;'>✗ Not found</span>")
+                
+            self.info_display.setText("<br>".join(info_lines))
+        except RuntimeError:
+            # Widget has been deleted during mode switching, ignore
+            pass
         
     def display_in_imod(self):
         """Display the selected asset in IMOD."""
@@ -1099,14 +1496,40 @@ class TiltSeriesAssetsWidget(QWidget):
         asset_data = self.groups[group_name][asset_name]
         stack_file = asset_data.get('file_path', '')
         
-        if not stack_file or not os.path.isfile(stack_file):
-            QMessageBox.warning(self, "File Not Found", f"Stack file not found: {stack_file}")
+        print(f"Attempting to display asset: {asset_name}")
+        print(f"Original file path: {stack_file}")
+        
+        # Try to resolve the file path if it's relative or has issues
+        resolved_path = stack_file
+        if stack_file and not os.path.isabs(stack_file):
+            # If it's a relative path, try to resolve it relative to project path
+            if hasattr(self.parent_window, 'project_path') and self.parent_window.project_path:
+                resolved_path = os.path.join(str(self.parent_window.project_path), stack_file)
+                print(f"Resolved relative path to: {resolved_path}")
+            
+        # Normalize the path to handle any path issues
+        if resolved_path:
+            resolved_path = os.path.normpath(resolved_path)
+            print(f"Normalized path: {resolved_path}")
+        
+        if not resolved_path:
+            QMessageBox.warning(self, "No File Path", "No file path specified for this asset.")
             return
+            
+        if not os.path.isfile(resolved_path):
+            # Try original path as fallback
+            if stack_file and os.path.isfile(stack_file):
+                resolved_path = stack_file
+                print(f"Using original path as fallback: {resolved_path}")
+            else:
+                error_msg = f"Stack file not found:\nOriginal: {stack_file}\nResolved: {resolved_path}\n\nPlease check that the file exists and the path is correct."
+                QMessageBox.warning(self, "File Not Found", error_msg)
+                return
             
         try:
             # Launch IMOD with the stack file
-            print(f"Launching IMOD for: {stack_file}")
-            subprocess.Popen(['imod', stack_file], 
+            print(f"Launching IMOD for: {resolved_path}")
+            subprocess.Popen(['imod', resolved_path], 
                            stdout=subprocess.DEVNULL, 
                            stderr=subprocess.DEVNULL)
             
@@ -1121,28 +1544,89 @@ class TiltSeriesAssetsWidget(QWidget):
             QMessageBox.warning(self, "Launch Error", f"Error launching IMOD: {e}")
             
     def refresh_validation(self):
-        """Re-run validation on all assets in all groups."""
-        total_assets = 0
-        validated_assets = 0
+        """Re-run validation on selected assets/groups, or all assets if nothing selected."""
+        assets_to_process, operation_description = self.get_target_assets_for_operation()
         
-        for group_name in self.groups.keys():
-            group_assets = len(self.groups[group_name])
-            total_assets += group_assets
+        if not assets_to_process:
+            # If nothing selected, validate all groups (original behavior)
+            print("No selection - validating all assets in all groups")
+            total_assets = 0
+            validated_assets = 0
             
-            self.validate_group_assets(group_name)
+            for group_name in self.groups.keys():
+                group_assets = len(self.groups[group_name])
+                total_assets += group_assets
+                
+                self.validate_group_assets(group_name)
+                
+                # Count validated assets in this group
+                for asset_data in self.groups[group_name].values():
+                    if asset_data.get('stack_validated', False):
+                        validated_assets += 1
+                        
+            operation_description = f"all {total_assets} assets"
+        else:
+            # Validate only selected assets/groups
+            print(f"Refreshing validation for {operation_description}")
+            validated_assets = 0
+            groups_to_update = set()
             
-            # Count validated assets in this group
-            for asset_data in self.groups[group_name].values():
+            for group_name, asset_name, asset_data in assets_to_process:
+                # Re-validate stack file and get dimensions
+                stack_file = asset_data['file_path']
+                x_dim, y_dim, z_dim = 0, 0, 0
+                stack_validated = False
+                
+                if os.path.isfile(stack_file):
+                    # Get stack dimensions
+                    x_dim, y_dim, z_dim = self.get_stack_dimensions(stack_file)
+                    stack_validated = x_dim > 0 and y_dim > 0 and z_dim > 0
+                    
+                    # Update asset data with current dimensions
+                    asset_data['x_dim'] = x_dim
+                    asset_data['y_dim'] = y_dim
+                    asset_data['z_dim'] = z_dim
+                    asset_data['stack_validated'] = stack_validated
+                else:
+                    asset_data['stack_validated'] = False
+                    
+                # Re-validate tilt file
+                tilt_file = asset_data.get('tilt_file', '')
+                tilt_validated = False
+                
+                if tilt_file and os.path.isfile(tilt_file) and z_dim > 0:
+                    tilt_validated = self.validate_tilt_file(tilt_file, z_dim)
+                    asset_data['tilt_validated'] = tilt_validated
+                else:
+                    asset_data['tilt_validated'] = False
+                    
+                # Update status based on validation results
+                if not os.path.isfile(stack_file):
+                    asset_data['status'] = 'Missing File'
+                elif not stack_validated:
+                    asset_data['status'] = 'Invalid Stack'
+                elif tilt_file and not os.path.isfile(tilt_file):
+                    asset_data['status'] = 'Missing Tilt'
+                elif tilt_file and not tilt_validated:
+                    asset_data['status'] = 'Invalid Tilt'
+                else:
+                    asset_data['status'] = 'Validated'
+                    
                 if asset_data.get('stack_validated', False):
                     validated_assets += 1
+                    
+                groups_to_update.add(group_name)
                     
         # Update tree display
         self.update_tree_display()
         
+        # Save updated validation states
+        self.save_assets()
+        
         # Show results
         QMessageBox.information(self, "Validation Complete", 
                               f"Validation complete!\n"
-                              f"Validated {validated_assets} of {total_assets} assets.")
+                              f"Validated {validated_assets} assets from {operation_description}.")
         
         # Update info display if asset is selected
         selected_item = self.assets_tree.currentItem()

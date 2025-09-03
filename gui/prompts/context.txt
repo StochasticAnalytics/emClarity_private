@@ -1,1 +1,3 @@
 remembering #file:copilot-instructions.md #file:emClarity_Tutorial.md #file:GUI_IMPLEMENTATION_SUMMARY.md 
+
+#file:agent_notes.md #file:python_conversion_instructions.md #file:copilot-instructions.md #file:emClarity_Tutorial.md

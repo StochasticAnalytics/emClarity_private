@@ -383,9 +383,11 @@ class EmClarityWindow(QMainWindow):
         # Forward the toolbar selection to the appropriate panel
         if hasattr(self, 'sidebar_widget') and hasattr(self.sidebar_widget, 'panels'):
             current_panel = self.sidebar_widget.panels.get(panel_type)
+            print(f"Current panel for {panel_type}: {current_panel}")
             
             # Handle asset panel toolbar selections
             if panel_type == "assets" and hasattr(current_panel, 'handle_asset_type_change'):
+                print(f"Calling handle_asset_type_change with button_id: {button_id}")
                 current_panel.handle_asset_type_change(button_id)
             
             # Handle results panel toolbar selections
@@ -400,14 +402,48 @@ class EmClarityWindow(QMainWindow):
             elif panel_type == "actions" and hasattr(current_panel, 'handle_action_type_change'):
                 current_panel.handle_action_type_change(button_id)
             
-            # Handle other panel types as they are implemented
+            # Handle other panel types - show under development panels
             elif panel_type == "overview":
-                print(f"Overview panel: {button_id} selected")
+                self._show_under_development_for_button(panel_type, button_id)
             elif panel_type == "experimental":
-                print(f"Experimental panel: {button_id} selected")
+                self._show_under_development_for_button(panel_type, button_id)
         
         # Schedule state save
         self.schedule_state_save()
+    
+    def _show_under_development_for_button(self, panel_type: str, button_id: str):
+        """Show under development panel for the given button."""
+        # Map button IDs to user-friendly names and descriptions
+        button_info = {
+            # Overview panel buttons
+            "recent": ("Recent Projects", "Quick access to recently opened emClarity projects with preview information and project statistics."),
+            "templates": ("Project Templates", "Pre-configured project templates for common workflows including ribosome, virus, and membrane protein studies."),
+            "settings": ("Quick Settings", "Commonly used settings and preferences that can be quickly adjusted without going to the full settings panel."),
+            
+            # Experimental panel buttons  
+            "legacy": ("Legacy Interface", "Access to the original emClarity interface and legacy features for backward compatibility."),
+            "debug": ("Debug Tools", "Advanced debugging tools for troubleshooting and development including log viewers and diagnostic utilities."),
+            "experimental": ("Experimental Features", "Beta and experimental features that are being tested and may become part of future releases."),
+            
+            # Actions panel buttons (if not handled by the panel itself)
+            "preprocess": ("Preprocessing", "Data preprocessing including drift correction, dose weighting, and quality assessment."),
+            "align": ("Tilt-Series Alignment", "Align tilt-series using fiducial markers or patch tracking methods."),
+            "subtomo_align": ("Subtomogram Alignment", "Align and average subtomograms for high-resolution structure determination."),
+            "averaging": ("Averaging", "Generate averaged structures from aligned subtomograms with classification and refinement."),
+            "classify": ("Classification", "Classify subtomograms into different structural states or conformations."),
+            "reconstruct": ("Reconstruction", "Reconstruct 3D volumes from aligned tilt-series data."),
+            "refine": ("Refinement", "Refine particle positions, orientations, and CTF parameters for improved resolution."),
+            "validate": ("Validation", "Validate results using resolution estimation, FSC curves, and quality metrics."),
+        }
+        
+        feature_name, description = button_info.get(button_id, (button_id.title(), f"Feature for {button_id} in {panel_type} panel."))
+        
+        print(f"Showing under development panel for {panel_type} -> {button_id}: {feature_name}")
+        
+        # For now, just print what would be shown
+        # In a full implementation, this could create a temporary dialog or update a status area
+        print(f"Would show: {feature_name}")
+        print(f"Description: {description}")
         
     def handle_project_request(self, action: str):
         """Handle project-related requests from sidebar."""
@@ -450,8 +486,8 @@ class EmClarityWindow(QMainWindow):
             # Notify panels that project has been opened
             self.sidebar_widget.notify_panels_project_opened()
             
-            # Switch to assets panel after opening project
-            self.sidebar_widget.switch_panel("assets")
+            # Stay on overview panel after opening project
+            self.sidebar_widget.switch_panel("overview")
             
         else:
             QMessageBox.warning(self, "Error", f"Project path does not exist or is not accessible: {project_path}")
@@ -974,8 +1010,8 @@ class EmClarityWindow(QMainWindow):
             # Notify panels that project has been opened
             self.sidebar_widget.notify_panels_project_opened()
             
-            # Switch to assets panel after opening project
-            self.sidebar_widget.switch_panel("assets")
+            # Stay on overview panel after opening project
+            self.sidebar_widget.switch_panel("overview")
             
     # Legacy method for tab notification - keeping for reference
     # def notify_tabs_project_opened(self):

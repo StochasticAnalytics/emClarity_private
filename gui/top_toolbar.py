@@ -117,7 +117,7 @@ class TopToolbar(QWidget):
                 ("volumes", "3D Volumes", "📦"),
                 ("refine", "Refine Pkgs", "🔧"),
                 ("coordinates", "Atomic Coordinates", "⚛️"),
-                ("mt_pkgs", "MT Pkgs", "🧬")
+                ("utils", "Utils", "🛠️")
             ],
             "actions": [
                 ("preprocess", "Preprocess", "🔄"),
@@ -138,6 +138,7 @@ class TopToolbar(QWidget):
             ],
             "settings": [
                 ("general", "General", "⚙️"),
+                ("run_profiles", "Run Profiles", "🖥️"),
                 ("paths", "Paths", "📂"),
                 ("performance", "Performance", "🚀"),
                 ("advanced", "Advanced", "🔧"),

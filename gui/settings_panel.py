@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget, QPushButton,
     QLineEdit, QTableWidget, QTableWidgetItem, QSplitter, QGroupBox,
     QToolButton, QHeaderView, QAbstractItemView, QFormLayout, QSpacerItem,
-    QSizePolicy
+    QSizePolicy, QStackedWidget
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
@@ -320,6 +320,7 @@ class SettingsPanel(QWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.main_window = parent  # Store reference to main window
         self.current_settings_type = "general"  # Default selection
         self.setup_ui()
         self.connect_signals()
@@ -361,29 +362,125 @@ class SettingsPanel(QWidget):
         
         layout.addWidget(header_widget)
         
-        # Main content splitter
-        splitter = QSplitter(Qt.Horizontal)
+        # Main content area - use a stacked widget for different panels
+        self.content_stack = QStackedWidget()
         
-        # Left side: Profile management
-        self.profile_panel = ProfileManagementPanel()
-        splitter.addWidget(self.profile_panel)
+        # Default view for run_profiles: Legacy tabbed interface (migrated from experimental)
+        legacy_panel = self._create_legacy_interface_panel()
+        self.content_stack.addWidget(legacy_panel)
         
-        # Right side: Configuration
-        self.config_panel = ConfigurationPanel()
-        splitter.addWidget(self.config_panel)
-        
-        # Set splitter proportions
-        splitter.setSizes([250, 750])  # Profile panel : Configuration panel
-        
-        layout.addWidget(splitter)
+        layout.addWidget(self.content_stack)
+    
+    def _create_legacy_interface_panel(self):
+        """Create the legacy tabbed interface panel (migrated from experimental)."""
+        try:
+            from main import DynamicCommandTab
+            from commands import EmClarityCommands
+            from profile_widgets import RunProfileWidget
+            from autoalign_widget import AutoAlignWidget as OriginalAutoAlignWidget
+            from tilt_series_assets import TiltSeriesAssetsWidget as OriginalTiltSeriesWidget
+            from PySide6.QtWidgets import QTabWidget
+            
+            legacy_panel = QWidget()
+            legacy_layout = QVBoxLayout(legacy_panel)
+            
+            # Add a header
+            header_label = QLabel("Legacy Interface - Run Profiles & System Management")
+            header_font = QFont()
+            header_font.setPointSize(14)
+            header_font.setBold(True)
+            header_label.setFont(header_font)
+            header_label.setStyleSheet("color: #333333; margin: 10px; padding: 10px;")
+            legacy_layout.addWidget(header_label)
+            
+            # Create the tabbed widget
+            tab_widget = QTabWidget()
+            tab_widget.setStyleSheet("""
+                QTabWidget::pane {
+                    border: 1px solid #d0d0d0;
+                    background-color: white;
+                    border-radius: 6px;
+                }
+                QTabBar::tab {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                              stop: 0 #f0f0f0, stop: 1 #e5e5e5);
+                    border: 1px solid #d0d0d0;
+                    padding: 8px 12px;
+                    margin-right: 1px;
+                    border-top-left-radius: 6px;
+                    border-top-right-radius: 6px;
+                    min-width: 60px;
+                    font-size: 10px;
+                }
+                QTabBar::tab:selected {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                              stop: 0 white, stop: 1 #f8f8f8);
+                    border-bottom-color: white;
+                    margin-bottom: -1px;
+                }
+            """)
+            
+            # Primary tab: Run Profiles (from the System tab in experimental)
+            run_profiles_tab = QWidget()
+            run_profiles_layout = QVBoxLayout(run_profiles_tab)
+            
+            # Add description for run profiles
+            desc_label = QLabel("Manage computational resources and execution profiles for emClarity workflows.")
+            desc_label.setWordWrap(True)
+            desc_label.setStyleSheet("color: #666; font-style: italic; margin: 5px; padding: 5px;")
+            run_profiles_layout.addWidget(desc_label)
+            
+            # Add the actual RunProfileWidget
+            run_profiles_layout.addWidget(RunProfileWidget(self.main_window))
+            tab_widget.addTab(run_profiles_tab, "Run Profiles")
+            
+            # Add other legacy tabs for comprehensive system management
+            commands_obj = EmClarityCommands()
+            categories = commands_obj.get_commands_by_category()
+            
+            # Add asset management tab
+            tab_widget.addTab(OriginalTiltSeriesWidget(self.main_window), "Assets")
+            
+            # Add alignment tab  
+            tab_widget.addTab(OriginalAutoAlignWidget(self.main_window), "Alignment")
+            
+            # Add a few other important tabs for legacy interface
+            for category in ['CTF', 'Processing', 'Reconstruction']:
+                if category in categories:
+                    tab = DynamicCommandTab(category, categories[category], self.main_window)
+                    tab_widget.addTab(tab, category)
+            
+            legacy_layout.addWidget(tab_widget)
+            
+            return legacy_panel
+            
+        except ImportError as e:
+            print(f"Could not load legacy interface for run profiles: {e}")
+            # Fallback to simple RunProfileWidget
+            fallback_panel = QWidget()
+            fallback_layout = QVBoxLayout(fallback_panel)
+            
+            header_label = QLabel("Run Profiles")
+            header_font = QFont()
+            header_font.setPointSize(14)
+            header_font.setBold(True)
+            header_label.setFont(header_font)
+            fallback_layout.addWidget(header_label)
+            
+            try:
+                from profile_widgets import RunProfileWidget
+                fallback_layout.addWidget(RunProfileWidget(self.main_window))
+            except ImportError:
+                fallback_layout.addWidget(QLabel("Run Profiles widget could not be loaded"))
+            
+            return fallback_panel
     
     def connect_signals(self):
         """Connect signals between components."""
-        # Profile selection changes
-        self.profile_panel.profile_selected.connect(self.on_profile_selected)
-        
-        # Profile management actions
-        self.profile_panel.profile_action.connect(self.on_profile_action)
+        # Note: Since we migrated to legacy interface, profile management signals
+        # are now handled within the RunProfileWidget itself
+        # Future signal connections can be added here as needed
+        pass
     
     def handle_settings_type_change(self, settings_type):
         """Handle settings type selection from external toolbar."""
@@ -393,28 +490,102 @@ class SettingsPanel(QWidget):
         print(f"Settings panel: Settings type changed to {settings_type}")
         self.current_settings_type = settings_type
         
-        # TODO: Update panel content based on settings type
+        # Update panel content based on settings type
         self.update_content_for_settings_type(settings_type)
     
     def update_content_for_settings_type(self, settings_type):
-        """Update the panel content based on selected settings type (stub)."""
-        # This is a stub - in real implementation, this would show different settings panels
+        """Update the panel content based on selected settings type."""
+        # For run_profiles, show the default view (index 0)
+        if settings_type == "run_profiles":
+            self.content_stack.setCurrentIndex(0)  # Show default splitter
+            print("Showing Run Profiles panel")
+            return
         
+        # For other settings types, create and show under development panels
+        # First check if we already have a widget for this settings type
+        existing_widget = None
+        for i in range(1, self.content_stack.count()):  # Skip index 0 (default)
+            widget = self.content_stack.widget(i)
+            if hasattr(widget, 'settings_type') and widget.settings_type == settings_type:
+                existing_widget = widget
+                self.content_stack.setCurrentWidget(existing_widget)
+                break
+        
+        if existing_widget:
+            return  # Already showing the right panel
+        
+        # Create new panel for this settings type
         if settings_type == "general":
-            print("Loading general settings...")
-            self.run_profiles_button.setText("⚙️ General Settings")
+            panel = self._create_under_development_panel("General Settings", 
+                "General application settings and preferences including themes, default behaviors, and user interface options.")
+            
         elif settings_type == "paths":
-            print("Loading path settings...")
-            self.run_profiles_button.setText("📂 Path Settings")
+            panel = self._create_under_development_panel("Path Settings", 
+                "Configure default paths for data directories, output locations, temporary files, and external tool executables.")
+            
         elif settings_type == "performance":
-            print("Loading performance settings...")
-            self.run_profiles_button.setText("🚀 Performance Settings")
+            panel = self._create_under_development_panel("Performance Settings", 
+                "Optimize application performance with memory usage controls, threading options, and processing priorities.")
+            
         elif settings_type == "advanced":
-            print("Loading advanced settings...")
-            self.run_profiles_button.setText("🔧 Advanced Settings")
+            panel = self._create_under_development_panel("Advanced Settings", 
+                "Advanced configuration options for power users including debug modes, experimental features, and low-level parameters.")
+            
         elif settings_type == "plugins":
-            print("Loading plugin settings...")
-            self.run_profiles_button.setText("🔌 Plugin Settings")
+            panel = self._create_under_development_panel("Plugin Settings", 
+                "Manage plugins and extensions for emClarity including installation, updates, and configuration.")
+        else:
+            panel = self._create_fallback_panel(settings_type, f"Settings for {settings_type}")
+        
+        # Mark the panel with its settings type for future reference
+        panel.settings_type = settings_type
+        
+        # Add and show the new panel
+        self.content_stack.addWidget(panel)
+        self.content_stack.setCurrentWidget(panel)
+        print(f"Created and showing panel for {settings_type}")
+    
+    def _create_under_development_panel(self, feature_name, description):
+        """Create an under development panel for the given feature."""
+        try:
+            import sys
+            import os
+            gui_dir = os.path.dirname(os.path.abspath(__file__))
+            if gui_dir not in sys.path:
+                sys.path.append(gui_dir)
+            
+            from under_development_panel import UnderDevelopmentPanel
+            return UnderDevelopmentPanel(feature_name, description)
+        except ImportError as e:
+            print(f"Failed to load under development panel: {e}")
+            return self._create_fallback_panel(feature_name, description)
+    
+    def _create_fallback_panel(self, feature_name, description):
+        """Create a simple fallback panel if the under development panel can't be loaded."""
+        fallback = QWidget()
+        layout = QVBoxLayout(fallback)
+        layout.setAlignment(Qt.AlignCenter)
+        
+        title = QLabel(f"{feature_name}")
+        title.setAlignment(Qt.AlignCenter)
+        title_font = QFont()
+        title_font.setPointSize(16)
+        title_font.setBold(True)
+        title.setFont(title_font)
+        layout.addWidget(title)
+        
+        desc = QLabel(description)
+        desc.setAlignment(Qt.AlignCenter)
+        desc.setWordWrap(True)
+        desc.setStyleSheet("color: #666; font-style: italic;")
+        layout.addWidget(desc)
+        
+        dev_label = QLabel("🚧 Under Development")
+        dev_label.setAlignment(Qt.AlignCenter)
+        dev_label.setStyleSheet("color: #6c757d; font-size: 14px; margin-top: 20px;")
+        layout.addWidget(dev_label)
+        
+        return fallback
     
     def on_profile_selected(self, profile_name):
         """Handle profile selection changes."""

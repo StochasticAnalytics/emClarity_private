@@ -7,13 +7,19 @@ Atomic Coordinates, and MT Packages.
 """
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QToolButton, QLabel, QListWidget,
-    QTableWidget, QTableWidgetItem, QPushButton, QSplitter, QFrame,
-    QHeaderView, QAbstractItemView, QGroupBox, QFormLayout, QGridLayout,
-    QSizePolicy
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
+    QListWidget, QTableWidget, QTableWidgetItem, QHeaderView,
+    QAbstractItemView, QSplitter, QSizePolicy, QFont, QFrame,
+    QFileDialog, QMessageBox, QSplitter, QCheckBox, QRadioButton,
+    QLineEdit, QToolButton, QGroupBox, QFormLayout
 )
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont, QIcon
+from PySide6.QtGui import QFont
+import json
+import os
+import mrcfile
+import shutil
+from datetime import datetime
 
 
 class AssetTypeToolbar(QWidget):
@@ -39,7 +45,7 @@ class AssetTypeToolbar(QWidget):
             ("volumes", "3D Volumes", "📦"),
             ("refine", "Refine Pkgs", "🔧"),
             ("coordinates", "Atomic Coordinates", "⚛️"),
-            ("mt_pkgs", "MT Pkgs", "🧬")
+            ("utils", "Utils", "🛠️")
         ]
         
         self.buttons = {}
@@ -427,6 +433,167 @@ class DetailsPanel(QWidget):
                 self.detail_labels[detail_field].setText(value)
 
 
+class UtilsPixelSizePanel(QWidget):
+    """Panel for editing pixel sizes of selected tilt-series assets with backup functionality."""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.parent_window = parent
+        self.pixel_size_backups = {}  # Store original values for reversal
+        self.setup_ui()
+    
+    def setup_ui(self):
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(10)
+        
+        # Set fixed height and proper size policy
+        self.setFixedHeight(50)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        
+        # Label
+        label = QLabel("Pixel Size (Å):")
+        label.setFixedWidth(100)
+        layout.addWidget(label)
+        
+        # Text field for new pixel size
+        self.pixel_size_field = QLineEdit()
+        self.pixel_size_field.setFixedWidth(120)
+        self.pixel_size_field.setPlaceholderText("e.g., 1.2")
+        layout.addWidget(self.pixel_size_field)
+        
+        # Update button
+        self.update_button = QPushButton("Update Selected")
+        self.update_button.setFixedWidth(120)
+        self.update_button.clicked.connect(self.update_pixel_sizes)
+        layout.addWidget(self.update_button)
+        
+        # Revert button
+        self.revert_button = QPushButton("Revert Changes")
+        self.revert_button.setFixedWidth(120)
+        self.revert_button.clicked.connect(self.revert_pixel_sizes)
+        layout.addWidget(self.revert_button)
+        
+        layout.addStretch()
+    
+    def update_pixel_sizes(self):
+        """Update pixel sizes for selected assets using mrcfile."""
+        try:
+            new_pixel_size = float(self.pixel_size_field.text())
+        except ValueError:
+            QMessageBox.warning(self, "Invalid Input", "Please enter a valid pixel size value.")
+            return
+        
+        # Get selected assets from parent
+        if not hasattr(self.parent_window, 'get_selected_assets'):
+            QMessageBox.warning(self, "Error", "Cannot access selected assets.")
+            return
+        
+        selected_assets = self.parent_window.get_selected_assets()
+        if not selected_assets:
+            QMessageBox.warning(self, "No Selection", "Please select one or more tilt-series assets.")
+            return
+        
+        # Get project path
+        project_path = None
+        if hasattr(self.parent_window, 'parent_window') and self.parent_window.parent_window:
+            if hasattr(self.parent_window.parent_window, 'project_path'):
+                project_path = self.parent_window.parent_window.project_path
+        
+        if not project_path:
+            QMessageBox.warning(self, "No Project", "No project is currently open.")
+            return
+        
+        updated_count = 0
+        failed_files = []
+        
+        for asset in selected_assets:
+            file_path = asset.get('file_path') or asset.get('path')
+            if not file_path:
+                continue
+            
+            # Make path absolute if relative
+            if not os.path.isabs(file_path):
+                file_path = os.path.join(project_path, file_path)
+            
+            if not os.path.exists(file_path):
+                failed_files.append(f"{os.path.basename(file_path)} (not found)")
+                continue
+            
+            try:
+                # Create backup if not already exists
+                if file_path not in self.pixel_size_backups:
+                    with mrcfile.open(file_path, mode='r', header_only=True) as mrc:
+                        self.pixel_size_backups[file_path] = {
+                            'original_pixel_size': float(mrc.header.cella.x / mrc.header.nx),
+                            'backup_time': datetime.now().isoformat()
+                        }
+                
+                # Update pixel size
+                with mrcfile.open(file_path, mode='r+', header_only=True) as mrc:
+                    # Update the header fields
+                    mrc.header.cella.x = new_pixel_size * mrc.header.nx
+                    mrc.header.cella.y = new_pixel_size * mrc.header.ny
+                    mrc.header.cella.z = new_pixel_size * mrc.header.nz
+                
+                updated_count += 1
+                
+            except Exception as e:
+                failed_files.append(f"{os.path.basename(file_path)} ({str(e)})")
+        
+        # Show result message
+        if updated_count > 0:
+            message = f"Successfully updated pixel size to {new_pixel_size} Å for {updated_count} file(s)."
+            if failed_files:
+                message += f"\n\nFailed to update:\n" + "\n".join(failed_files)
+            QMessageBox.information(self, "Update Complete", message)
+        else:
+            QMessageBox.warning(self, "Update Failed", 
+                              f"Failed to update any files:\n" + "\n".join(failed_files))
+    
+    def revert_pixel_sizes(self):
+        """Revert pixel sizes to original values using backup data."""
+        if not self.pixel_size_backups:
+            QMessageBox.information(self, "No Changes", "No pixel size changes to revert.")
+            return
+        
+        reverted_count = 0
+        failed_files = []
+        
+        for file_path, backup_data in self.pixel_size_backups.items():
+            if not os.path.exists(file_path):
+                failed_files.append(f"{os.path.basename(file_path)} (not found)")
+                continue
+            
+            try:
+                original_pixel_size = backup_data['original_pixel_size']
+                
+                with mrcfile.open(file_path, mode='r+', header_only=True) as mrc:
+                    # Restore original pixel size
+                    mrc.header.cella.x = original_pixel_size * mrc.header.nx
+                    mrc.header.cella.y = original_pixel_size * mrc.header.ny
+                    mrc.header.cella.z = original_pixel_size * mrc.header.nz
+                
+                reverted_count += 1
+                
+            except Exception as e:
+                failed_files.append(f"{os.path.basename(file_path)} ({str(e)})")
+        
+        # Clear backup data for successfully reverted files
+        if reverted_count > 0:
+            self.pixel_size_backups.clear()
+        
+        # Show result message
+        if reverted_count > 0:
+            message = f"Successfully reverted pixel sizes for {reverted_count} file(s)."
+            if failed_files:
+                message += f"\n\nFailed to revert:\n" + "\n".join(failed_files)
+            QMessageBox.information(self, "Revert Complete", message)
+        else:
+            QMessageBox.warning(self, "Revert Failed", 
+                              f"Failed to revert any files:\n" + "\n".join(failed_files))
+
+
 class TiltSeriesAssetsPanel(QWidget):
     """Main Tilt-Series Assets panel with optimized layout and proper space utilization."""
     
@@ -459,9 +626,14 @@ class TiltSeriesAssetsPanel(QWidget):
         self.data_table = AssetDataTable()
         right_layout.addWidget(self.data_table, 1)  # Give it stretch factor 1
         
-        # Action buttons (fixed height)
+        # Action buttons panel (normal view) - initially visible
         self.action_buttons = ActionButtonsPanel()
         right_layout.addWidget(self.action_buttons, 0)  # No stretch
+        
+        # Utils pixel size panel (utils view) - initially hidden
+        self.utils_panel = UtilsPixelSizePanel(self)
+        self.utils_panel.hide()
+        right_layout.addWidget(self.utils_panel, 0)  # No stretch
         
         # Details panel (fixed height)
         self.details_panel = DetailsPanel()
@@ -498,8 +670,19 @@ class TiltSeriesAssetsPanel(QWidget):
         print(f"Tilt-Series Assets panel: Asset type changed to {asset_type}")
         self.current_asset_type = asset_type
         
-        # TODO: Update data table content based on asset type
-        # For now, just show different sample data
+        # Switch between normal view and utils view
+        if asset_type == "utils":
+            # Hide action buttons, show utils panel
+            print("Switching to Utils view - hiding action buttons, showing utils panel")
+            self.action_buttons.hide()
+            self.utils_panel.show()
+        else:
+            # Show action buttons, hide utils panel
+            print(f"Switching to normal view ({asset_type}) - showing action buttons, hiding utils panel")
+            self.action_buttons.show()
+            self.utils_panel.hide()
+        
+        # Update data table content based on asset type
         self.update_data_for_asset_type(asset_type)
     
     def update_data_for_asset_type(self, asset_type):
@@ -514,7 +697,7 @@ class TiltSeriesAssetsPanel(QWidget):
             "volumes": "volume",
             "refine": "refine_pkg",
             "coordinates": "coordinate",
-            "mt_pkgs": "mt_pkg"
+            "utils": "tilt_series"  # Utils shows tilt-series assets
         }
         
         asset_suffix = asset_type_map.get(asset_type, "unknown")
@@ -536,6 +719,40 @@ class TiltSeriesAssetsPanel(QWidget):
     def get_current_asset_type(self):
         """Get the currently selected asset type."""
         return self.current_asset_type
+    
+    def get_selected_assets(self):
+        """Get the currently selected assets for pixel size editing."""
+        selected_assets = []
+        
+        # Get selected rows from the data table
+        table = self.data_table.table
+        selected_items = table.selectedItems()
+        
+        if not selected_items:
+            return selected_assets
+        
+        # Get unique rows
+        selected_rows = set()
+        for item in selected_items:
+            selected_rows.add(item.row())
+        
+        # Extract asset data for each selected row
+        for row in selected_rows:
+            asset_data = {}
+            for col in range(table.columnCount()):
+                header = table.horizontalHeaderItem(col).text()
+                item = table.item(row, col)
+                asset_data[header] = item.text() if item else ""
+            
+            # Create a file path based on the tilt-series name
+            # This is a simplified version - in real implementation, this would come from actual data
+            tilt_series_name = asset_data.get("Tilt-Series Name", "")
+            if tilt_series_name:
+                # Assume files are .st files in a standard location
+                asset_data['file_path'] = f"{tilt_series_name}.st"
+                selected_assets.append(asset_data)
+        
+        return selected_assets
 
 
 # Keep backward compatibility

@@ -525,7 +525,7 @@ class SidebarNavigationWidget(QWidget):
             # Fallback to TiltSeriesAssetsWidget if new panel not available
             try:
                 from tilt_series_assets import TiltSeriesAssetsWidget
-                assets_panel = TiltSeriesAssetsWidget()
+                assets_panel = TiltSeriesAssetsWidget(self.parent())
                 self.panels_stack.addWidget(assets_panel)
                 self.panels['assets'] = assets_panel
             except ImportError:
@@ -541,7 +541,7 @@ class SidebarNavigationWidget(QWidget):
         # Actions panel - integrate AutoAlignWidget and other action widgets
         try:
             from autoalign_widget import AutoAlignWidget
-            actions_panel = AutoAlignWidget()
+            actions_panel = AutoAlignWidget(self.parent())
             self.panels_stack.addWidget(actions_panel)
             self.panels['actions'] = actions_panel
         except ImportError:
@@ -575,7 +575,7 @@ class SidebarNavigationWidget(QWidget):
         # Settings panel - use new SettingsPanel
         try:
             from settings_panel import SettingsPanel
-            settings_panel = SettingsPanel()
+            settings_panel = SettingsPanel(self.parent())
             self.panels_stack.addWidget(settings_panel)
             self.panels['settings'] = settings_panel
         except ImportError:
@@ -588,19 +588,13 @@ class SidebarNavigationWidget(QWidget):
             self.panels_stack.addWidget(settings_panel)
             self.panels['settings'] = settings_panel
         
-        # Experimental panel - include existing tabbed interface temporarily
+        # Experimental panel - note: legacy interface moved to settings->run_profiles
         try:
-            from main import DynamicCommandTab
-            from commands import EmClarityCommands
-            from profile_widgets import RunProfileWidget
-            from autoalign_widget import AutoAlignWidget as OriginalAutoAlignWidget
-            from tilt_series_assets import TiltSeriesAssetsWidget as OriginalTiltSeriesWidget
-            
             experimental_panel = QWidget()
             experimental_layout = QVBoxLayout(experimental_panel)
             
             # Add a header
-            header_label = QLabel("Experimental Panel - Legacy Tabbed Interface")
+            header_label = QLabel("Experimental Panel")
             header_font = QFont()
             header_font.setPointSize(14)
             header_font.setBold(True)
@@ -608,67 +602,53 @@ class SidebarNavigationWidget(QWidget):
             header_label.setStyleSheet("color: #333333; margin: 10px; padding: 10px;")
             experimental_layout.addWidget(header_label)
             
-            # Create the tabbed widget
-            from PySide6.QtWidgets import QTabWidget
-            tab_widget = QTabWidget()
-            tab_widget.setStyleSheet("""
-                QTabWidget::pane {
-                    border: 1px solid #d0d0d0;
-                    background-color: white;
-                    border-radius: 6px;
-                }
-                QTabBar::tab {
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                              stop: 0 #f0f0f0, stop: 1 #e5e5e5);
-                    border: 1px solid #d0d0d0;
-                    padding: 8px 12px;
-                    margin-right: 1px;
-                    border-top-left-radius: 6px;
-                    border-top-right-radius: 6px;
-                    min-width: 60px;
-                    font-size: 10px;
-                }
-                QTabBar::tab:selected {
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                              stop: 0 white, stop: 1 #f8f8f8);
-                    border-bottom-color: white;
-                    margin-bottom: -1px;
-                }
+            # Add info about legacy interface migration
+            migration_info = QLabel(
+                "ℹ️ Note: The legacy tabbed interface has been migrated to Settings → Run Profiles.\n\n"
+                "This panel is reserved for experimental features and development tools."
+            )
+            migration_info.setWordWrap(True)
+            migration_info.setStyleSheet("""
+                background-color: #e7f3ff;
+                border: 1px solid #b3d9ff;
+                border-radius: 6px;
+                padding: 15px;
+                margin: 10px;
+                color: #0066cc;
+                font-size: 12px;
             """)
+            experimental_layout.addWidget(migration_info)
             
-            # Add tabs - simplified versions for experimental panel
-            commands_obj = EmClarityCommands()
-            categories = commands_obj.get_commands_by_category()
+            # Add placeholder content for future experimental features
+            future_features = QLabel("🧪 Future Experimental Features:")
+            future_features.setStyleSheet("font-weight: bold; margin: 10px; font-size: 13px;")
+            experimental_layout.addWidget(future_features)
             
-            # Add key tabs
-            tab_widget.addTab(OriginalTiltSeriesWidget(), "Assets")
-            tab_widget.addTab(OriginalAutoAlignWidget(), "Alignment")
+            features_list = [
+                "• AI-assisted parameter optimization",
+                "• Real-time processing feedback",
+                "• Advanced visualization tools", 
+                "• Plugin architecture testing",
+                "• Performance profiling utilities"
+            ]
             
-            # Add a few other important tabs
-            for category in ['CTF', 'Processing', 'Reconstruction']:
-                if category in categories:
-                    tab = DynamicCommandTab(category, categories[category])
-                    tab_widget.addTab(tab, category)
+            for feature in features_list:
+                feature_label = QLabel(feature)
+                feature_label.setStyleSheet("margin-left: 20px; margin-bottom: 5px; color: #666;")
+                experimental_layout.addWidget(feature_label)
             
-            # Add system tab
-            system_tab = QWidget()
-            system_layout = QVBoxLayout(system_tab)
-            system_layout.addWidget(RunProfileWidget())
-            tab_widget.addTab(system_tab, "System")
-            
-            experimental_layout.addWidget(tab_widget)
+            experimental_layout.addStretch()
             
             self.panels_stack.addWidget(experimental_panel)
             self.panels['experimental'] = experimental_panel
             
-        except ImportError as e:
-            print(f"Could not load legacy tabs for experimental panel: {e}")
+        except Exception as e:
+            print(f"Error setting up experimental panel: {e}")
             # Fallback experimental panel
             experimental_panel = QWidget()
             experimental_layout = QVBoxLayout(experimental_panel)
             experimental_layout.addWidget(QLabel("Experimental Panel"))
-            experimental_layout.addWidget(QLabel("Legacy tabbed interface could not be loaded"))
-            experimental_layout.addWidget(QLabel("Experimental features and tools"))
+            experimental_layout.addWidget(QLabel("Development and testing area"))
             experimental_layout.addStretch()
             self.panels_stack.addWidget(experimental_panel)
             self.panels['experimental'] = experimental_panel

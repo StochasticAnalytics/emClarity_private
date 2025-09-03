@@ -391,7 +391,7 @@ class GuiElementInfoDialog(QDialog):
         """Set up the dialog UI."""
         self.setWindowTitle("GUI Element Analysis - Rubber Band Tool")
         self.setModal(True)
-        self.resize(600, 500)
+        self.resize(1080, 900)  # Increased from 600x500 to 1.8x larger
         
         layout = QVBoxLayout(self)
         

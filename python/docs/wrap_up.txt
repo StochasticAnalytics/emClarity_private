@@ -1,0 +1,10 @@
+Thanks! This has been a really productive session where we solved some hard problems, and learned some things about working together that will be worth remembering for later sessions.
+
+Please do the following:
+
+1. Review our full conversation history and pay close attention to cycles that required more iterations to see if there is any problem or miscommunications that we worked through that would be good to remember. Please add these to the end of #file:python_conversion_instructions.md and suggest my review to select or modify the content.
+
+2. Keeping our conversation in memory, and optionally using git to review changes from the day, update #file:PYTHON_CONVERSION_SUMMARY.md Also stylize a clean and succinct commit message we can use for an interactive rebase for all of todays "wip" commits. Also suggest the command and hash needed to initiate that interactive rebase.
+
+3. While you are working on the previous two steps, pay close attention to changes that don't seem to make sense. They may likely be things we tried but were dead ends. We'll want to remove these.
+
