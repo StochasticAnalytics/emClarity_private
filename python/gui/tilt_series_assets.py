@@ -11,11 +11,24 @@ from typing import Any, Dict, List, Optional
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QFont
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFormLayout,
-                               QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-                               QMessageBox, QPushButton, QRadioButton,
-                               QSplitter, QTreeWidget, QTreeWidgetItem,
-                               QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QFileDialog,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QRadioButton,
+    QSplitter,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
 
 
 class TiltSeriesAssetsWidget(QWidget):
