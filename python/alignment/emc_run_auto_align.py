@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
-
 from image_io.mrc_image import OPEN_IMG, SAVE_IMG, MRCImage
 from utils.emc_str2double import emc_str2double
 from utils.parameter_parser import parse_parameter_file

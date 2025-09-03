@@ -13,6 +13,7 @@ import debug_instrumentation
 from autoalign_widget import AutoAlignWidget
 from commands import EmClarityCommands
 from config import get_default_config
+from parameters import EmClarityParameters
 from profile_widgets import RunProfileWidget
 from project_dialog import ProjectDialog
 from PySide6.QtCore import Qt, QThread, QTimer, Signal
@@ -53,8 +54,6 @@ from widgets import (
     ParameterConfigPanel,
     ScrollableTab,
 )
-
-from parameters import EmClarityParameters
 
 # Add gui directory to path
 gui_dir = Path(__file__).parent.absolute()

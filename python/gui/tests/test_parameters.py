@@ -6,9 +6,8 @@ Test script to demonstrate the enhanced emClarity GUI with parameter configurati
 import os
 import sys
 
-from PySide6.QtWidgets import QApplication, QMessageBox
-
 from parameters import EmClarityParameters
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 # Add the gui directory to the path
 gui_dir = os.path.dirname(os.path.abspath(__file__))
