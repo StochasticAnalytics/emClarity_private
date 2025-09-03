@@ -185,7 +185,7 @@ def init_rubber_band_debug(enabled: bool = False):
 
 def toggle_click_logging() -> bool:
     """Toggle click logging on/off with L key. Returns new state."""
-    global _CLICK_LOGGING_ENABLED, _CLICK_FILTER
+    global _CLICK_LOGGING_ENABLED
 
     print(f"🔧 BEFORE toggle: _CLICK_LOGGING_ENABLED = {_CLICK_LOGGING_ENABLED}")
     print(f"🔧 BEFORE toggle: _RUBBER_BAND_MODE = {_RUBBER_BAND_MODE}")

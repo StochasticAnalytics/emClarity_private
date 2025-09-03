@@ -494,13 +494,6 @@ class AutoAlignWidget(QWidget):
         layout.addWidget(coming_soon)
 
         return panel
-        self.stop_button.clicked.connect(self.stop_alignment)
-        self.stop_button.setEnabled(False)
-        run_layout.addWidget(self.stop_button)
-
-        layout.addLayout(run_layout)
-        self.run_button.clicked.connect(self.run_autoalign)
-        layout.addWidget(self.run_button)
 
     def create_left_panel(self) -> QGroupBox:
         """Create the left panel with asset group selection and parameters."""
