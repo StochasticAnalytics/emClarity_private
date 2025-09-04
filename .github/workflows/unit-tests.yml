@@ -103,19 +103,28 @@ jobs:
 
     - name: Run unit tests
       run: |
-        cd python
         # Set environment for headless testing
         export QT_QPA_PLATFORM=offscreen
         export DISPLAY=:99.0
         
-        # Run core tests (excluding GPU/GUI tests for CI)
-        python -m pytest metaData/tests/ utils/ -v --tb=short --cov=metaData --cov=utils --cov-report=xml --cov-report=term-missing
+        # Run pytest from repo root with proper Python path
+        # This ensures relative imports work correctly
+        python -m pytest python/metaData/tests/ -v --tb=short \
+          --cov=python/metaData \
+          --cov-report=xml --cov-report=term-missing
+        
+        # Run inline tests in utils modules (they have embedded test functions)
+        echo "Running utils inline tests..."
+        cd python/utils
+        python emc_str2double.py || echo "emc_str2double tests completed"
+        python parameter_parser.py || echo "parameter_parser tests completed"
+        cd ../..
         
         # Run masking tests (CPU only for CI)
-        python -m pytest masking/tests/ -v --tb=short -k "not gpu" || echo "Some masking tests failed - this is expected"
+        python -m pytest python/masking/tests/ -v --tb=short -k "not gpu" || echo "Some masking tests failed - this is expected"
         
         # Run basic CUDA tests (will skip CUDA if not available)
-        python -m pytest cuda_ops/tests/ -v --tb=short -k "not gpu and not cuda" || echo "CUDA tests completed"
+        python -m pytest python/cuda_ops/tests/ -v --tb=short -k "not gpu and not cuda" || echo "CUDA tests completed"
       env:
         PYTHONPATH: ${{ github.workspace }}/python
 
@@ -143,6 +152,15 @@ jobs:
             print('✓ utils imports successful')
         except ImportError as e:
             print(f'❌ utils import failed: {e}')
+            exit(1)
+            
+        # Test utils inline test functions
+        try:
+            from utils.emc_str2double import emc_str2double
+            from utils.parameter_parser import parse_parameter_file
+            print('✓ utils function imports successful')
+        except ImportError as e:
+            print(f'❌ utils function import failed: {e}')
             exit(1)
             
         # Test parameter conversion functionality
