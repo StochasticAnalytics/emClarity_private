@@ -65,10 +65,9 @@ class ProjectDialog(QDialog):
     @staticmethod
     def get_project_path(parent=None):
         dialog = ProjectDialog(parent)
-        if dialog.exec() == QDialog.Accepted:
-            if dialog.selected_project:
-                ProjectDialog.add_to_recent_projects(dialog.selected_project)
-                return dialog.selected_project
+        if dialog.exec() == QDialog.Accepted and dialog.selected_project:
+            ProjectDialog.add_to_recent_projects(dialog.selected_project)
+            return dialog.selected_project
         return None
 
     @staticmethod

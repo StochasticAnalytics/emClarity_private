@@ -437,7 +437,7 @@ class OverviewPanel(QWidget):
             self.recent_projects_layout.addWidget(no_recent_label)
         else:
             for project in recent_projects:
-                project_name = project["name"]
+                project["name"]
                 project_path = project["path"]
 
                 # Create hyperlink for each recent project with improved layout
@@ -734,7 +734,6 @@ class SidebarNavigationWidget(QWidget):
     def switch_panel(self, panel_name: str):
         """Switch to a different panel."""
         # Store previous panel
-        previous_panel = self.current_panel
 
         panel_indices = {
             "overview": 0,

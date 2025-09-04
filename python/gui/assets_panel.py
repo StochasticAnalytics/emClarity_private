@@ -524,7 +524,7 @@ class DetailsPanel(QWidget):
                 value = asset_data[table_header]
 
                 # Add units where appropriate
-                if detail_field == "X Size" or detail_field == "Y Size":
+                if detail_field in {"X Size", "Y Size"}:
                     value = f"{value} px"
                 elif detail_field == "Voltage":
                     value = f"{value} kV"
@@ -606,9 +606,8 @@ class UtilsPixelSizePanel(QWidget):
         if (
             hasattr(self.parent_window, "parent_window")
             and self.parent_window.parent_window
-        ):
-            if hasattr(self.parent_window.parent_window, "project_path"):
-                project_path = self.parent_window.parent_window.project_path
+        ) and hasattr(self.parent_window.parent_window, "project_path"):
+            project_path = self.parent_window.parent_window.project_path
 
         if not project_path:
             QMessageBox.warning(self, "No Project", "No project is currently open.")

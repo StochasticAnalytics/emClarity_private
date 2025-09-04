@@ -65,7 +65,7 @@ class EmClarityConfig:
     def setup_environment(self) -> None:
         """Setup environment variables required by emClarity."""
         # Set emClarity_ROOT
-        os.environ["emClarity_ROOT"] = self.emclarity_root
+        os.environ["EMCLARITY_ROOT"] = self.emclarity_root
 
         # Set MATLAB_SHELL
         os.environ["MATLAB_SHELL"] = "/bin/bash"

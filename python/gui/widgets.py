@@ -59,7 +59,7 @@ class ParameterWidget(QWidget):
         layout.addWidget(label)
 
         # Input widget based on type
-        if self.param_type == "string" or self.param_type == "file":
+        if self.param_type in {"string", "file"}:
             self.input_widget = QLineEdit()
             if self.param_type == "file":
                 browse_btn = QPushButton("Browse...")
@@ -339,22 +339,21 @@ class EnhancedParameterWidget(QWidget):
         if self.parameter.unit:
             tooltip_parts.append(f"Unit: {self.parameter.unit}")
 
-        if self.parameter.param_type in ["int", "float"]:
-            if (
-                self.parameter.min_value is not None
-                or self.parameter.max_value is not None
-            ):
-                range_str = "Range: "
-                if self.parameter.min_value is not None:
-                    range_str += f"{self.parameter.min_value}"
-                else:
-                    range_str += "-∞"
-                range_str += " to "
-                if self.parameter.max_value is not None:
-                    range_str += f"{self.parameter.max_value}"
-                else:
-                    range_str += "∞"
-                tooltip_parts.append(range_str)
+        if self.parameter.param_type in ["int", "float"] and (
+            self.parameter.min_value is not None
+            or self.parameter.max_value is not None
+        ):
+            range_str = "Range: "
+            if self.parameter.min_value is not None:
+                range_str += f"{self.parameter.min_value}"
+            else:
+                range_str += "-∞"
+            range_str += " to "
+            if self.parameter.max_value is not None:
+                range_str += f"{self.parameter.max_value}"
+            else:
+                range_str += "∞"
+            tooltip_parts.append(range_str)
 
         if self.parameter.param_type == "choice" and self.parameter.choices:
             if self.parameter.name == "symmetry":

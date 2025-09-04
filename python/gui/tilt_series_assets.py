@@ -1749,7 +1749,7 @@ class TiltSeriesAssetsWidget(QWidget):
             total_assets = 0
             validated_assets = 0
 
-            for group_name in self.groups.keys():
+            for group_name in self.groups:
                 group_assets = len(self.groups[group_name])
                 total_assets += group_assets
 

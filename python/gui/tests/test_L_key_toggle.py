@@ -76,7 +76,7 @@ try:
         def keyPressEvent(self, event):
             if event.key() == Qt.Key_L:
                 print("🔑 L key pressed - toggling...")
-                toggle_result = toggle_click_logging()
+                toggle_click_logging()
                 self.update_status()
                 return
             super().keyPressEvent(event)

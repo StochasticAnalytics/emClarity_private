@@ -948,7 +948,7 @@ class AutoAlignWidget(QWidget):
             # Update combo box with group names only
             self.group_combo.clear()
             self.group_combo.addItem("Select a group...")
-            for group_name in self.group_assets.keys():
+            for group_name in self.group_assets:
                 self.group_combo.addItem(group_name)
 
             print(
@@ -1102,7 +1102,7 @@ class AutoAlignWidget(QWidget):
 
         # Initialize progress tracking
         self.asset_progress_tree.clear()
-        for asset_name in group_data.keys():
+        for asset_name in group_data:
             item = QTreeWidgetItem(self.asset_progress_tree)
             item.setText(0, asset_name)
             item.setText(1, "0%")
@@ -1536,7 +1536,7 @@ class AutoAlignWidget(QWidget):
             if hasattr(self.parent_window, "run_profile_widget"):
                 profiles = self.parent_window.run_profile_widget.get_all_profiles()
                 self.profile_combo.clear()
-                for profile_name in profiles.keys():
+                for profile_name in profiles:
                     self.profile_combo.addItem(profile_name)
 
                 if profiles:

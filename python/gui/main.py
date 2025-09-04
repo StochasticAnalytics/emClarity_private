@@ -424,7 +424,7 @@ class EmClarityWindow(QMainWindow):
                 current_panel.handle_action_type_change(button_id)
 
             # Handle other panel types - show under development panels
-            elif panel_type == "overview" or panel_type == "experimental":
+            elif panel_type in {"overview", "experimental"}:
                 self._show_under_development_for_button(panel_type, button_id)
 
         # Schedule state save

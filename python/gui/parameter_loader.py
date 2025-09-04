@@ -49,7 +49,7 @@ class ParameterConfig:
 
     def get_gui_default(self) -> Any:
         """Get the default value in GUI units."""
-        if self.param_type == "choice" or self.param_type == "bool":
+        if self.param_type in {"choice", "bool"}:
             return self.si_default
         return self.to_gui_value(self.si_default)
 
