@@ -12,7 +12,6 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
-import contextlib
 
 try:
     from PySide6.QtCore import QEvent, QObject, Qt
@@ -98,11 +97,15 @@ class ClickLoggingFilter(QObject):
 
         # Try to get text
         if hasattr(widget, "text"):
-            with contextlib.suppress(BaseException):
+            try:
                 info["text"] = widget.text()
+            except BaseException:
+                pass
         elif hasattr(widget, "title"):
-            with contextlib.suppress(BaseException):
+            try:
                 info["text"] = widget.title()
+            except BaseException:
+                pass
 
         # Try to get parent info
         if hasattr(widget, "parent") and widget.parent():
@@ -255,8 +258,10 @@ def get_latest_click_data() -> Optional[list]:
 def clear_click_data():
     """Clear the current click data."""
     if _DEBUG_DATA_FILE and _DEBUG_DATA_FILE.exists():
-        with contextlib.suppress(Exception):
+        try:
             _DEBUG_DATA_FILE.unlink()
+        except Exception:
+            pass
 
 
 # Conditional compilation support

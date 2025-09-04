@@ -1,9 +1,9 @@
 """
 Tilt-Series Assets Panel for emClarity GUI.
 
-This module provides the Tilt-Series Assets panel interface for managing different types of
-tilt-series assets including Images, Particle Positions, 3D Volumes, Refine Packages,
-Atomic Coordinates, and MT Packages.
+This module provides the Tilt-Series Assets panel interface for managing
+different types of tilt-series assets including Images, Particle Positions,
+3D Volumes, Refine Packages, Atomic Coordinates, and MT Packages.
 """
 
 import os
@@ -183,7 +183,7 @@ class GroupsPanel(QWidget):
 
 
 class AssetDataTable(QWidget):
-    """Main data table for displaying tilt-series asset information with proper expansion."""
+    """Main data table for displaying tilt-series asset information with expansion."""
 
     selection_changed = Signal(dict)
 
