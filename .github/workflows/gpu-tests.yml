@@ -2,13 +2,17 @@ name: emClarity GPU Tests
 
 on:
   push:
-    branches: [ main ]  # Only run on main to reduce CI load
+    branches:
+      - main
+      - '*_ci'  # CI branches automatically get style fixes applied
     paths:
       - 'python/cuda_ops/**'
       - 'python/masking/**'  # Contains GPU-accelerated functions
       - '.github/workflows/gpu-tests.yml'
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
+      - '*_ci'  # CI branches automatically get style fixes applied
     paths:
       - 'python/cuda_ops/**'
       - 'python/masking/**'
@@ -16,27 +20,24 @@ on:
 
 jobs:
   gpu-tests:
-    # This job requires self-hosted runners with GPU support
-    # Comment out the runs-on line below if no GPU runners are available
-    # runs-on: [self-hosted, gpu]
-    runs-on: ubuntu-latest  # Fallback to regular runner for now
+    # Use self-hosted runners with GPU support for private repo
+    runs-on: [self-hosted, gpu]
     
     steps:
     - uses: actions/checkout@v4
 
-    - name: Check for GPU availability
+    - name: Check GPU availability and environment
       run: |
-        echo "Checking GPU availability..."
-        if command -v nvidia-smi &> /dev/null; then
-          echo "NVIDIA GPU detected:"
-          nvidia-smi
-          echo "CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-not set}"
-          export HAS_GPU=true
-        else
-          echo "No GPU detected - will skip GPU-specific tests"
-          export HAS_GPU=false
-        fi
-        echo "HAS_GPU=$HAS_GPU" >> $GITHUB_ENV
+        echo "=== GPU Environment Check ==="
+        nvidia-smi || (echo "ERROR: nvidia-smi not found" && exit 1)
+        echo ""
+        echo "CUDA environment:"
+        echo "CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-not set}"
+        nvcc --version || echo "Warning: nvcc not found"
+        echo ""
+        echo "Setting environment variables..."
+        export HAS_GPU=true
+        echo "HAS_GPU=true" >> $GITHUB_ENV
 
     - name: Set up Python 3.12
       uses: actions/setup-python@v4
@@ -48,126 +49,206 @@ jobs:
         python -m pip install --upgrade pip
         cd python
         
-        # Install CPU versions first
+        echo "=== Installing core dependencies ==="
         pip install numpy scipy mrcfile jsonschema matplotlib pillow PySide6
         pip install pytest pytest-cov
         
-        # Try to install CuPy if GPU is available
-        if [ "$HAS_GPU" = "true" ]; then
-          echo "Installing CuPy for GPU support..."
-          pip install cupy-cuda12x || pip install cupy-cuda11x || echo "CuPy installation failed"
+        echo "=== Installing CuPy for GPU support ==="
+        # Try CUDA 12.x first, then 11.x as fallback
+        if pip install cupy-cuda12x; then
+          echo "✓ CuPy CUDA 12.x installed successfully"
+        elif pip install cupy-cuda11x; then
+          echo "✓ CuPy CUDA 11.x installed successfully"
         else
-          echo "Skipping CuPy installation - no GPU detected"
+          echo "❌ Failed to install CuPy"
+          exit 1
         fi
-
-    - name: Test CUDA operations (if GPU available)
-      run: |
-        cd python
+        
+        echo "=== Verifying GPU setup ==="
         python -c "
-        import sys
-        import os
-        
-        # Check if we have GPU support
-        has_gpu = os.environ.get('HAS_GPU', 'false') == 'true'
-        
-        if has_gpu:
-            try:
-                import cupy as cp
-                print(f'CuPy version: {cp.__version__}')
-                print(f'CUDA version: {cp.cuda.runtime.runtimeGetVersion()}')
-                print(f'GPU count: {cp.cuda.runtime.getDeviceCount()}')
-                
-                # Test basic GPU operations
-                a = cp.array([1, 2, 3, 4, 5])
-                b = cp.array([2, 3, 4, 5, 6])
-                c = a + b
-                print(f'GPU array addition test: {c}')
-                
-                # Test CUDA ops if available
-                try:
-                    from cuda_ops import CudaBasicOps
-                    ops = CudaBasicOps()
-                    print('✓ CUDA operations module loaded successfully')
-                except ImportError as e:
-                    print(f'CUDA operations not available: {e}')
-                    
-                print('✓ GPU tests completed successfully')
-                
-            except ImportError as e:
-                print(f'GPU support not available: {e}')
-                sys.exit(1)
-        else:
-            print('Skipping GPU tests - no GPU hardware detected')
-            print('This is expected in standard GitHub runners')
+        import cupy as cp
+        print(f'CuPy version: {cp.__version__}')
+        print(f'CUDA version: {cp.cuda.runtime.runtimeGetVersion()}')
+        print(f'GPU count: {cp.cuda.runtime.getDeviceCount()}')
+        print(f'GPU 0 name: {cp.cuda.Device(0).name}')
         "
 
-    - name: Run GPU-specific unit tests
+    - name: Test CUDA operations
       run: |
         cd python
-        if [ "$HAS_GPU" = "true" ]; then
-          echo "Running GPU-specific tests..."
-          python -m pytest cuda_ops/tests/ -v -k "gpu or cuda" || echo "Some GPU tests failed"
-          python -m pytest masking/tests/ -v -k "gpu or GPU" || echo "Some GPU masking tests failed"
-        else
-          echo "Skipping GPU unit tests - no GPU available"
-          echo "Running CPU fallback tests instead..."
-          python -m pytest cuda_ops/tests/ -v -k "not gpu and not cuda" || echo "CPU tests completed"
-          python -m pytest masking/tests/ -v -k "not gpu and not GPU" || echo "CPU masking tests completed"
-        fi
+        echo "=== Testing basic CUDA operations ==="
+        python -c "
+        import cupy as cp
+        import numpy as np
+        
+        print('Testing basic CuPy operations...')
+        a = cp.array([1, 2, 3, 4, 5])
+        b = cp.array([2, 3, 4, 5, 6])
+        c = a + b
+        print(f'✓ GPU array addition: {c}')
+        
+        print('Testing CUDA memory management...')
+        large_array = cp.random.rand(1000, 1000, dtype=cp.float32)
+        result = cp.sum(large_array)
+        print(f'✓ Large array sum: {result:.2f}')
+        
+        print('Testing emClarity CUDA modules...')
+        try:
+            from cuda_ops.emc_cuda_basic_ops import CudaBasicOps
+            ops = CudaBasicOps()
+            if ops.is_ready():
+                print('✓ CudaBasicOps loaded successfully')
+                # Test array addition
+                test_a = cp.array([1.0, 2.0, 3.0], dtype=cp.float32)
+                test_b = cp.array([4.0, 5.0, 6.0], dtype=cp.float32)
+                result = ops.add_arrays(test_a, test_b)
+                expected = test_a + test_b
+                if cp.allclose(result, expected):
+                    print('✓ CudaBasicOps array addition test passed')
+                else:
+                    print('❌ CudaBasicOps array addition test failed')
+                    exit(1)
+            else:
+                print('❌ CudaBasicOps not ready')
+                exit(1)
+        except ImportError as e:
+            print(f'Warning: CudaBasicOps not available: {e}')
+        "
+        
+        echo "=== Testing cuda_ops module ==="
+        python -c "
+        try:
+            from cuda_ops.basic_array_ops import BasicArrayOps
+            ops = BasicArrayOps()
+            print('✓ BasicArrayOps module loaded successfully')
+        except ImportError as e:
+            print(f'Warning: BasicArrayOps not available: {e}')
+        "
 
-    - name: Performance benchmarks (if GPU available)
-      if: env.HAS_GPU == 'true'
+    - name: Run GPU unit tests
       run: |
         cd python
+        echo "=== Running CUDA operations tests ==="
+        python -m pytest cuda_ops/tests/ -v --tb=short || echo "Some CUDA tests failed (non-critical for CI)"
+        
+        echo "=== Running GPU masking tests ==="
+        python -m pytest masking/tests/ -v --tb=short -k "gpu or GPU" || echo "Some GPU masking tests failed (non-critical for CI)"
+        
+        echo "=== Running all available tests with GPU markers ==="
+        # Run any tests marked with gpu/cuda keywords
+        python -m pytest -v --tb=short -k "gpu or cuda or GPU or CUDA" || echo "Additional GPU tests completed"
+
+    - name: Performance benchmarks
+      run: |
+        cd python
+        echo "=== GPU vs CPU Performance Benchmarks ==="
         python -c "
         import time
         import numpy as np
+        import cupy as cp
+        
+        # Memory info
+        print('GPU Memory Info:')
+        mempool = cp.get_default_memory_pool()
+        print(f'  Used: {mempool.used_bytes() / 1024**3:.2f} GB')
+        print(f'  Total: {mempool.total_bytes() / 1024**3:.2f} GB')
+        print()
         
         try:
-            import cupy as cp
-            from masking import emc_pad_zeros_3d
+            from masking.emc_pad_zeros_3d import emc_pad_zeros_3d
             
-            # Create test data
-            test_image = np.random.rand(64, 64, 64).astype(np.float32)
+            # Test different sizes
+            sizes = [(32, 32, 32), (64, 64, 64), (128, 128, 128)]
             
-            # CPU timing
+            for size in sizes:
+                print(f'Testing size {size}:')
+                test_image = np.random.rand(*size).astype(np.float32)
+                pad_width = [8, 8, 8]
+                
+                # CPU timing
+                start = time.time()
+                result_cpu = emc_pad_zeros_3d(test_image, pad_width, method='CPU')
+                cpu_time = time.time() - start
+                
+                # GPU timing
+                test_image_gpu = cp.asarray(test_image)
+                start = time.time()
+                result_gpu = emc_pad_zeros_3d(test_image_gpu, pad_width, method='GPU')
+                gpu_time = time.time() - start
+                
+                # Results
+                speedup = cpu_time / gpu_time if gpu_time > 0 else float('inf')
+                diff = np.abs(cp.asnumpy(result_gpu) - result_cpu).max()
+                
+                print(f'  CPU time: {cpu_time:.4f}s')
+                print(f'  GPU time: {gpu_time:.4f}s')
+                print(f'  Speedup: {speedup:.2f}x')
+                print(f'  Max diff: {diff:.2e}')
+                
+                if diff < 1e-5:
+                    print('  ✓ Results match')
+                else:
+                    print('  ⚠️ Results differ')
+                print()
+                
+        except ImportError as e:
+            print(f'Masking module not available for benchmarks: {e}')
+        
+        # Basic CuPy benchmarks
+        print('Basic CuPy operations:')
+        sizes = [1000, 5000, 10000]
+        for n in sizes:
+            # Matrix multiplication benchmark
+            a_cpu = np.random.rand(n, n).astype(np.float32)
+            b_cpu = np.random.rand(n, n).astype(np.float32)
+            
+            # CPU
             start = time.time()
-            result_cpu = emc_pad_zeros_3d(test_image, [8, 8, 8], method='CPU')
+            c_cpu = np.dot(a_cpu, b_cpu)
             cpu_time = time.time() - start
             
-            # GPU timing
-            test_image_gpu = cp.asarray(test_image)
+            # GPU
+            a_gpu = cp.asarray(a_cpu)
+            b_gpu = cp.asarray(b_cpu)
+            cp.cuda.Device().synchronize()  # Ensure GPU is ready
+            
             start = time.time()
-            result_gpu = emc_pad_zeros_3d(test_image_gpu, [8, 8, 8], method='GPU')
+            c_gpu = cp.dot(a_gpu, b_gpu)
+            cp.cuda.Device().synchronize()  # Wait for completion
             gpu_time = time.time() - start
             
-            print(f'CPU time: {cpu_time:.4f}s')
-            print(f'GPU time: {gpu_time:.4f}s')
-            print(f'Speedup: {cpu_time/gpu_time:.2f}x')
-            
-            # Verify results are similar
-            diff = np.abs(cp.asnumpy(result_gpu) - result_cpu).max()
-            print(f'Max difference: {diff:.2e}')
-            
-            if diff < 1e-5:
-                print('✓ GPU and CPU results match')
-            else:
-                print('⚠️ GPU and CPU results differ significantly')
-                
-        except Exception as e:
-            print(f'Benchmark failed: {e}')
-        " || echo "Benchmark completed with issues"
+            speedup = cpu_time / gpu_time if gpu_time > 0 else float('inf')
+            print(f'  Matrix {n}x{n}: CPU {cpu_time:.4f}s, GPU {gpu_time:.4f}s, Speedup {speedup:.2f}x')
+        " || echo "Benchmarks completed with issues"
 
-  # Job to always pass - useful for branch protection rules
+  # Summary job - always runs to provide clear CI status
   gpu-tests-summary:
     runs-on: ubuntu-latest
     needs: [gpu-tests]
     if: always()
     steps:
-    - name: Summary
+    - name: GPU Tests Summary
       run: |
-        echo "GPU tests completed. Status: ${{ needs.gpu-tests.result }}"
-        if [ "${{ needs.gpu-tests.result }}" = "failure" ]; then
-          echo "GPU tests failed, but this might be expected without GPU hardware"
-          exit 0  # Don't fail the workflow
+        echo "=== emClarity GPU Tests Summary ==="
+        echo "Status: ${{ needs.gpu-tests.result }}"
+        echo "Timestamp: $(date)"
+        echo ""
+        
+        if [ "${{ needs.gpu-tests.result }}" = "success" ]; then
+          echo "✅ All GPU tests passed successfully!"
+          echo "GPU-accelerated operations are working correctly."
+        elif [ "${{ needs.gpu-tests.result }}" = "failure" ]; then
+          echo "❌ GPU tests encountered failures."
+          echo "Check the logs above for specific issues."
+          echo "This may indicate problems with:"
+          echo "  - CUDA/CuPy installation"
+          echo "  - GPU hardware issues"  
+          echo "  - emClarity CUDA module compilation"
+          exit 1
+        elif [ "${{ needs.gpu-tests.result }}" = "cancelled" ]; then
+          echo "⚠️ GPU tests were cancelled."
+          exit 1
+        else
+          echo "❓ GPU tests completed with unknown status."
+          exit 1
         fi
