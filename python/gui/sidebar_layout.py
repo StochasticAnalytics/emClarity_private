@@ -3,6 +3,7 @@
 Sidebar navigation layout for emClarity GUI.
 """
 
+from typing import Optional
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
@@ -98,7 +99,7 @@ class VerticalIconButton(QPushButton):
 class IconButton(QPushButton):
     """Custom button for sidebar navigation with icon support."""
 
-    def __init__(self, text: str, icon_name: str = None, parent=None):
+    def __init__(self, text: str, icon_name: Optional[str] = None, parent=None):
         super().__init__(text, parent)
         self.setCheckable(True)
         self.setAutoExclusive(True)

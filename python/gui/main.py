@@ -3,11 +3,14 @@
 Modern emClarity GUI with tabbed interface.
 """
 
+import argparse
 import os
 import subprocess
 import sys
+import tempfile
+import traceback
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import debug_instrumentation
 from config import get_default_config
@@ -42,7 +45,7 @@ class CommandRunner(QThread):
     error_ready = Signal(str)
     finished_signal = Signal(int)
 
-    def __init__(self, command: List[str], working_dir: str = None):
+    def __init__(self, command: List[str], working_dir: Optional[str] = None):
         super().__init__()
         self.command = command
         self.working_dir = working_dir
@@ -276,15 +279,11 @@ class EmClarityWindow(QMainWindow):
         ):
             print("🔑 L key detected - attempting to toggle click logging...")
             try:
-                import debug_instrumentation
-
                 result = debug_instrumentation.toggle_click_logging()
                 status = "ENABLED" if result else "DISABLED"
                 print(f"🎯 Click logging {status} (L key pressed)")
             except Exception as e:
                 print(f"⚠️ Error toggling click logging: {e}")
-                import traceback
-
                 traceback.print_exc()
             return
 
@@ -957,7 +956,7 @@ class EmClarityWindow(QMainWindow):
         """Handle workflow step selection - switch to appropriate tab."""
 
     def run_emclarity_command(
-        self, command: str, args: List[str] = None, param_values: Dict[str, Any] = None
+        self, command: str, args: Optional[List[str]] = None, param_values: Optional[Dict[str, Any]] = None
     ):
         """Run an emClarity command with optional parameter context."""
         if not self.config:
@@ -975,9 +974,6 @@ class EmClarityWindow(QMainWindow):
                 )
 
                 # Save to temporary location (could be in project directory)
-                import os
-                import tempfile
-
                 temp_dir = tempfile.gettempdir()
                 param_file_path = os.path.join(temp_dir, filename)
 
@@ -1138,8 +1134,6 @@ class EmClarityWindow(QMainWindow):
 
 def main():
     """Main entry point."""
-    import argparse
-
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="emClarity GUI")
     parser.add_argument(

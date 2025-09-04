@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 class GUIStateManager:
     """Manages GUI state persistence using SQLite database."""
 
-    def __init__(self, db_path: str = None):
+    def __init__(self, db_path: Optional[str] = None):
         if db_path is None:
             # Default to gui directory
             gui_dir = os.path.dirname(os.path.abspath(__file__))
@@ -278,7 +278,7 @@ class GUIStateManager:
             return parameters
 
     def save_recent_project(
-        self, project_name: str, project_path: str, parameter_file: str = None
+        self, project_name: str, project_path: str, parameter_file: Optional[str] = None
     ):
         """Save a recent project."""
         with sqlite3.connect(self.db_path) as conn:
