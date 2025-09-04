@@ -1,5 +1,5 @@
 """
-Settings Panel for emClarity GUI
+Settings Panel for emClarity GUI.
 
 This module provides the Settings panel interface for managing run profiles,
 configuration settings, and process management.

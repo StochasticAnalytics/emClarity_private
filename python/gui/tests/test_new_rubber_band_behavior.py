@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-Test the new rubber band behavior:
-- Rubber band selection: just click+drag (no Ctrl)
-- Click logging: Ctrl+click only (or forced logs for navigation)
+Test the new rubber band behavior.
+
+- Rubber band selection: just click+drag (no Ctrl).
+- Click logging: Ctrl+click only (or forced logs for navigation).
 """
 
 import sys

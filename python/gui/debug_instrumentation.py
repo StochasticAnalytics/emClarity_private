@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Simple Debug Instrumentation for emClarity GUI
+Simple Debug Instrumentation for emClarity GUI.
 
 Single event filter that logs mouse clicks when rubber band mode is active
 and click logging is toggled on via L key.

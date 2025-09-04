@@ -1,5 +1,5 @@
 """
-Results Panel for emClarity GUI
+Results Panel for emClarity GUI.
 
 This module provides the Results panel interface for viewing and analyzing
 processing results including aligned movie spectra, plots, and navigation controls.

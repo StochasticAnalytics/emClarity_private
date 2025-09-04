@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test L key toggle functionality for click logging
+Test L key toggle functionality for click logging.
 """
 
 import sys

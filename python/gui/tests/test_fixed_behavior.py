@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-Test the fixed rubber band behavior:
-- Regular clicks should NOT be logged
-- Ctrl+clicks should be logged
-- Multiple Ctrl+clicks should all be logged (not overwritten)
+Test the fixed rubber band behavior.
+
+- Regular clicks should NOT be logged.
+- Ctrl+clicks should be logged.
+- Multiple Ctrl+clicks should all be logged (not overwritten).
 """
 
 import json
@@ -16,7 +17,7 @@ sys.path.insert(0, "/sa_shared/git/emClarity/gui")
 
 
 def test_debug_file_behavior():
-    """Test that debug files are appended to, not overwritten"""
+    """Test that debug files are appended to, not overwritten."""
     # Clean up any existing debug files
     debug_dir = Path("/tmp/emclarity_gui_debug")
     if debug_dir.exists():
@@ -92,7 +93,7 @@ def test_debug_file_behavior():
 
 
 def test_ctrl_behavior():
-    """Test that regular clicks aren't logged"""
+    """Test that regular clicks aren't logged."""
     print("\n🧪 Testing Ctrl behavior...")
 
     try:

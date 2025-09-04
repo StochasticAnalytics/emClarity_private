@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test script for the rubber band tool
+Test script for the rubber band tool.
 """
 
 import sys

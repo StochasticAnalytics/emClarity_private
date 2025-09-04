@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Simple test to verify L key works in the actual GUI
+Simple test to verify L key works in the actual GUI.
 """
 
 import sys

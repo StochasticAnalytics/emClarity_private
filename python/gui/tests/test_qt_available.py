@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test QT_AVAILABLE in debug_instrumentation
+Test QT_AVAILABLE in debug_instrumentation.
 """
 
 import sys

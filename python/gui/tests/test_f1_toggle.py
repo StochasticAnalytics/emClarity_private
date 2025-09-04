@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test F1 toggle functionality for click logging
+Test F1 toggle functionality for click logging.
 """
 
 import sys

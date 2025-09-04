@@ -1,5 +1,5 @@
 """
-Top Toolbar Widget for emClarity GUI
+Top Toolbar Widget for emClarity GUI.
 
 This module provides a horizontal toolbar that sits at the top of the main window,
 containing different button sets depending on the active panel. The toolbar maintains

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Rubber Band Selection Tool for emClarity GUI Development
+Rubber Band Selection Tool for emClarity GUI Development.
 
 This tool provides a way to capture GUI regions and generate AI-friendly prompts
 for layout changes and GUI element identification.

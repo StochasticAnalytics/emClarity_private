@@ -1,5 +1,5 @@
 """
-GUI Parameter Bridge
+GUI Parameter Bridge.
 
 This module provides a simplified interface for the GUI to access
 the unified parameter management system.

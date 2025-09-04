@@ -1,5 +1,5 @@
 """
-Tilt-Series Assets Panel for emClarity GUI
+Tilt-Series Assets Panel for emClarity GUI.
 
 This module provides the Tilt-Series Assets panel interface for managing different types of
 tilt-series assets including Images, Particle Positions, 3D Volumes, Refine Packages,

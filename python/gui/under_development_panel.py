@@ -1,5 +1,5 @@
 """
-Under Development Panel Widget for emClarity GUI
+Under Development Panel Widget for emClarity GUI.
 
 Shows a placeholder panel for features that are under development.
 """
