@@ -70,7 +70,13 @@ jobs:
         print(f'CuPy version: {cp.__version__}')
         print(f'CUDA version: {cp.cuda.runtime.runtimeGetVersion()}')
         print(f'GPU count: {cp.cuda.runtime.getDeviceCount()}')
-        print(f'GPU 0 name: {cp.cuda.Device(0).name}')
+        
+        # Get GPU name using correct CuPy API
+        with cp.cuda.Device(0):
+            props = cp.cuda.runtime.getDeviceProperties(0)
+            gpu_name = props['name'].decode('utf-8')
+            print(f'GPU 0 name: {gpu_name}')
+            print(f'GPU 0 memory: {props[\"totalGlobalMem\"] / 1024**3:.1f} GB')
         "
 
     - name: Test CUDA operations
