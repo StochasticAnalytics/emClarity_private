@@ -71,9 +71,6 @@ class BasicArrayOps:
             self._kernels["transpose_2d"] = self._cuda_module.get_function(
                 "transpose_2d"
             )
-            self._kernels["transpose_3d_xy"] = self._cuda_module.get_function(
-                "transpose_3d_xy"
-            )
             self._kernels["vector_magnitude_squared"] = self._cuda_module.get_function(
                 "vector_magnitude_squared"
             )
@@ -230,6 +227,9 @@ class BasicArrayOps:
     ) -> cp.ndarray:
         """
         Transpose a 2D array using CUDA (tests memory indexing).
+        
+        Input array shape: (ny, nx) - emClarity convention
+        Output array shape: (nx, ny) - transposed
 
         Args:
             input_array: 2D input array to transpose
@@ -244,61 +244,22 @@ class BasicArrayOps:
         if input_array.dtype != np.float32:
             raise ValueError("Array must be float32")
 
-        rows, cols = input_array.shape
+        ny, nx = input_array.shape  # emClarity convention: Y is rows, X is cols
 
         # Allocate output array if not provided
         if output is None:
-            output = cp.empty((cols, rows), dtype=input_array.dtype)
-        elif output.shape != (cols, rows):
+            output = cp.empty((nx, ny), dtype=input_array.dtype)
+        elif output.shape != (nx, ny):
             raise ValueError(
-                f"Output shape {output.shape} doesn't match expected {(cols, rows)}"
+                f"Output shape {output.shape} doesn't match expected {(nx, ny)}"
             )
 
-        # Calculate 2D grid and block sizes
-        grid_size, block_size = self._calculate_2d_grid_size((rows, cols))
+        # Calculate 2D grid and block sizes based on input dimensions
+        grid_size, block_size = self._calculate_2d_grid_size((ny, nx))
 
-        # Launch CUDA kernel
+        # Launch CUDA kernel with nx, ny parameters
         self._kernels["transpose_2d"](
-            grid_size, block_size, (input_array, output, rows, cols)
-        )
-
-        return output
-
-    def transpose_3d_xy(
-        self, input_array: cp.ndarray, output: Optional[cp.ndarray] = None
-    ) -> cp.ndarray:
-        """
-        Transpose X and Y dimensions of a 3D array using CUDA.
-
-        Args:
-            input_array: 3D input array (nx, ny, nz)
-            output: Optional pre-allocated output array
-
-        Returns:
-            Transposed array (ny, nx, nz)
-        """
-        if input_array.ndim != 3:
-            raise ValueError(f"Array must be 3D, got {input_array.ndim}D")
-
-        if input_array.dtype != np.float32:
-            raise ValueError("Array must be float32")
-
-        nx, ny, nz = input_array.shape
-
-        # Allocate output array if not provided
-        if output is None:
-            output = cp.empty((ny, nx, nz), dtype=input_array.dtype)
-        elif output.shape != (ny, nx, nz):
-            raise ValueError(
-                f"Output shape {output.shape} doesn't match expected {(ny, nx, nz)}"
-            )
-
-        # Calculate 3D grid and block sizes
-        grid_size, block_size = self._calculate_3d_grid_size((nx, ny, nz))
-
-        # Launch CUDA kernel
-        self._kernels["transpose_3d_xy"](
-            grid_size, block_size, (input_array, output, nx, ny, nz)
+            grid_size, block_size, (input_array, output, nx, ny)
         )
 
         return output
@@ -357,9 +318,3 @@ def cuda_transpose_2d(input_array: cp.ndarray) -> cp.ndarray:
     """Convenience function for CUDA 2D transpose."""
     ops = BasicArrayOps()
     return ops.transpose_2d(input_array)
-
-
-def cuda_transpose_3d_xy(input_array: cp.ndarray) -> cp.ndarray:
-    """Convenience function for CUDA 3D XY transpose."""
-    ops = BasicArrayOps()
-    return ops.transpose_3d_xy(input_array)

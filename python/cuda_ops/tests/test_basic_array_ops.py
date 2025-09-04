@@ -27,7 +27,6 @@ try:
         cuda_array_add,
         cuda_array_scale,
         cuda_transpose_2d,
-        cuda_transpose_3d_xy,
     )
 
     CUDA_AVAILABLE = True
@@ -175,44 +174,6 @@ class TestBasicArrayOps(unittest.TestCase):
 
         # Reference implementation
         result_reference = input_gpu.T
-
-        # Compare results
-        np.testing.assert_allclose(
-            cp.asnumpy(result_cuda), cp.asnumpy(result_reference), rtol=1e-6, atol=1e-6
-        )
-
-    def test_transpose_3d_xy_small(self):
-        """Test 3D XY transpose with small array."""
-        # Create test data
-        input_cpu = np.random.rand(*self.small_3d).astype(np.float32)
-        input_gpu = cp.asarray(input_cpu)
-
-        # CUDA implementation
-        result_cuda = self.ops.transpose_3d_xy(input_gpu)
-
-        # Reference implementation (transpose axes 0 and 1)
-        result_reference = cp.transpose(input_gpu, (1, 0, 2))
-
-        # Compare results
-        np.testing.assert_allclose(
-            cp.asnumpy(result_cuda), cp.asnumpy(result_reference), rtol=1e-6, atol=1e-6
-        )
-
-        # Check shape
-        expected_shape = (self.small_3d[1], self.small_3d[0], self.small_3d[2])
-        self.assertEqual(result_cuda.shape, expected_shape)
-
-    def test_transpose_3d_xy_large(self):
-        """Test 3D XY transpose with large array."""
-        # Create test data
-        input_cpu = np.random.rand(*self.large_3d).astype(np.float32)
-        input_gpu = cp.asarray(input_cpu)
-
-        # CUDA implementation
-        result_cuda = self.ops.transpose_3d_xy(input_gpu)
-
-        # Reference implementation (transpose axes 0 and 1)
-        result_reference = cp.transpose(input_gpu, (1, 0, 2))
 
         # Compare results
         np.testing.assert_allclose(

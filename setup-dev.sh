@@ -18,6 +18,32 @@ fi
 echo "⬆️  Upgrading pip..."
 pip install --upgrade pip
 
+echo "🔢 Installing CUDA dependencies..."
+# Detect CUDA version and install appropriate CuPy
+if command -v nvcc &> /dev/null; then
+    CUDA_VERSION=$(nvcc --version | grep "release" | sed -n 's/.*release \([0-9]\+\.[0-9]\+\).*/\1/p')
+    echo "   Detected CUDA version: $CUDA_VERSION"
+    
+    # Install CuPy based on CUDA version
+    if [[ "$CUDA_VERSION" == "12."* ]]; then
+        echo "   Installing CuPy for CUDA 12.x..."
+        pip install cupy-cuda12x fastrlock
+    elif [[ "$CUDA_VERSION" == "11."* ]]; then
+        echo "   Installing CuPy for CUDA 11.x..."
+        pip install cupy-cuda11x fastrlock
+    else
+        echo "   ⚠️  Unsupported CUDA version, installing CuPy for CUDA 12.x..."
+        pip install cupy-cuda12x fastrlock
+    fi
+else
+    echo "   ⚠️  NVCC not found, installing CuPy for CUDA 12.x (may not work without CUDA)..."
+    pip install cupy-cuda12x fastrlock
+fi
+
+# Install additional packages commonly needed for CUDA and scientific computing
+echo "📊 Installing additional scientific packages..."
+pip install psutil joblib
+
 echo "📋 Installing project in development mode with dependencies..."
 pip install -e ".[dev,test]"
 
@@ -36,6 +62,4 @@ echo "To run the GUI:"
 echo "  emclarity-gui"
 echo ""
 echo "To run linting:"
-echo "  black python/"
-echo "  isort python/"
-echo "  flake8 python/"
+echo "  black python/ && isort python/ && ruff python/"

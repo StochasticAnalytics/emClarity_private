@@ -30,7 +30,7 @@ All CUDA kernels use standardized utility functions from `emc_cuda_utils.cuh`:
 
 - **Thread indexing**: `get_1d_idx()`, `get_2d_idx()`, `get_3d_idx()`
 - **Bounds checking**: `is_valid_*()` functions and `EMC_RETURN_IF_OUT_OF_BOUNDS_*` macros
-- **Linear indexing**: `index_2d()`, `index_3d()` following emClarity conventions
+- **Linear indexing**: `get_linear_index()` overloads for 1D/2D/3D
 - **Transpose operations**: Specialized indexing for memory layout changes
 
 See [README_utilities.md](README_utilities.md) for comprehensive documentation.

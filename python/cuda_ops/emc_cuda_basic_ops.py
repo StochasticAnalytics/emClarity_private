@@ -3,12 +3,17 @@ CUDA-accelerated basic array operations for emClarity.
 
 This module provides GPU-accelerated implementations of basic array operations
 using CuPy's RawKernel interface to load custom CUDA kernels.
+
+All arrays use Fortran-contiguous (column-major) memory layout for optimal
+CUDA kernel performance and MATLAB compatibility.
 """
 
 from pathlib import Path
 from typing import Tuple
 
 import cupy as cp
+
+from .memory_utils import ensure_c, create_fortran_array
 
 __all__ = ["CudaBasicOps"]
 
@@ -82,12 +87,29 @@ class CudaBasicOps:
         return (blocks,), (block_size,)
 
     def _calculate_grid_block_2d(
-        self, rows: int, cols: int, block_x: int = 16, block_y: int = 16
+        self, ny: int, nx: int, threads_per_block_x: int = 16, threads_per_block_y: int = 16
     ) -> Tuple[Tuple[int, int], Tuple[int, int]]:
-        """Calculate grid and block dimensions for 2D kernels."""
-        grid_x = (rows + block_x - 1) // block_x
-        grid_y = (cols + block_y - 1) // block_y
-        return (grid_x, grid_y), (block_x, block_y)
+        """
+        Calculate launch parameters for 2D kernels.
+        
+        Args:
+            ny: Number of elements in Y dimension
+            nx: Number of elements in X dimension  
+            threads_per_block_x: Threads per block in X dimension
+            threads_per_block_y: Threads per block in Y dimension
+            
+        Returns:
+            (num_blocks, threads_per_block) where:
+            - num_blocks: (num_blocks_x, num_blocks_y) 
+            - threads_per_block: (threads_per_block_x, threads_per_block_y)
+        """
+        num_blocks_x = (nx + threads_per_block_x - 1) // threads_per_block_x
+        num_blocks_y = (ny + threads_per_block_y - 1) // threads_per_block_y
+        
+        num_blocks = (num_blocks_x, num_blocks_y)
+        threads_per_block = (threads_per_block_x, threads_per_block_y)
+        
+        return num_blocks, threads_per_block
 
     def _calculate_grid_block_3d(
         self,
@@ -125,12 +147,12 @@ class CudaBasicOps:
         if a.shape != b.shape:
             raise ValueError(f"Array shapes must match: {a.shape} vs {b.shape}")
 
-        # Ensure arrays are contiguous and float32
-        a = cp.ascontiguousarray(a, dtype=cp.float32)
-        b = cp.ascontiguousarray(b, dtype=cp.float32)
+                        # Ensure input is C-contiguous and proper dtype
+        a = ensure_c(a, allow_copy=True, dtype=cp.float32)
+        b = ensure_c(b, allow_copy=True, dtype=cp.float32)
 
-        # Create output array
-        c = cp.empty_like(a)
+        # Create output array - C-contiguous
+        c = ensure_c(cp.empty(a.shape, dtype=cp.float32))  # C-contiguous by default
 
         # Calculate grid and block dimensions
         n = a.size
@@ -141,6 +163,7 @@ class CudaBasicOps:
             grid, block, (a.data.ptr, b.data.ptr, c.data.ptr, n)
         )
 
+        # Output is already C-contiguous, no need to ensure_c
         return c
 
     def multiply_scalar(self, a: cp.ndarray, scalar: float) -> cp.ndarray:
@@ -160,10 +183,10 @@ class CudaBasicOps:
         if not self._kernels_loaded:
             raise RuntimeError("CUDA kernels not loaded")
 
-        # Ensure array is contiguous and float32
-        a = cp.ascontiguousarray(a, dtype=cp.float32)
+        # Ensure array is C-contiguous and float32
+        a = ensure_c(a, allow_copy=False, dtype=cp.float32)
 
-        # Create output array
+        # Create output array - C-contiguous
         b = cp.empty_like(a)
 
         # Calculate grid and block dimensions
@@ -175,11 +198,14 @@ class CudaBasicOps:
             grid, block, (a.data.ptr, b.data.ptr, cp.float32(scalar), n)
         )
 
-        return b
+        return ensure_c(b)  # Ensure output is C-contiguous
 
     def transpose_2d(self, a: cp.ndarray) -> cp.ndarray:
         """
         Transpose a 2D matrix.
+        
+        Input array shape: (ny, nx) - emClarity convention
+        Output array shape: (nx, ny) - transposed
 
         Args:
             a: 2D input array
@@ -197,23 +223,23 @@ class CudaBasicOps:
         if a.ndim != 2:
             raise ValueError(f"Input must be 2D, got {a.ndim}D")
 
-        # Ensure array is contiguous and float32
-        a = cp.ascontiguousarray(a, dtype=cp.float32)
+        # Ensure array is C-contiguous and float32
+        a = ensure_c(a, allow_copy=False, dtype=cp.float32)
 
-        rows, cols = a.shape
+        ny, nx = a.shape  # emClarity convention: Y is first dim, X is second dim
 
-        # Create output array with transposed shape
-        out = cp.empty((cols, rows), dtype=cp.float32)
+        # Create output array with transposed shape - C-contiguous
+        out = cp.empty((nx, ny), dtype=cp.float32)
 
-        # Calculate grid and block dimensions
-        grid, block = self._calculate_grid_block_2d(rows, cols)
+        # Calculate kernel launch parameters based on input dimensions
+        num_blocks, threads_per_block = self._calculate_grid_block_2d(ny, nx)
 
-        # Launch kernel
+        # Launch kernel with (nx, ny) parameters matching cuda_transpose_2d signature
         self._cuda_kernels["transpose_2d"](
-            grid, block, (a.data.ptr, out.data.ptr, rows, cols)
+            num_blocks, threads_per_block, (a.data.ptr, out.data.ptr, nx, ny)
         )
 
-        return out
+        return ensure_c(out)  # Ensure output is C-contiguous
 
     def transpose_3d(self, a: cp.ndarray) -> cp.ndarray:
         """

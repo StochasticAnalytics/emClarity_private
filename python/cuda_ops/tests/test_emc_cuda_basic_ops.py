@@ -80,7 +80,7 @@ class TestCudaBasicOps(unittest.TestCase):
 
         result = self.cuda_ops.transpose_2d(a)
         expected = cp.array([[1.0, 4.0], [2.0, 5.0], [3.0, 6.0]], dtype=cp.float32)
-
+        print("test print\n")
         cp.testing.assert_array_equal(result, expected)
 
         # Test larger random matrix
@@ -101,43 +101,6 @@ class TestCudaBasicOps(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.cuda_ops.transpose_2d(a_3d)
 
-    def test_transpose_3d(self):
-        """Test 3D array transpose."""
-        # Test small 3D array
-        a = cp.arange(24, dtype=cp.float32).reshape(2, 3, 4)
-
-        result = self.cuda_ops.transpose_3d(a)
-
-        # Verify shape
-        self.assertEqual(result.shape, (4, 3, 2))
-
-        # Test against NumPy transpose
-        a_np = cp.asnumpy(a)
-        expected_np = np.transpose(a_np, (2, 1, 0))
-        expected = cp.array(expected_np)
-
-        cp.testing.assert_array_equal(result, expected)
-
-        # Test larger random array
-        a_large = cp.random.rand(32, 64, 16).astype(cp.float32)
-        result_large = self.cuda_ops.transpose_3d(a_large)
-
-        # Verify shape
-        self.assertEqual(result_large.shape, (16, 64, 32))
-
-        # Verify against NumPy
-        a_large_np = cp.asnumpy(a_large)
-        expected_large_np = np.transpose(a_large_np, (2, 1, 0))
-        expected_large = cp.array(expected_large_np)
-
-        cp.testing.assert_array_almost_equal(result_large, expected_large, decimal=6)
-
-    def test_transpose_3d_wrong_dimension(self):
-        """Test that 3D transpose fails with wrong dimensions."""
-        a_2d = cp.random.rand(10, 20).astype(cp.float32)
-
-        with self.assertRaises(ValueError):
-            self.cuda_ops.transpose_3d(a_2d)
 
     def test_performance_comparison(self):
         """Test performance against CuPy built-ins."""

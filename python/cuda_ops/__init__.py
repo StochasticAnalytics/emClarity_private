@@ -21,7 +21,6 @@ if CUDA_AVAILABLE:
         cuda_array_add,
         cuda_array_scale,
         cuda_transpose_2d,
-        cuda_transpose_3d_xy,
     )
 
     # Explicitly export these for the package API
@@ -31,16 +30,6 @@ if CUDA_AVAILABLE:
         "cuda_array_add",
         "cuda_array_scale",
         "cuda_transpose_2d",
-        "cuda_transpose_3d_xy",
-    ]
-
-    __all__ = [
-        "CUDA_AVAILABLE",
-        "BasicArrayOps",
-        "cuda_array_add",
-        "cuda_array_scale",
-        "cuda_transpose_2d",
-        "cuda_transpose_3d_xy",
     ]
 else:
     __all__ = ["CUDA_AVAILABLE"]

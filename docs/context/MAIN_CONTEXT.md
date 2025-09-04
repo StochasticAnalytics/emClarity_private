@@ -37,6 +37,9 @@ Read these files for complete context:
 - Create unit tests in `python/folderName/tests/`
 - Update README.md files and agent_notes.md
 - For CUDA: use `extern "C"` wrapper, prefer int to uint
+- **Always use Fortran-style (column-major) CuPy arrays** - construct with `order='F'`
+- **Never use ambiguous terms like rows/columns** - use nx/ny/nz consistently
+- **Wrap library call outputs with ensure_f()** to catch memory layout issues
 
 ### Git Workflow
 
@@ -50,6 +53,20 @@ Read these files for complete context:
 - Test changes comprehensively
 - Read full file context before making edits
 - Use proper tool selection (replace_string_in_file vs edit_notebook_file)
+- **Execute independent operations in parallel** - invoke relevant tools simultaneously for efficiency
+- **Create general-purpose solutions** - implement code that handles all valid inputs, not just test cases
+- **Avoid hard-coding values** - solutions should be robust, maintainable, and extendable
+- **Focus on algorithm correctness** - understand requirements before implementation
+- **Raise concerns about incorrect tests** - if tests seem wrong, communicate this clearly
+
+### Implementation Principles
+
+- **Algorithm first, tests second** - Tests verify correctness but don't define the solution
+- **Focus on maintainability** - Write clean, well-documented code following established patterns
+- **Design for the general case** - Solutions should handle edge cases and unusual inputs
+- **Apply software design principles** - Use proper abstractions, separation of concerns
+- **Report infeasibility** - If a task seems unreasonable or has contradictory requirements, communicate this
+- **Maximize parallel operations** - When gathering context or performing multiple edits, batch operations
 
 ## File Locations
 

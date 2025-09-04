@@ -184,6 +184,26 @@ This conversion serves as the template for future module conversions.
 - **Example**: 15+ test scenarios covering correctness, performance, memory management
 - **Learning**: Extensive testing catches edge cases and validates design decisions
 
+### General Implementation Principles
+
+**Pattern: General-Purpose Solution Design**
+
+- **Effective**: Implementing algorithms that work for all valid inputs, not just test cases
+- **Example**: Proper domain handling in FFT functions beyond the specific test dimensions
+- **Learning**: Test cases validate correctness but shouldn't dictate implementation scope
+
+**Pattern: Parallel Operation Execution**
+
+- **Effective**: Invoking multiple independent tools simultaneously for efficiency
+- **Example**: Gathering context from multiple files while processing algorithm requirements
+- **Learning**: Batch operations when possible to reduce development time
+
+**Pattern: Robust Implementation Principles**
+
+- **Effective**: Writing code that handles edge cases and unusual inputs properly
+- **Example**: Parameter validation with clear error messages before computation
+- **Learning**: Always consider what could go wrong beyond the happy path
+
 These learnings should guide future conversion sessions to minimize iteration cycles and improve code quality.
 
 ## Session-Specific Learnings (September 3, 2025)
@@ -296,3 +316,114 @@ for i_bin in bin_sequence:
 **Benefit**: Different audiences (users, developers, future AI sessions) each get appropriate level of detail.
 
 **Learning**: For significant architectural changes, create multiple documentation types rather than trying to fit everything in one document.
+
+---
+
+## Session-Specific Learnings (September 4, 2025)
+
+### CUDA Memory Layout Debugging: From Confusion to Clarity
+
+**Challenge**: 2D transpose operation producing scrambled output instead of correct transposition
+
+**Problem Diagnosis Cycle**:
+1. **Initial Symptoms**: Array elements appearing in wrong positions after transpose
+2. **First Investigation**: Suspected kernel indexing logic errors
+3. **Memory Layout Realization**: Discovered mixing of Fortran-contiguous vs C-contiguous arrays
+4. **Architecture Decision**: Standardized on C-contiguous arrays for new CUDA operations
+5. **API Unification**: Consolidated multiple indexing functions into overloaded `get_linear_index()`
+
+**Key Technical Insights**:
+- **Memory Layout Consistency**: Mixing F-order and C-order arrays creates subtle bugs that are hard to debug
+- **Kernel Parameter Order**: Function signature must match call-site parameter order exactly
+- **Indexing Unification**: Single overloaded function (`get_linear_index`) reduces errors vs multiple named functions
+
+**Effective Debugging Pattern**:
+```python
+# Instead of separate functions:
+# index_2d(), index_3d(), index_2d_fortran()
+# Use single overloaded function:
+get_linear_index(int2 coords, int nx)  # 2D
+get_linear_index(int3 coords, int2 dims) # 3D
+```
+
+**Learning**: When debugging CUDA indexing issues, verify memory layout consistency first before investigating algorithmic logic.
+
+---
+
+**Communication Pattern: Iterative Refinement with Clear Decision Points**
+
+**Effective Cycle Observed**:
+1. **Initial Problem**: "2D transpose giving incorrect results"
+2. **Multiple Hypothesis Testing**: Fortran vs C layouts, kernel logic, parameter order
+3. **Decisive Pivot**: "Let's standardize on C-contiguous for simplicity" 
+4. **Systematic Refactor**: API unification, documentation updates, test validation
+5. **Verification**: Full test suite execution confirming fix
+
+**Communication Success**: User provided clear direction when multiple approaches were explored ("go back to C-contiguous"), preventing extended exploration of dead ends.
+
+**Learning**: When facing complex technical issues, test multiple hypotheses but establish clear decision criteria to avoid analysis paralysis.
+
+---
+
+**Error Diagnostics Enhancement Pattern**
+
+**Challenge**: Cryptic error messages from `ensure_c()` function made debugging difficult
+
+**Evolution**:
+1. **Original**: Generic "copying required" message
+2. **Enhancement Request**: "Can we make ensure_c print the line number?"
+3. **Implementation**: Added caller introspection using `inspect` module
+4. **Result**: Rich error messages with file:line:function context
+
+**Technical Solution**:
+```python
+# Before: RuntimeError: ensure_c: input was not C-contiguous...
+# After: RuntimeError: ensure_c: input was not C-contiguous... | at /path/file.py:166 in add_arrays
+```
+
+**Learning**: When debugging tools produce unclear errors, enhance diagnostics immediately rather than working around them - the time investment pays off quickly.
+
+---
+
+**Test-Driven Validation Strategy**
+
+**Effective Pattern**:
+1. **Isolated Test First**: Ran single transpose test to verify core fix
+2. **Full Suite Second**: Ran complete test suite to catch integration issues  
+3. **Systematic Fix**: Addressed test failures by allowing copies where appropriate
+4. **Final Validation**: Re-ran full suite to confirm no regressions
+
+**Key Success**: Isolated testing caught the core issue quickly, while full testing revealed integration problems that needed different solutions.
+
+**Learning**: Use both focused and comprehensive testing - focused tests for debugging specific issues, comprehensive tests for validating system integration.
+
+---
+
+**Dependency Management Learning**
+
+**Challenge**: Missing dependencies (CuPy, fastrlock, psutil, joblib) caused setup issues
+
+**Solution Pattern**:
+1. **Detection**: Found missing deps through virtual environment analysis
+2. **Root Cause**: Setup scripts incomplete for CUDA workflow requirements
+3. **Comprehensive Fix**: Updated both setup-dev.sh and pyproject.toml
+4. **Validation**: Verified dependencies align with actual usage patterns
+
+**Key Insight**: CUDA workflows have specific dependency requirements (fastrlock for CuPy performance, psutil for memory monitoring) that aren't obvious from basic testing.
+
+**Learning**: Regularly audit actual vs declared dependencies, especially for GPU computing stacks where performance dependencies matter.
+
+---
+
+**Documentation Enhancement During Development**
+
+**Effective Pattern**: Updated multiple documentation files in parallel with code changes:
+- `MAIN_CONTEXT.md`: Added implementation principles and parallel operation guidance
+- `python_conversion_instructions.md`: Added general-purpose solution patterns
+- README files: Updated API references for unified indexing functions
+
+**Success**: Documentation updates prevented future confusion about design decisions and coding patterns.
+
+**Learning**: Document architectural decisions immediately while the rationale is fresh, rather than deferring to later cleanup phases.
+
+````

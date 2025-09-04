@@ -86,7 +86,7 @@ int output_idx = transpose_3d_index(idx, dims);
 Basic Add      : PASS
 Basic Scale    : PASS
 
-Overall: ALL TESTS PASSED
+int input_idx = get_linear_index(make_int3(x, y, z), make_int2(nx, ny));
 ```
 
 ### Performance Impact
@@ -97,30 +97,21 @@ Overall: ALL TESTS PASSED
 ## Files Updated
 
 ✅ **emc_cuda_utils.cuh**: All utility functions converted to vector API  
-✅ **emc_cuda_basic_ops.cu**: Updated to use vector utilities  
+int input_idx = get_linear_index(idx, dims_xy);
 ✅ **basic_array_ops.cu**: Updated to use vector utilities  
 ✅ **README_utilities.md**: Documentation updated with new examples  
 ✅ **Testing**: Comprehensive validation of all operations  
 
-## Developer Impact
-
-### Reduced Boilerplate
+- `get_linear_index(int2 idx, int nx)` instead of computing `y*nx + x` inline
+- `get_linear_index(int3 idx, int2 dims_xy)` instead of manual `z*(ny*nx)+y*nx+x`
 ```cuda
 // Before: 5 lines of setup
-int x, y, z;
-get_3d_idx(x, y, z);
 if ((x >= nx) || (y >= ny) || (z >= nz)) return;
 int idx = z * (ny * nx) + y * nx + x;
-
-// After: 3 lines of setup  
 int3 pos = get_3d_idx();
 EMC_RETURN_IF_OUT_OF_BOUNDS_3D(pos, make_int3(nx, ny, nz));
-int idx = index_3d(pos, make_int2(nx, ny));
-```
 
 ### Improved Error Messages
-Vector types provide better compiler diagnostics when mistakes are made.
-
 ### Easier Code Reviews
 More concise code is easier to review and understand.
 
@@ -130,10 +121,10 @@ For future kernel development:
 
 1. **Use vector returns**: `int2 pos = get_2d_idx();`
 2. **Group dimensions**: `int2 dims = make_int2(nx, ny);`
-3. **Pass vectors to utilities**: `index_2d(pos, nx)`
 4. **Use vector macros**: `EMC_RETURN_IF_OUT_OF_BOUNDS_2D(pos, dims)`
 
 ## Success Metrics
+int idx = get_linear_index(pos, make_int2(nx, ny));
 
 ✅ **API Improved**: Vector-based interface implemented  
 ✅ **Code Reduced**: ~30% fewer lines in typical kernels  

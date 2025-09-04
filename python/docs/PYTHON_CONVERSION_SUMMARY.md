@@ -1,10 +1,33 @@
 # emClarity Python Conversion Summary
 
-*Last updated: September 3, 2025*
+*Last updated: September 4, 2025*
 
 ## Overview
 
 This document tracks the progress of converting emClarity from MATLAB to Python, with emphasis on GPU acceleration via CuPy and maintaining compatibility with existing workflows.
+
+## Recent Progress (September 4, 2025)
+
+### 🔧 CUDA Operations Stabilization
+
+**Major Achievement**: Resolved complex memory layout issues affecting 2D transpose operations
+
+**Technical Resolution**:
+- **Root Cause**: Mixed Fortran-contiguous and C-contiguous array usage causing indexing inconsistencies
+- **Solution**: Standardized on C-contiguous arrays for new CUDA operations
+- **API Unification**: Consolidated indexing functions into overloaded `get_linear_index()` 
+- **Enhanced Diagnostics**: Added caller location reporting to `ensure_c()`/`ensure_f()` functions
+
+**Code Quality Improvements**:
+- Removed dead code from failed Fortran-contiguous experiments
+- Updated documentation to reflect C-contiguous standard
+- Enhanced error messages with file:line:function context
+- Full test suite passing (31/31 tests)
+
+**Dependencies Resolved**:
+- Added missing CuPy performance dependency (`fastrlock`)
+- Added scientific computing dependencies (`psutil`, `joblib`)
+- Updated setup scripts for complete CUDA development environment
 
 ## Conversion Status
 

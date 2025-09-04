@@ -9,7 +9,7 @@ The `emc_cuda_utils.cuh` header contains inline device functions that standardiz
 ## emClarity Conventions
 
 - **X is the fastest dimension** (varies most rapidly in memory)
-- **Y is the second dimension** 
+- **Y is the second dimension**
 - **Z is the slowest dimension** (varies least rapidly)
 - **Memory layout**: Row-major (C-style) ordering
 - **Array shape notation**: `(nz, ny, nx)` for 3D arrays
@@ -39,8 +39,8 @@ Check if indices are within array bounds using vector parameters.
 ### Linear Indexing
 
 ```cuda
-__device__ __forceinline__ int index_2d(int2 idx, int nx)
-__device__ __forceinline__ int index_3d(int3 idx, int2 dims_xy)
+__device__ __forceinline__ int get_linear_index(int2 idx, int nx)
+__device__ __forceinline__ int get_linear_index(int3 idx, int2 dims_xy)
 ```
 
 Convert 2D/3D coordinates to linear memory indices using emClarity conventions and vector parameters.
@@ -67,7 +67,7 @@ Specialized indexing for transpose operations using vector parameters.
 
 ```cuda
 #define EMC_RETURN_IF_OUT_OF_BOUNDS_1D(idx, n)
-#define EMC_RETURN_IF_OUT_OF_BOUNDS_2D(idx, dims) 
+#define EMC_RETURN_IF_OUT_OF_BOUNDS_2D(idx, dims)
 #define EMC_RETURN_IF_OUT_OF_BOUNDS_3D(idx, dims)
 ```
 
@@ -98,26 +98,8 @@ extern "C" __global__ void cuda_process_2d(
     int2 dims = make_int2(nx, ny);
     EMC_RETURN_IF_OUT_OF_BOUNDS_2D(idx, dims);
     
-    int linear_idx = index_2d(idx, nx);
+    int linear_idx = get_linear_index(idx, nx);
     output[linear_idx] = input[linear_idx] * 2.0f;
-}
-```
-
-### 3D Transpose
-
-```cuda
-extern "C" __global__ void cuda_transpose_3d(
-    const float* input, float* output, int nx, int ny, int nz)
-{
-    int3 idx = get_3d_idx();
-    int3 dims = make_int3(nx, ny, nz);
-    EMC_RETURN_IF_OUT_OF_BOUNDS_3D(idx, dims);
-    
-    int2 dims_xy = make_int2(nx, ny);
-    int input_idx = index_3d(idx, dims_xy);
-    int output_idx = transpose_3d_index(idx, dims);
-    
-    output[output_idx] = input[input_idx];
 }
 ```
 
@@ -156,7 +138,7 @@ class CudaBasicOps:
 
 All refactored kernels pass comprehensive validation:
 
-```
+```text
 === Testing emc_cuda_basic_ops ===
 ✅ Addition: True | [ 6.  8. 10. 12.]
 ✅ Scalar multiply: True | [ 2.5  5.   7.5 10. ]

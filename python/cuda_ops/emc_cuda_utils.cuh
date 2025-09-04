@@ -72,21 +72,23 @@ __device__ __forceinline__ bool is_valid_3d(int3 idx, int3 dims)
 }
 
 /**
- * Convert 2D coordinates to linear index
- * For array with shape (ny, nx) - emClarity convention
- * Index: y * nx + x
+ * Linear index helpers (row-major / C-style unless noted)
  */
-__device__ __forceinline__ int index_2d(int2 idx, int nx)
+// 1D overload
+__device__ __forceinline__ int get_linear_index(int idx, int n)
+{
+    // Bounds are checked separately via EMC_RETURN_IF_OUT_OF_BOUNDS_1D
+    return idx; // identity for 1D
+}
+
+// 2D overload: array shape (ny, nx) -> y * nx + x
+__device__ __forceinline__ int get_linear_index(const int2& idx, int nx)
 {
     return idx.y * nx + idx.x;
 }
 
-/**
- * Convert 3D coordinates to linear index  
- * For array with shape (nz, ny, nx) - emClarity convention
- * Index: z * (ny * nx) + y * nx + x
- */
-__device__ __forceinline__ int index_3d(int3 idx, int2 dims_xy)
+// 3D overload: array shape (nz, ny, nx) -> z*(ny*nx) + y*nx + x
+__device__ __forceinline__ int get_linear_index(const int3& idx, const int2& dims_xy)
 {
     return idx.z * (dims_xy.y * dims_xy.x) + idx.y * dims_xy.x + idx.x;
 }
@@ -117,24 +119,26 @@ __device__ __forceinline__ int3 linear_to_3d(int linear_idx, int2 dims_xy)
     return make_int3(x, y, z);
 }
 
+
 /**
  * Transpose indexing helpers
  */
 
 /**
- * 2D transpose: (y,x) -> (x,y)
+ * 2D transpose: (y,x) -> (x,y) - C order
  * Input index: y * nx + x -> Output index: x * ny + y
  */
-__device__ __forceinline__ int transpose_2d_index(int2 idx, int2 dims)
+__device__ __forceinline__ int transpose_2d_index(const int2& idx, const int2& dims)
 {
     return idx.x * dims.y + idx.y;
 }
+
 
 /**
  * 3D transpose: (z,y,x) -> (x,y,z)
  * Input index: z * (ny * nx) + y * nx + x -> Output index: x * (nz * ny) + y * nz + z
  */
-__device__ __forceinline__ int transpose_3d_index(int3 idx, int3 dims)
+__device__ __forceinline__ int transpose_3d_index(const int3& idx, const int3& dims)
 {
     return idx.x * (dims.z * dims.y) + idx.y * dims.z + idx.z;
 }

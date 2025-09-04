@@ -32,17 +32,22 @@ __global__ void cuda_multiply_scalar(const float* a, float* b, float scalar, int
 
 /**
  * CUDA kernel for 2D matrix transpose
- * out[j*cols + i] = in[i*rows + j]
+ * Transpose from (ny, nx) to (nx, ny) following emClarity conventions
+ * Assumes standard C-contiguous (row-major) memory layout
  */
-__global__ void cuda_transpose_2d(const float* in, float* out, int rows, int cols)
+extern "C" __global__
+void cuda_transpose_2d(const float* input, float* output, int nx, int ny)
 {
     int2 idx = get_2d_idx();
-    int2 dims = make_int2(cols, rows);
+    int2 dims = make_int2(nx, ny);
+    
     EMC_RETURN_IF_OUT_OF_BOUNDS_2D(idx, dims);
-
-    int in_idx  = index_2d(idx, cols);
-    int out_idx = transpose_2d_index(idx, dims);
-    out[out_idx] = in[in_idx];
+    
+    // Standard C-order indexing
+    int in_idx = get_linear_index(idx, nx);      // input[y][x]
+    int out_idx = transpose_2d_index(idx, dims); // output[x][y]
+    
+    output[out_idx] = input[in_idx];
 }
 
 /**
@@ -56,7 +61,7 @@ __global__ void cuda_transpose_3d(const float* in, float* out, int nx, int ny, i
     EMC_RETURN_IF_OUT_OF_BOUNDS_3D(idx, dims);
 
     int2 dims_xy = make_int2(nx, ny);
-    int in_idx  = index_3d(idx, dims_xy);
+    int in_idx  = get_linear_index(idx, dims_xy);
     int out_idx = transpose_3d_index(idx, dims);
     out[out_idx] = in[in_idx];
 }
