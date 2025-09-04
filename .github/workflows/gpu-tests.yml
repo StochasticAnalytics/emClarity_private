@@ -21,7 +21,7 @@ on:
 jobs:
   gpu-tests:
     # Use self-hosted runners with GPU support for private repo
-    runs-on: [self-hosted, gpu]
+    runs-on: [self-hosted]
     
     steps:
     - uses: actions/checkout@v4
