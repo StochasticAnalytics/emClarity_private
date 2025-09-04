@@ -19,23 +19,6 @@ on:
       - 'pyproject.toml'
       - '.github/workflows/code-style.yml'
   workflow_dispatch:  # Manual trigger bypasses path restrictionsn:
-  push:
-    branches:
-      - main
-      - '*_ci'
-    paths:
-      - 'python/**'
-      - 'pyproject.toml'
-      - '.github/workflows/code-style.yml'
-  pull_request:
-    branches:
-      - main
-    paths:
-      - 'python/**'
-      - 'pyproject.toml'
-      - '.github/workflows/code-style.yml'
-  # Always run on CI branches regardless of file changes
-  workflow_dispatch:
 
 jobs:
   style-check:

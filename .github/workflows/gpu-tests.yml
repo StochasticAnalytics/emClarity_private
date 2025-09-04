@@ -118,7 +118,8 @@ jobs:
                 print('❌ CudaBasicOps not ready')
                 exit(1)
         except ImportError as e:
-            print(f'Warning: CudaBasicOps not available: {e}')
+            print(f'ℹ️ CudaBasicOps not available: {e}')
+            print('This is expected if CUDA modules are not compiled yet')
         "
         
         echo "=== Testing cuda_ops module ==="
@@ -128,21 +129,42 @@ jobs:
             ops = BasicArrayOps()
             print('✓ BasicArrayOps module loaded successfully')
         except ImportError as e:
-            print(f'Warning: BasicArrayOps not available: {e}')
+            print(f'ℹ️ BasicArrayOps not available: {e}')
+            print('This is expected if CUDA modules are not compiled yet')
         "
 
     - name: Run GPU unit tests
       run: |
         cd python
+        
         echo "=== Running CUDA operations tests ==="
-        python -m pytest cuda_ops/tests/ -v --tb=short || echo "Some CUDA tests failed (non-critical for CI)"
+        if ! python -m pytest cuda_ops/tests/ -v --tb=short; then
+          echo "❌ CUDA operations tests FAILED"
+          exit 1
+        fi
+        echo "✅ CUDA operations tests PASSED"
         
         echo "=== Running GPU masking tests ==="
-        python -m pytest masking/tests/ -v --tb=short -k "gpu or GPU" || echo "Some GPU masking tests failed (non-critical for CI)"
+        if python -m pytest masking/tests/ -v --tb=short -k "gpu or GPU" --collect-only -q | grep -q "no tests collected"; then
+          echo "ℹ️ No GPU masking tests found, skipping"
+        else
+          if ! python -m pytest masking/tests/ -v --tb=short -k "gpu or GPU"; then
+            echo "❌ GPU masking tests FAILED"
+            exit 1
+          fi
+          echo "✅ GPU masking tests PASSED"
+        fi
         
         echo "=== Running all available tests with GPU markers ==="
-        # Run any tests marked with gpu/cuda keywords
-        python -m pytest -v --tb=short -k "gpu or cuda or GPU or CUDA" || echo "Additional GPU tests completed"
+        if python -m pytest -v --tb=short -k "gpu or cuda or GPU or CUDA" --collect-only -q | grep -q "no tests collected"; then
+          echo "ℹ️ No additional GPU tests found"
+        else
+          if ! python -m pytest -v --tb=short -k "gpu or cuda or GPU or CUDA"; then
+            echo "❌ Additional GPU tests FAILED"
+            exit 1
+          fi
+          echo "✅ Additional GPU tests PASSED"
+        fi
 
     - name: Performance benchmarks
       run: |
@@ -225,7 +247,7 @@ jobs:
             
             speedup = cpu_time / gpu_time if gpu_time > 0 else float('inf')
             print(f'  Matrix {n}x{n}: CPU {cpu_time:.4f}s, GPU {gpu_time:.4f}s, Speedup {speedup:.2f}x')
-        " || echo "Benchmarks completed with issues"
+        " || echo "⚠️ Benchmarks completed with some issues (non-critical)"
 
   # Summary job - always runs to provide clear CI status
   gpu-tests-summary:
