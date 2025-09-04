@@ -1,7 +1,8 @@
 #!/bin/bash
-# Local Python code quality checker for emClarity
-# Run this script to perform the same checks as CI locally
-# Usage: ./scripts/check-python-quality.sh [--fix] [--fast]
+
+# Local Python Code Quality Checker for emClarity
+# Runs the same checks as CI workflows but locally
+# Supports --fix for auto-fixing and focused check options
 
 set -e
 
@@ -12,135 +13,187 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Default options
-FIX_ISSUES=false
+# Default settings
+SHOULD_FIX=false
 FAST_MODE=false
-PYTHON_DIR="python"
+RUN_STYLE=true
+RUN_TYPES=true
+RUN_SECURITY=true
 
-# Parse command line arguments
-while [[ $# -gt 0 ]]; do
-    case $1 in
+# Parse arguments
+for arg in "$@"; do
+    case $arg in
         --fix)
-            FIX_ISSUES=true
+            SHOULD_FIX=true
             shift
             ;;
         --fast)
             FAST_MODE=true
             shift
             ;;
-        --help|-h)
-            echo "Usage: $0 [--fix] [--fast]"
-            echo "  --fix   Automatically fix issues where possible"
-            echo "  --fast  Skip slower checks (bandit, safety)"
+        --style-only)
+            RUN_TYPES=false
+            RUN_SECURITY=false
+            shift
+            ;;
+        --types-only)
+            RUN_STYLE=false
+            RUN_SECURITY=false
+            shift
+            ;;
+        --security-only)
+            RUN_STYLE=false
+            RUN_TYPES=false
+            shift
+            ;;
+        --help)
+            echo "Usage: $0 [OPTIONS]"
+            echo ""
+            echo "Options:"
+            echo "  --fix           Auto-fix issues where possible"
+            echo "  --fast          Skip slower checks (no security scan)"
+            echo "  --style-only    Run only Ruff style/linting checks"
+            echo "  --types-only    Run only Pyright type checking"
+            echo "  --security-only Run only security scans"
+            echo "  --help          Show this help message"
+            echo ""
+            echo "Mirrors the CI workflows:"
+            echo "  - Code Style (.github/workflows/code-style.yml)"
+            echo "  - Type Checking (.github/workflows/type-checking.yml)"  
+            echo "  - Security Scan (.github/workflows/security-scan.yml)"
             exit 0
             ;;
         *)
-            echo "Unknown parameter: $1"
+            echo -e "${RED}Unknown argument: $arg${NC}"
+            echo "Use --help for usage information"
             exit 1
             ;;
     esac
 done
 
+# Fast mode disables security scanning
+if [ "$FAST_MODE" = true ]; then
+    RUN_SECURITY=false
+fi
+
 # Check if we're in the right directory
-if [[ ! -f "pyproject.toml" ]] || [[ ! -d "$PYTHON_DIR" ]]; then
+if [[ ! -f "pyproject.toml" ]] || [[ ! -d "python" ]]; then
     echo -e "${RED}Error: Must be run from emClarity root directory${NC}"
     exit 1
 fi
 
-# Check if tools are installed
-echo -e "${BLUE}Checking tool availability...${NC}"
+echo -e "${BLUE}==================== Code Quality Check ====================${NC}"
+echo "Checking tool availability..."
+
+# Check if required tools are installed
 MISSING_TOOLS=()
 
-if ! command -v ruff &> /dev/null; then
-    MISSING_TOOLS+=("ruff")
+if [ "$RUN_STYLE" = true ]; then
+    if ! command -v ruff &> /dev/null; then
+        MISSING_TOOLS+=("ruff")
+    fi
 fi
 
-if ! command -v pyright &> /dev/null; then
-    MISSING_TOOLS+=("pyright")
+if [ "$RUN_TYPES" = true ]; then
+    if ! command -v pyright &> /dev/null; then
+        MISSING_TOOLS+=("pyright")
+    fi
 fi
 
-if [[ "$FAST_MODE" == "false" ]]; then
+if [ "$RUN_SECURITY" = true ]; then
     if ! command -v bandit &> /dev/null; then
         MISSING_TOOLS+=("bandit")
     fi
-    
     if ! command -v safety &> /dev/null; then
         MISSING_TOOLS+=("safety")
     fi
 fi
 
-if [[ ${#MISSING_TOOLS[@]} -gt 0 ]]; then
-    echo -e "${RED}Missing tools: ${MISSING_TOOLS[*]}${NC}"
-    echo -e "${YELLOW}Install with: pip install ruff pyright bandit[toml] safety${NC}"
+if [ ${#MISSING_TOOLS[@]} -ne 0 ]; then
+    echo -e "${RED}Missing required tools: ${MISSING_TOOLS[*]}${NC}"
+    echo "Install with: pip install ${MISSING_TOOLS[*]}"
     exit 1
 fi
 
-echo -e "${GREEN}All tools available!${NC}"
-echo
+echo -e "${GREEN}All required tools available!${NC}"
+echo ""
 
-# Track overall status
-OVERALL_STATUS=0
+# Exit codes for each check
+STYLE_EXIT=0
+TYPES_EXIT=0  
+SECURITY_EXIT=0
 
-# Function to run a check
-run_check() {
-    local name="$1"
-    local command="$2"
-    local fix_command="$3"
+# Code Style Checks (Ruff)
+if [ "$RUN_STYLE" = true ]; then
+    echo -e "${BLUE}==================== Code Style (Ruff) ====================${NC}"
     
-    echo -e "${BLUE}==================== $name ====================${NC}"
-    
-    if [[ "$FIX_ISSUES" == "true" && -n "$fix_command" ]]; then
-        echo -e "${YELLOW}Running with auto-fix...${NC}"
-        if eval "$fix_command"; then
-            echo -e "${GREEN}✓ $name (fixed)${NC}"
-        else
-            echo -e "${RED}✗ $name (fix failed)${NC}"
-            OVERALL_STATUS=1
-        fi
+    if [ "$SHOULD_FIX" = true ]; then
+        echo -e "${YELLOW}Auto-fixing with Ruff...${NC}"
+        ruff check python/ --fix || STYLE_EXIT=$?
+        ruff format python/ || STYLE_EXIT=$?
+        echo -e "${GREEN}Ruff auto-fixes applied${NC}"
     else
-        if eval "$command"; then
-            echo -e "${GREEN}✓ $name${NC}"
-        else
-            echo -e "${RED}✗ $name${NC}"
-            OVERALL_STATUS=1
-        fi
+        echo -e "${YELLOW}Checking code style...${NC}"
+        ruff check python/ || STYLE_EXIT=$?
+        ruff format --check --diff python/ || STYLE_EXIT=$?
     fi
-    echo
-}
+    echo ""
+fi
 
-# Run Ruff linting
-run_check "Ruff Linting" \
-    "ruff check $PYTHON_DIR/" \
-    "ruff check $PYTHON_DIR/ --fix"
+# Type Checking  
+if [ "$RUN_TYPES" = true ]; then
+    echo -e "${BLUE}==================== Type Checking (Pyright) ====================${NC}"
+    pyright python/ || TYPES_EXIT=$?
+    echo ""
+fi
 
-# Run Ruff formatting
-run_check "Ruff Formatting" \
-    "ruff format --check --diff $PYTHON_DIR/" \
-    "ruff format $PYTHON_DIR/"
-
-# Run type checking
-run_check "Type Checking (Pyright)" \
-    "pyright $PYTHON_DIR/" \
-    ""
-
-# Run security checks (unless in fast mode)
-if [[ "$FAST_MODE" == "false" ]]; then
-    run_check "Security Scanning (Bandit)" \
-        "bandit -r $PYTHON_DIR/ -ll" \
-        ""
+# Security Scanning
+if [ "$RUN_SECURITY" = true ]; then
+    echo -e "${BLUE}==================== Security Scan ====================${NC}"
     
-    run_check "Dependency Vulnerabilities (Safety)" \
-        "safety check" \
-        ""
+    echo -e "${YELLOW}Running Bandit security scan...${NC}"
+    bandit -r python/ -f txt || SECURITY_EXIT=$?
+    
+    echo -e "${YELLOW}Running Safety dependency scan...${NC}"
+    safety check || SECURITY_EXIT=$?
+    echo ""
 fi
 
 # Summary
 echo -e "${BLUE}==================== SUMMARY ====================${NC}"
-if [[ $OVERALL_STATUS -eq 0 ]]; then
-    echo -e "${GREEN}All checks passed! 🎉${NC}"
-else
-    echo -e "${RED}Some checks failed. See output above for details.${NC}"
-    echo -e "${YELLOW}Tip: Run with --fix to automatically fix some issues${NC}"
+
+if [ "$RUN_STYLE" = true ]; then
+    if [ $STYLE_EXIT -eq 0 ]; then
+        echo -e "  - Code Style: ${GREEN}✓ Passed${NC}"
+    else
+        echo -e "  - Code Style: ${RED}❌ Failed${NC}"
+    fi
 fi
 
-exit $OVERALL_STATUS
+if [ "$RUN_TYPES" = true ]; then
+    if [ $TYPES_EXIT -eq 0 ]; then
+        echo -e "  - Type Checking: ${GREEN}✓ Passed${NC}"
+    else
+        echo -e "  - Type Checking: ${RED}❌ Failed${NC}"
+    fi
+fi
+
+if [ "$RUN_SECURITY" = true ]; then
+    if [ $SECURITY_EXIT -eq 0 ]; then
+        echo -e "  - Security Scan: ${GREEN}✓ Passed${NC}"
+    else
+        echo -e "  - Security Scan: ${RED}❌ Failed${NC}"
+    fi
+fi
+
+echo ""
+if [ $STYLE_EXIT -eq 0 ] && [ $TYPES_EXIT -eq 0 ] && [ $SECURITY_EXIT -eq 0 ]; then
+    echo -e "${GREEN}All checks passed! 🎉${NC}"
+    exit 0
+else
+    echo -e "${RED}Some checks failed. See output above for details.${NC}"
+    if [ "$SHOULD_FIX" = false ]; then
+        echo -e "${YELLOW}Tip: Run with --fix to automatically fix some issues${NC}"
+    fi
+    exit 1
+fi
