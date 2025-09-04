@@ -55,7 +55,12 @@ class ProfileValidator(QThread):
             self.debug_output.emit(f"Running SSH test: {ssh_command}")
 
             process = subprocess.run(
-                ssh_command, shell=True, capture_output=True, text=True, timeout=10
+                ssh_command,
+                check=False,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             self.debug_output.emit(f"SSH test return code: {process.returncode}")
             if process.stdout:
@@ -76,7 +81,9 @@ class ProfileValidator(QThread):
             dir_check_command = f"ssh -o ConnectTimeout=5 -o BatchMode=yes {self.username}@{self.hostname} 'test -d {self.project_path}'"
             self.debug_output.emit(f"Checking project directory: {dir_check_command}")
 
-            process = subprocess.run(dir_check_command, shell=True, timeout=10)
+            process = subprocess.run(
+                dir_check_command, check=False, shell=True, timeout=10
+            )
             self.debug_output.emit(f"Directory check return code: {process.returncode}")
 
             if process.returncode != 0:
@@ -84,7 +91,7 @@ class ProfileValidator(QThread):
                     self.profile_name,
                     self.resource_id,
                     False,
-                    f"Project directory not found on remote host.",
+                    "Project directory not found on remote host.",
                 )
                 return
 
@@ -92,7 +99,9 @@ class ProfileValidator(QThread):
             write_check_command = f"ssh -o ConnectTimeout=5 -o BatchMode=yes {self.username}@{self.hostname} 'test -w {self.project_path}'"
             self.debug_output.emit(f"Checking write permissions: {write_check_command}")
 
-            process = subprocess.run(write_check_command, shell=True, timeout=10)
+            process = subprocess.run(
+                write_check_command, check=False, shell=True, timeout=10
+            )
             self.debug_output.emit(f"Write check return code: {process.returncode}")
 
             if process.returncode != 0:
@@ -110,6 +119,7 @@ class ProfileValidator(QThread):
 
             process = subprocess.run(
                 gpu_check_command,
+                check=False,
                 shell=True,
                 capture_output=True,
                 text=True,
@@ -183,9 +193,9 @@ class RunProfileWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.parent_window = parent
-        self.profiles: Dict[str, List[Dict[str, Any]]] = (
-            {}
-        )  # profile_name -> list of resources
+        self.profiles: Dict[
+            str, List[Dict[str, Any]]
+        ] = {}  # profile_name -> list of resources
         self.validator_thread = None
         self.setup_ui()
         self.load_profiles()

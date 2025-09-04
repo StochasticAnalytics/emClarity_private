@@ -92,7 +92,7 @@ class GPUContext:
             logger.info(f"Set CUDA device to {device_id}")
         else:
             logger.warning(
-                f"Cannot set device {device_id} (available: 0-{self.device_count-1})"
+                f"Cannot set device {device_id} (available: 0-{self.device_count - 1})"
             )
 
 

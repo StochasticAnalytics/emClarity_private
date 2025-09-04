@@ -17,7 +17,6 @@ from typing import Dict
 
 def check_dependencies(verbose: bool = False) -> Dict[str, bool]:
     """Check all emClarity dependencies and return status."""
-
     # Core dependencies with correct import names
     required_packages = [
         ("numpy", "numpy"),
@@ -109,10 +108,10 @@ def check_dependencies(verbose: bool = False) -> Dict[str, bool]:
 
         print("\nStatus Summary:")
         print(
-            f'  - Core packages: {"✓" if status["core"] else "❌"} {"Ready" if status["core"] else "Missing dependencies"}'
+            f"  - Core packages: {'✓' if status['core'] else '❌'} {'Ready' if status['core'] else 'Missing dependencies'}"
         )
         print(
-            f'  - Dev tools: {"✓" if status["dev"] else "⚠️"} {"Ready" if status["dev"] else "Some missing"}'
+            f"  - Dev tools: {'✓' if status['dev'] else '⚠️'} {'Ready' if status['dev'] else 'Some missing'}"
         )
 
     return status

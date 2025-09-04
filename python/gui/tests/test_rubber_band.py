@@ -3,7 +3,6 @@
 Test script for the rubber band tool
 """
 
-import os
 import sys
 from pathlib import Path
 

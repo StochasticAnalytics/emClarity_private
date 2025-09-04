@@ -28,11 +28,11 @@ except ImportError:
 
 # Explicitly export public API
 __all__ = [
-    "emc_pad_zeros_3d",
+    "HAS_CUDA",
     "ParameterDefinition",
     "UnifiedParameterManager",
+    "emc_pad_zeros_3d",
     "get_parameter_manager",
-    "HAS_CUDA",
 ]
 
 # Add CUDA ops to exports if available
@@ -40,11 +40,11 @@ if HAS_CUDA:
     __all__.append("CudaBasicOps")
 
 __all__ = [
-    "UnifiedParameterManager",
-    "ParameterDefinition",
-    "get_parameter_manager",
-    "emc_pad_zeros_3d",
     "HAS_CUDA",
+    "ParameterDefinition",
+    "UnifiedParameterManager",
+    "emc_pad_zeros_3d",
+    "get_parameter_manager",
 ]
 
 if HAS_CUDA:

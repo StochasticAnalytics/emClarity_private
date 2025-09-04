@@ -3,7 +3,6 @@
 Test script to demonstrate the enhanced emClarity GUI with parameter configuration.
 """
 
-import os
 import sys
 from pathlib import Path
 
@@ -12,8 +11,8 @@ python_root = Path(__file__).parent.parent.parent
 if str(python_root) not in sys.path:
     sys.path.insert(0, str(python_root))
 
+
 from gui.parameters import EmClarityParameters
-from PySide6.QtWidgets import QApplication, QMessageBox
 
 
 def test_parameter_system():
@@ -63,7 +62,7 @@ def test_parameter_system():
     print("-" * 40)
     lines = content.split("\n")
     for i, line in enumerate(lines[:20]):
-        print(f"{i+1:2d}: {line}")
+        print(f"{i + 1:2d}: {line}")
 
     if len(lines) > 20:
         print("...")
@@ -89,9 +88,9 @@ def show_parameter_info():
             if param.default is not None:
                 print(f"    Default: {param.default}")
             if param.required:
-                print(f"    Required: Yes")
+                print("    Required: Yes")
             if param.min_value is not None or param.max_value is not None:
-                range_str = f"    Range: "
+                range_str = "    Range: "
                 if param.min_value is not None:
                     range_str += f"{param.min_value}"
                 else:

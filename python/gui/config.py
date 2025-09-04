@@ -88,14 +88,14 @@ class EmClarityConfig:
 
         if cistem_deps_file.exists():
             try:
-                with open(cistem_deps_file, "r") as f:
+                with open(cistem_deps_file) as f:
                     deps = [line.strip() for line in f if line.strip()]
 
                 for dep in deps:
                     env_var = f"EMC_{dep.upper()}"
                     dep_path = deps_path / f"emC_{dep}"
                     os.environ[env_var] = str(dep_path)
-            except IOError:
+            except OSError:
                 print(
                     f"Warning: Could not read cisTEM dependencies file: {cistem_deps_file}"
                 )

@@ -82,7 +82,7 @@ class GuiContextAnalyzer:
                 return panel_info
 
         except Exception as e:
-            return {"panel": "error", "details": f"Error detecting panel: {str(e)}"}
+            return {"panel": "error", "details": f"Error detecting panel: {e!s}"}
 
         return {"panel": "unknown", "details": "Could not determine active panel"}
 
@@ -124,7 +124,7 @@ class GuiContextAnalyzer:
                     widgets.append(widget_info)
 
         except Exception as e:
-            widgets.append({"error": f"Error finding widgets: {str(e)}"})
+            widgets.append({"error": f"Error finding widgets: {e!s}"})
 
         return widgets
 
@@ -479,7 +479,7 @@ class GuiElementInfoDialog(QDialog):
             text = widget.get("text", "")
             object_name = widget.get("object_name", "")
 
-            line = f"{i+1}. {widget_type}"
+            line = f"{i + 1}. {widget_type}"
             if object_name:
                 line += f" ('{object_name}')"
             if text:
@@ -496,7 +496,6 @@ class GuiElementInfoDialog(QDialog):
 
     def _generate_enhanced_prompt(self, coords_text: str, size_text: str) -> str:
         """Generate an enhanced AI prompt with detailed context."""
-
         # Get click data from debug instrumentation
         click_data_list = debug_instrumentation.get_latest_click_data()
 
@@ -546,20 +545,20 @@ DETAILED CONTEXT ANALYSIS:
 🎯 ACTIVE PANEL:
 - Panel: {active_panel}
 - Panel Class: {panel_class}
-- Source File: {panel_file.split('/')[-1] if '/' in str(panel_file) else panel_file}
+- Source File: {panel_file.split("/")[-1] if "/" in str(panel_file) else panel_file}
 
 🔍 SELECTION ANALYSIS:
-- UI Element Type: {ui_type.replace('_', ' ').title()}
-- Position: {position.replace('-', ' ').title()}
+- UI Element Type: {ui_type.replace("_", " ").title()}
+- Position: {position.replace("-", " ").title()}
 - Widgets Found: {len(widget_types)}
-- Widget Types: {', '.join(set(widget_types)) if widget_types else 'None detected'}
+- Widget Types: {", ".join(set(widget_types)) if widget_types else "None detected"}
 
 📋 WIDGET DETAILS:
 {self._format_widgets_summary(widgets)}
 
 🎨 VISUAL CHARACTERISTICS:
-- Aspect Ratio: {visual.get('aspect_ratio', 'unknown')}
-- Area Size: {visual.get('area_size', 'unknown')}
+- Aspect Ratio: {visual.get("aspect_ratio", "unknown")}
+- Area Size: {visual.get("area_size", "unknown")}
 - Likely Purpose: {self._guess_element_purpose(ui_type, widget_types)}
 
 RUBBER BAND TOOL USAGE:
@@ -577,7 +576,7 @@ The emClarity GUI uses a modern PySide6-based interface with:
 - Professional menu bar and consistent styling
 
 ANALYSIS ASSISTANCE NEEDED:
-- Layout improvements for the {ui_type.replace('_', ' ')} area
+- Layout improvements for the {ui_type.replace("_", " ")} area
 - Widget spacing and alignment optimization
 - Visual hierarchy and styling enhancements
 - Functionality improvements for {active_panel} panel
@@ -586,8 +585,8 @@ Please confirm you understand the context and provide specific recommendations f
 
 CODE CONTEXT:
 - Active panel source: {panel_file}
-- Main window class: {code_context.get('main_window_class', 'unknown')}
-- Module: {code_context.get('module_name', 'unknown')}
+- Main window class: {code_context.get("main_window_class", "unknown")}
+- Module: {code_context.get("module_name", "unknown")}
 """
 
         return enhanced_prompt
@@ -629,9 +628,9 @@ No recent element click captured. To capture element context:
         )
 
         section = f"""🖱️ ELEMENT INTERACTION DATA:
-- Last Clicked Element: {widget_name if widget_name != 'unnamed' else widget_class}
+- Last Clicked Element: {widget_name if widget_name != "unnamed" else widget_class}
 - Widget Type: {widget_class}
-- Widget Text: {widget_text[:100] + '...' if len(widget_text) > 100 else widget_text or 'no text'}
+- Widget Text: {widget_text[:100] + "..." if len(widget_text) > 100 else widget_text or "no text"}
 - Parent Widget: {widget_parent}
 - Click Position: {pos_text}
 - Click Time: {formatted_time}
@@ -712,7 +711,7 @@ No recent element click captured. To capture element context:
         text_filepath = temp_dir / text_filename
 
         with open(text_filepath, "w") as f:
-            f.write(f"emClarity GUI Analysis Prompt\n")
+            f.write("emClarity GUI Analysis Prompt\n")
             f.write(f"Generated: {data['timestamp']}\n")
             f.write(
                 f"Coordinates: ({data['selection_coordinates']['x']}, {data['selection_coordinates']['y']})\n"
@@ -720,10 +719,10 @@ No recent element click captured. To capture element context:
             f.write(
                 f"Size: {data['selection_coordinates']['width']} x {data['selection_coordinates']['height']}\n"
             )
-            f.write(f"\n{'-'*50}\n\n")
+            f.write(f"\n{'-' * 50}\n\n")
             f.write(data["prompt_text"])
 
-        print(f"Prompt saved to:")
+        print("Prompt saved to:")
         print(f"  JSON: {filepath}")
         print(f"  Text: {text_filepath}")
 

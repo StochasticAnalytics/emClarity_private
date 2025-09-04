@@ -16,7 +16,6 @@ if str(python_root) not in sys.path:
 
 from parameters import (
     ParameterDefinition,
-    UnifiedParameterManager,
     get_parameter_manager,
 )
 

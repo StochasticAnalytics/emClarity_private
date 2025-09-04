@@ -555,6 +555,7 @@ class TiltSeriesAssetsWidget(QWidget):
             # Run header -size command
             result = subprocess.run(
                 ["header", "-size", stack_file],
+                check=False,
                 capture_output=True,
                 text=True,
                 timeout=30,
@@ -589,6 +590,7 @@ class TiltSeriesAssetsWidget(QWidget):
             # Run extracttilts command
             result = subprocess.run(
                 ["extracttilts", stack_file, tilt_file],
+                check=False,
                 capture_output=True,
                 text=True,
                 timeout=60,
@@ -627,7 +629,7 @@ class TiltSeriesAssetsWidget(QWidget):
             return False
 
         try:
-            with open(tilt_file, "r") as f:
+            with open(tilt_file) as f:
                 lines = f.readlines()
                 # Count non-empty lines
                 tilt_lines = len([line for line in lines if line.strip()])
@@ -743,7 +745,7 @@ class TiltSeriesAssetsWidget(QWidget):
             asset_item.setForeground(4, QColor(139, 0, 0))
 
         # Pixel Size column
-        pixel_size = asset_data.get("pixel_size", None)
+        pixel_size = asset_data.get("pixel_size")
         if pixel_size is not None and pixel_size > 0:
             asset_item.setText(5, f"{pixel_size:.3f}")
             asset_item.setForeground(5, QColor(0, 0, 0))  # Black for valid pixel size
@@ -879,7 +881,7 @@ class TiltSeriesAssetsWidget(QWidget):
                 if tilt_file:
                     print(f"  Tilt file not found or invalid: {tilt_file}")
                 else:
-                    print(f"  No tilt file specified")
+                    print("  No tilt file specified")
 
             # Update status based on validation results
             if not os.path.isfile(stack_file):
@@ -1140,7 +1142,7 @@ class TiltSeriesAssetsWidget(QWidget):
                 if tilt_file:
                     print(f"  Tilt file not found or invalid: {tilt_file}")
                 else:
-                    print(f"  No tilt file specified")
+                    print("  No tilt file specified")
 
             # Update status based on validation results
             if not os.path.isfile(stack_file):
@@ -1489,7 +1491,9 @@ class TiltSeriesAssetsWidget(QWidget):
             validation_color = (
                 "darkgreen"
                 if total_validated == asset_count
-                else "darkorange" if total_validated > 0 else "darkred"
+                else "darkorange"
+                if total_validated > 0
+                else "darkred"
             )
             info_lines.append(
                 f"<b>Validated:</b> <span style='color: {validation_color};'>{total_validated}/{asset_count}</span>"
@@ -1499,7 +1503,9 @@ class TiltSeriesAssetsWidget(QWidget):
             tilt_color = (
                 "darkgreen"
                 if total_with_tilt == asset_count
-                else "darkorange" if total_with_tilt > 0 else "darkred"
+                else "darkorange"
+                if total_with_tilt > 0
+                else "darkred"
             )
             info_lines.append(
                 f"<b>With Tilt Files:</b> <span style='color: {tilt_color};'>{total_with_tilt}/{asset_count}</span>"

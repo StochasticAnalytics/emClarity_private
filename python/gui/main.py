@@ -68,7 +68,7 @@ class CommandRunner(QThread):
             self.finished_signal.emit(process.returncode)
 
         except Exception as e:
-            self.error_ready.emit(f"Failed to execute command: {str(e)}")
+            self.error_ready.emit(f"Failed to execute command: {e!s}")
             self.finished_signal.emit(-1)
 
 
@@ -425,9 +425,7 @@ class EmClarityWindow(QMainWindow):
                 current_panel.handle_action_type_change(button_id)
 
             # Handle other panel types - show under development panels
-            elif panel_type == "overview":
-                self._show_under_development_for_button(panel_type, button_id)
-            elif panel_type == "experimental":
+            elif panel_type == "overview" or panel_type == "experimental":
                 self._show_under_development_for_button(panel_type, button_id)
 
         # Schedule state save
@@ -950,14 +948,13 @@ class EmClarityWindow(QMainWindow):
                 overview_panel.set_version_info(version_text)
 
         except Exception as e:
-            error_text = f"Configuration Error: {str(e)}"
+            error_text = f"Configuration Error: {e!s}"
             if hasattr(self, "sidebar_widget"):
                 overview_panel = self.sidebar_widget.get_overview_panel()
                 overview_panel.set_version_info(error_text)
 
     def handle_workflow_step(self, step_id: str, tab_name: str):
         """Handle workflow step selection - switch to appropriate tab."""
-        pass
 
     def run_emclarity_command(
         self, command: str, args: List[str] = None, param_values: Dict[str, Any] = None
@@ -1010,7 +1007,7 @@ class EmClarityWindow(QMainWindow):
             self.command_runner.start()
 
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to run command: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to run command: {e!s}")
             self.progress_bar.setVisible(False)
 
     def on_command_output(self, output: str):

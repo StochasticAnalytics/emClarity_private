@@ -25,12 +25,12 @@ def test_config():
     print("Testing emClarity configuration...")
     try:
         config = get_default_config()
-        print(f"✓ Configuration loaded successfully")
+        print("✓ Configuration loaded successfully")
         print(f"  emClarity root: {config.emclarity_root}")
 
         # Test environment info
         env_info = config.get_environment_info()
-        print(f"✓ Environment info retrieved")
+        print("✓ Environment info retrieved")
         for key, value in env_info.items():
             print(f"  {key}: {value}")
 

@@ -12,7 +12,6 @@ try:
     # Set rubber band mode for testing
     import debug_instrumentation
     from debug_instrumentation import (
-        _CLICK_LOGGING_ENABLED,
         _QT_AVAILABLE,
         _RUBBER_BAND_MODE,
         install_global_event_filter,
@@ -20,7 +19,6 @@ try:
         toggle_click_logging,
     )
     from PySide6.QtCore import Qt
-    from PySide6.QtGui import QKeySequence
     from PySide6.QtWidgets import (
         QApplication,
         QLabel,

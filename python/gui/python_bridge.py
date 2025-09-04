@@ -7,7 +7,7 @@ without creating tight coupling between the GUI and internal Python modules.
 
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Union
 
 from masking import emc_pad_zeros_3d
 from metaData import ParameterConverter

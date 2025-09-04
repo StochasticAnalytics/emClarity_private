@@ -67,7 +67,6 @@ def emc_pad_zeros_3d(
         ValueError: If parameters are invalid
         RuntimeError: If GPU method requested but CuPy not available
     """
-
     # Validate GPU availability
     if method == "GPU" and not HAS_CUPY:
         raise RuntimeError(
@@ -192,9 +191,9 @@ def _parse_extrap_value(extrap_val, image):
     """Parse extrapolation value into random flag and parameters."""
     if extrap_val is None:
         return False, 0.0, 0.0
-    elif extrap_val == "random":
-        return True, float(np.mean(image)), float(np.std(image))
-    elif isinstance(extrap_val, str) and extrap_val.lower() == "random":
+    elif extrap_val == "random" or (
+        isinstance(extrap_val, str) and extrap_val.lower() == "random"
+    ):
         return True, float(np.mean(image)), float(np.std(image))
     else:
         return False, 0.0, 0.0
@@ -207,11 +206,10 @@ def _create_padded_array(shape, method, dtype, do_random, mean_val, std_val):
             padded = cp.random.randn(*shape, dtype=dtype) * std_val + mean_val
         else:
             padded = cp.zeros(shape, dtype=dtype)
+    elif do_random:
+        padded = np.random.randn(*shape).astype(dtype) * std_val + mean_val
     else:
-        if do_random:
-            padded = np.random.randn(*shape).astype(dtype) * std_val + mean_val
-        else:
-            padded = np.zeros(shape, dtype=dtype)
+        padded = np.zeros(shape, dtype=dtype)
 
     return padded
 

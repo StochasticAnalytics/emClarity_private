@@ -48,7 +48,7 @@ def main():
             os.environ["QT_QPA_PLATFORM"] = "wayland"
 
     try:
-        import gui.main as main
+        from gui import main
 
         # Pass the arguments to main
         if args.rubber_band_mode:

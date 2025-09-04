@@ -20,6 +20,7 @@ Read these files for complete context:
 - **Never replace real panels/widgets with dummy versions** without user approval
 - **Never alter production database** - always work on copies
 - **All temporary files must go in /tmp/copilot-test/** - never in project directories
+- **All development scripts (testing, migration, etc.) must go in /tmp/agent-tmp/** - never in project directories
 - Start with simplest solutions and explain if scope needs expansion
 
 ### Python Development

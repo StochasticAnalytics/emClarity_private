@@ -6,5 +6,5 @@ This package contains Python conversions of emClarity's image masking and paddin
 
 from .emc_pad_zeros_3d import BH_padZeros3d, emc_pad_zeros_3d
 
-__all__ = ["emc_pad_zeros_3d", "BH_padZeros3d"]
+__all__ = ["BH_padZeros3d", "emc_pad_zeros_3d"]
 __version__ = "1.0.0"

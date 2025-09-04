@@ -4,9 +4,8 @@ Test the new F1 toggle click logging system.
 """
 
 import sys
-import time
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
     QApplication,
     QLabel,
@@ -25,7 +24,6 @@ try:
         init_rubber_band_debug,
         is_click_logging_enabled,
         setup_click_logging_shortcut,
-        toggle_click_logging,
     )
 
     class TestWindow(QMainWindow):

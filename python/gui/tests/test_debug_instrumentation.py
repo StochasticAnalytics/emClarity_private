@@ -3,7 +3,6 @@
 Test script for debug instrumentation system.
 """
 
-import os
 import sys
 from pathlib import Path
 
@@ -12,7 +11,7 @@ python_root = Path(__file__).parent.parent.parent
 if str(python_root) not in sys.path:
     sys.path.insert(0, str(python_root))
 
-import gui.debug_instrumentation as debug_instrumentation
+from gui import debug_instrumentation
 
 
 def test_debug_instrumentation():

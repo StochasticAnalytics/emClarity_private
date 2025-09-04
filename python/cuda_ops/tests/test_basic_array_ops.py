@@ -327,9 +327,9 @@ class TestPerformance(unittest.TestCase):
         cp.cuda.Device().synchronize()
         cupy_time = (time.time() - start_time) / 10
 
-        print(f"CUDA kernel: {cuda_time*1000:.2f} ms")
-        print(f"CuPy reference: {cupy_time*1000:.2f} ms")
-        print(f"Speedup: {cupy_time/cuda_time:.2f}x")
+        print(f"CUDA kernel: {cuda_time * 1000:.2f} ms")
+        print(f"CuPy reference: {cupy_time * 1000:.2f} ms")
+        print(f"Speedup: {cupy_time / cuda_time:.2f}x")
 
         # Verify correctness
         np.testing.assert_allclose(
@@ -362,9 +362,9 @@ class TestPerformance(unittest.TestCase):
         cp.cuda.Device().synchronize()
         cupy_time = (time.time() - start_time) / 10
 
-        print(f"CUDA kernel: {cuda_time*1000:.2f} ms")
-        print(f"CuPy reference: {cupy_time*1000:.2f} ms")
-        print(f"Speedup: {cupy_time/cuda_time:.2f}x")
+        print(f"CUDA kernel: {cuda_time * 1000:.2f} ms")
+        print(f"CuPy reference: {cupy_time * 1000:.2f} ms")
+        print(f"Speedup: {cupy_time / cuda_time:.2f}x")
 
         # Verify correctness
         np.testing.assert_allclose(

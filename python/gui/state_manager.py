@@ -372,7 +372,7 @@ class GUIStateManager:
 
     def import_state(self, import_path: str):
         """Import state from a file."""
-        with open(import_path, "r") as f:
+        with open(import_path) as f:
             state = json.load(f)
 
         # Clear existing state

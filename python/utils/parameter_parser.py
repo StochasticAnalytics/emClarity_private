@@ -64,7 +64,7 @@ def _parse_basic_parameters(parameter_file: Path) -> Dict[str, Any]:
     }
 
     try:
-        with open(parameter_file, "r") as f:
+        with open(parameter_file) as f:
             lines = f.readlines()
     except Exception as e:
         raise ValueError(f"Error reading parameter file: {e}")
@@ -100,7 +100,6 @@ def _parse_basic_parameters(parameter_file: Path) -> Dict[str, Any]:
 
 def _validate_and_set_defaults(params: Dict[str, Any]) -> Dict[str, Any]:
     """Validate required parameters and set defaults."""
-
     # Check required parameters
     required = [
         "PIXEL_SIZE",

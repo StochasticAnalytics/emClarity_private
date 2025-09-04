@@ -11,7 +11,7 @@ import os
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Optional
 
 try:
     from PySide6.QtCore import QEvent, QObject, Qt
@@ -40,7 +40,6 @@ class ClickLoggingFilter(QObject):
             event.type() == QEvent.Type.MouseButtonPress
             and event.button() == Qt.MouseButton.LeftButton
         ):
-
             print(f"�️ Mouse click detected on {type(obj).__name__}")
 
             # Only log if we're in rubber band mode AND click logging is enabled
@@ -129,7 +128,7 @@ class ClickLoggingFilter(QObject):
             existing_data = []
             if _DEBUG_DATA_FILE.exists():
                 try:
-                    with open(_DEBUG_DATA_FILE, "r") as f:
+                    with open(_DEBUG_DATA_FILE) as f:
                         content = f.read().strip()
                         if content:
                             existing_data = json.loads(content)
@@ -171,11 +170,11 @@ def init_rubber_band_debug(enabled: bool = False):
         print("🔧 INIT: Installing global event filter...")
         # Create event filter but don't install it yet - only install when logging is enabled
         _CLICK_FILTER = ClickLoggingFilter()
-        print(f"🔧 INIT: Event filter created (will be installed on L key press)")
+        print("🔧 INIT: Event filter created (will be installed on L key press)")
 
-        print(f"🔍 GUI Debug Instrumentation ACTIVE")
+        print("🔍 GUI Debug Instrumentation ACTIVE")
         print(f"📝 Click data will be saved to: {_DEBUG_DATA_FILE}")
-        print(f"🔑 Press L to toggle click logging (currently OFF)")
+        print("🔑 Press L to toggle click logging (currently OFF)")
     else:
         print(
             f"🔧 INIT: Not initializing debug - enabled={enabled}, QT_AVAILABLE={QT_AVAILABLE}"
@@ -245,7 +244,7 @@ def get_latest_click_data() -> Optional[list]:
 
     try:
         if _DEBUG_DATA_FILE.exists():
-            with open(_DEBUG_DATA_FILE, "r") as f:
+            with open(_DEBUG_DATA_FILE) as f:
                 content = f.read().strip()
                 if content:
                     data = json.loads(content)

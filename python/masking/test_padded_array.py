@@ -15,6 +15,7 @@ Date: September 2025
 import time
 
 import numpy as np
+
 from masking.emc_pad_zeros_3d import emc_pad_zeros_3d
 from masking.padded_array import PaddedArray, create_padded_array_once
 
@@ -54,7 +55,7 @@ def test_single_use_mode():
     cpu_time = time.perf_counter() - start_time
 
     print(f"CPU result shape: {result_cpu.shape}")
-    print(f"CPU time: {cpu_time*1000:.2f}ms")
+    print(f"CPU time: {cpu_time * 1000:.2f}ms")
 
     # Test GPU single-use if available
     if HAS_CUPY:
@@ -66,8 +67,8 @@ def test_single_use_mode():
         gpu_time = time.perf_counter() - start_time
 
         print(f"GPU result shape: {result_gpu.shape}")
-        print(f"GPU time: {gpu_time*1000:.2f}ms")
-        print(f"GPU speedup: {cpu_time/gpu_time:.1f}x")
+        print(f"GPU time: {gpu_time * 1000:.2f}ms")
+        print(f"GPU speedup: {cpu_time / gpu_time:.1f}x")
 
         # Verify results match
         if np.allclose(result_cpu, cp.asnumpy(result_gpu)):
@@ -129,10 +130,10 @@ def test_persistent_mode():
         op_time = time.perf_counter() - start_time
         times.append(op_time)
 
-        print(f"Operation {i+1}: {op_time*1000:.2f}ms, shape={result.shape}")
+        print(f"Operation {i + 1}: {op_time * 1000:.2f}ms, shape={result.shape}")
 
     avg_time = np.mean(times[1:])  # Exclude first operation (includes allocation)
-    print(f"Average reuse time: {avg_time*1000:.2f}ms")
+    print(f"Average reuse time: {avg_time * 1000:.2f}ms")
 
     # Test getting reference to stored array
     ref = padder.get_stored_array_reference()
@@ -231,9 +232,7 @@ def benchmark_vs_original():
         image = np.random.rand(*image_shape).astype(np.float32)
 
         start_time = time.perf_counter()
-        _result_orig = emc_pad_zeros_3d(
-            image, pad_low, pad_top, method="CPU"
-        )  # noqa: F841
+        _result_orig = emc_pad_zeros_3d(image, pad_low, pad_top, method="CPU")
         orig_time = time.perf_counter() - start_time
         original_times.append(orig_time)
 
@@ -245,9 +244,7 @@ def benchmark_vs_original():
         image = np.random.rand(*image_shape).astype(np.float32)
 
         start_time = time.perf_counter()
-        _result_single = create_padded_array_once(
-            image, pad_low, pad_top, method="CPU"
-        )  # noqa: F841
+        _result_single = create_padded_array_once(image, pad_low, pad_top, method="CPU")
         single_time = time.perf_counter() - start_time
         single_times.append(single_time)
 
@@ -271,7 +268,7 @@ def benchmark_vs_original():
             padder.zero_stored_array()
 
         start_time = time.perf_counter()
-        _result_persistent = padder.pad_image(image, pad_low, pad_top)  # noqa: F841
+        _result_persistent = padder.pad_image(image, pad_low, pad_top)
         persistent_time = time.perf_counter() - start_time
         persistent_times.append(persistent_time)
 
@@ -280,10 +277,10 @@ def benchmark_vs_original():
     )  # Exclude first (includes allocation)
 
     # Report results
-    print(f"Original function:     {avg_orig_time*1000:.2f}ms")
-    print(f"Single-use PaddedArray: {avg_single_time*1000:.2f}ms")
-    print(f"Persistent PaddedArray: {avg_persistent_time*1000:.2f}ms")
-    print(f"Persistent speedup:    {avg_orig_time/avg_persistent_time:.1f}x")
+    print(f"Original function:     {avg_orig_time * 1000:.2f}ms")
+    print(f"Single-use PaddedArray: {avg_single_time * 1000:.2f}ms")
+    print(f"Persistent PaddedArray: {avg_persistent_time * 1000:.2f}ms")
+    print(f"Persistent speedup:    {avg_orig_time / avg_persistent_time:.1f}x")
 
     # Verify correctness
     test_image = np.random.rand(*image_shape).astype(np.float32)

@@ -226,12 +226,11 @@ class EnhancedParameterWidget(QWidget):
                 ):
                     min_val, max_val = self.parameter.vector_bounds[i]
                     widget.setRange(min_val, max_val)
+                # Default range
+                elif isinstance(widget, QSpinBox):
+                    widget.setRange(-1000000, 1000000)
                 else:
-                    # Default range
-                    if isinstance(widget, QSpinBox):
-                        widget.setRange(-1000000, 1000000)
-                    else:
-                        widget.setRange(-1e10, 1e10)
+                    widget.setRange(-1e10, 1e10)
 
                 widget.valueChanged.connect(lambda: self.value_changed.emit())
                 self.input_widgets.append(widget)
@@ -378,7 +377,7 @@ class EnhancedParameterWidget(QWidget):
                 bounds_str = "Element bounds: "
                 bounds_list = []
                 for i, (min_val, max_val) in enumerate(self.parameter.vector_bounds):
-                    bounds_list.append(f"[{i+1}]: {min_val}-{max_val}")
+                    bounds_list.append(f"[{i + 1}]: {min_val}-{max_val}")
                 bounds_str += ", ".join(bounds_list)
                 tooltip_parts.append(bounds_str)
 
@@ -918,7 +917,7 @@ class ParameterConfigPanel(QWidget):
             except Exception as e:
                 from PySide6.QtWidgets import QMessageBox
 
-                QMessageBox.critical(self, "Error", f"Failed to save file:\n{str(e)}")
+                QMessageBox.critical(self, "Error", f"Failed to save file:\n{e!s}")
 
 
 class EnhancedTab(QWidget):
@@ -1037,7 +1036,6 @@ class EnhancedTab(QWidget):
     def save_panel_states(self):
         """Save current panel expansion states."""
         # This will be called by the main window to save to database
-        pass
 
     def restore_panel_states(self, expanded_panels: list):
         """Restore panel expansion states."""

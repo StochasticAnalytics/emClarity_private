@@ -43,11 +43,11 @@ class ProjectDialog(QDialog):
         if not RECENT_PROJECTS_FILE.exists():
             return
         try:
-            with open(RECENT_PROJECTS_FILE, "r") as f:
+            with open(RECENT_PROJECTS_FILE) as f:
                 recent_projects = json.load(f)
             for project in recent_projects:
                 self.list_widget.addItem(project)
-        except (json.JSONDecodeError, IOError):
+        except (OSError, json.JSONDecodeError):
             # Handle corrupted or empty file
             pass
 
@@ -77,9 +77,9 @@ class ProjectDialog(QDialog):
         recent_projects = []
         if RECENT_PROJECTS_FILE.exists():
             try:
-                with open(RECENT_PROJECTS_FILE, "r") as f:
+                with open(RECENT_PROJECTS_FILE) as f:
                     recent_projects = json.load(f)
-            except (json.JSONDecodeError, IOError):
+            except (OSError, json.JSONDecodeError):
                 pass
 
         if project_path in recent_projects:

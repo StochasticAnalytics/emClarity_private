@@ -264,7 +264,7 @@ class EmClarityMetadataConverter:
             columns = self.geometry_columns
         else:
             # Generate generic column names
-            columns = [f"col_{i+1}" for i in range(n_cols)]
+            columns = [f"col_{i + 1}" for i in range(n_cols)]
             logger.warning(
                 f"Unexpected number of columns ({n_cols}) for geometry data, using generic names"
             )
@@ -340,7 +340,7 @@ class EmClarityMetadataConverter:
             columns = self.tilt_geometry_columns
         else:
             # Generate generic column names
-            columns = [f"col_{i+1}" for i in range(n_cols)]
+            columns = [f"col_{i + 1}" for i in range(n_cols)]
             logger.warning(
                 f"Unexpected number of columns ({n_cols}) for tilt geometry, using generic names"
             )
@@ -481,7 +481,7 @@ class EmClarityMetadataConverter:
                     tilt_dir.mkdir(exist_ok=True)
 
                     # Convert tomo list
-                    tomo_list = getattr(tilt_data, "tomoList")
+                    tomo_list = tilt_data.tomoList
                     if isinstance(tomo_list, str):
                         tomo_list = [tomo_list]
                     elif hasattr(tomo_list, "__iter__"):

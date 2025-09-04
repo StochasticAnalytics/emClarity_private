@@ -54,7 +54,6 @@ def emc_run_auto_align(
         ValueError: If parameters are invalid
         RuntimeError: If alignment processes fail
     """
-
     # Validate inputs
     if not Path(parameter_file).exists():
         raise FileNotFoundError(f"Parameter file not found: {parameter_file}")
@@ -320,7 +319,7 @@ def _save_modified_stack(input_mrc: MRCImage, paths: dict, header_info: dict) ->
     """Save modified stack with skip_tilts applied."""
     SAVE_IMG(
         input_mrc,
-        f'fixedStacks/{paths["base_name"]}.fixed',
+        f"fixedStacks/{paths['base_name']}.fixed",
         pixel_size=header_info["pixel_header"],
         origin=header_info["origin_header"],
     )
@@ -331,7 +330,7 @@ def _create_stack_symlink(stack_in: Union[str, Path], paths: dict) -> None:
     os.chdir("fixedStacks")
     try:
         subprocess.run(
-            ["ln", "-sf", f"../{stack_in}", f'{paths["base_name"]}.fixed'], check=True
+            ["ln", "-sf", f"../{stack_in}", f"{paths['base_name']}.fixed"], check=True
         )
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"Failed to create symbolic link: {e}")
@@ -543,11 +542,11 @@ def _run_first_iteration_alignment(
     cmd = [
         "tiltxcorr",
         "-InputFile",
-        f'../../fixedStacks/{paths["base_name"]}.fixed.preprocessed',
+        f"../../fixedStacks/{paths['base_name']}.fixed.preprocessed",
         "-OutputFile",
         f"{p_name}.prexf",
         "-TiltFile",
-        f'../../fixedStacks/{paths["base_name"]}.rawtlt',
+        f"../../fixedStacks/{paths['base_name']}.rawtlt",
         "-FilterSigma1",
         "0.001",
         "-FilterRadius2",
@@ -562,9 +561,7 @@ def _run_first_iteration_alignment(
     ]
 
     try:
-        subprocess.run(
-            cmd, check=True, capture_output=True, text=True, timeout=1800
-        )
+        subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=1800)
         logger.info("tiltxcorr completed successfully")
     except subprocess.CalledProcessError as e:
         logger.error(f"tiltxcorr failed: {e}")
@@ -583,7 +580,7 @@ def _run_first_iteration_alignment(
     # Copy tilt angles
     import shutil
 
-    shutil.copy(f'../../fixedStacks/{paths["base_name"]}.rawtlt', f"{p_name}.tlt")
+    shutil.copy(f"../../fixedStacks/{paths['base_name']}.rawtlt", f"{p_name}.tlt")
 
 
 def _run_subsequent_iteration_alignment(
@@ -609,7 +606,7 @@ def _run_subsequent_iteration_alignment(
 
     # Setup file links
     shutil.copy(
-        f'../../fixedStacks/{paths["base_name"]}.fixed.preprocessed', f"{p_name}.st"
+        f"../../fixedStacks/{paths['base_name']}.fixed.preprocessed", f"{p_name}.st"
     )
 
     prev_iter = iteration - 1
@@ -661,7 +658,7 @@ def _run_subsequent_iteration_alignment(
         raise RuntimeError(f"newstack failed: {e}")
 
     # Create prealignment transform file
-    with open(f"{p_name}.rawtlt", "r") as f:
+    with open(f"{p_name}.rawtlt") as f:
         n_prjs = len(f.readlines())
 
     with open(f"{p_name}.prexg", "w") as f:
@@ -763,7 +760,6 @@ def _run_tiltalign(
     pt_size_y: int,
 ) -> None:
     """Run tiltalign for fiducial-based alignment."""
-
     base_cmd = [
         "tiltalign",
         "-ModelFile",
@@ -1140,8 +1136,8 @@ def _run_bead_refinement(
                 [
                     "ln",
                     "-sf",
-                    f'../fixedStacks/{paths["base_name"]}.{ext_item}',
-                    f'{paths["base_name"]}.{ext_item}',
+                    f"../fixedStacks/{paths['base_name']}.{ext_item}",
+                    f"{paths['base_name']}.{ext_item}",
                 ],
                 check=True,
             )
@@ -1150,8 +1146,8 @@ def _run_bead_refinement(
             [
                 "ln",
                 "-sf",
-                f'../fixedStacks/{paths["base_name"]}.fixed.preprocessed',
-                f'{paths["base_name"]}.fixed',
+                f"../fixedStacks/{paths['base_name']}.fixed.preprocessed",
+                f"{paths['base_name']}.fixed",
             ],
             check=True,
         )
@@ -1193,7 +1189,6 @@ def _cleanup_files(fixed_name: str) -> None:
 
 def main():
     """Command line interface for emc_run_auto_align."""
-
     parser = argparse.ArgumentParser(
         description="Run emClarity auto tilt-series alignment with integrated patch tracking and bead finding",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,

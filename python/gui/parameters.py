@@ -8,7 +8,7 @@ and provides the EmClarityParameters class for the GUI.
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from parameter_loader import ParameterConfig, parameter_config
+from parameter_loader import parameter_config
 
 
 @dataclass

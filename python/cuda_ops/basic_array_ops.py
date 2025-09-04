@@ -10,7 +10,7 @@ Date: September 2025
 
 import logging
 from pathlib import Path
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import cupy as cp
 import numpy as np
@@ -38,7 +38,7 @@ class BasicArrayOps:
         try:
             # First load the utility functions
             utils_file = Path(__file__).parent / "emc_cuda_utils.cuh"
-            with open(utils_file, "r") as f:
+            with open(utils_file) as f:
                 utils_content = f.read()
 
             # Remove the header guards and includes to get just the function definitions
@@ -54,7 +54,7 @@ class BasicArrayOps:
                 raise FileNotFoundError(f"CUDA file not found: {cu_file_path}")
 
             # Read the CUDA source code
-            with open(cu_file_path, "r") as f:
+            with open(cu_file_path) as f:
                 cuda_source = f.read()
 
             # Replace the include with inline content

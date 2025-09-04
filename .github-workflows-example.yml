@@ -1,0 +1,94 @@
+# Example GitHub Actions workflow for the new linting setup
+# This replaces the old black/isort/flake8/mypy workflow
+
+name: Code Quality
+
+on:
+  push:
+    branches: [ main, develop, ctf3d_work ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  lint-and-type-check:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.8, 3.9, "3.10", "3.11"]
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install ruff pyright bandit[toml] safety
+        pip install -e .[dev]
+    
+    # Fast linting and formatting with Ruff
+    - name: Lint with Ruff
+      run: |
+        # Check for lint issues
+        ruff check python/ --output-format=github
+        # Check formatting
+        ruff format python/ --check
+    
+    # Static type checking with Pyright
+    - name: Type check with Pyright
+      run: pyright python/
+    
+    # Security linting with Bandit
+    - name: Security check with Bandit
+      run: bandit -r python/ -c pyproject.toml -f json -o bandit-report.json
+      continue-on-error: true
+    
+    # Dependency vulnerability scanning with Safety
+    - name: Check dependencies with Safety
+      run: safety check --json --output safety-report.json
+      continue-on-error: true
+    
+    # Upload security reports as artifacts
+    - name: Upload security reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: security-reports-${{ matrix.python-version }}
+        path: |
+          bandit-report.json
+          safety-report.json
+
+  # Optional: Run more comprehensive checks occasionally
+  comprehensive-analysis:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+    
+    - name: Install analysis tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install ruff pyright bandit[toml] safety pylint radon
+        pip install -e .[dev]
+    
+    - name: Run comprehensive analysis
+      run: |
+        # Ruff with all rules enabled
+        ruff check python/ --select ALL --ignore D203,D212,PLR0913,PLR2004,T201
+        
+        # Code complexity analysis
+        radon cc python/ -a -nc
+        radon mi python/ -nc
+        
+        # Deep code quality analysis with Pylint (advisory)
+        pylint python/ --reports=y --exit-zero || true

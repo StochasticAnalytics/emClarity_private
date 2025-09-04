@@ -601,11 +601,11 @@ def test_mrc_image_basic():
 
         # Test save with pixel size
         SAVE_IMG(img, test_save_file, pixel_size=1.5)
-        print(f"   Saved with pixel size 1.5 Å")
+        print("   Saved with pixel size 1.5 Å")
 
         # Test save with pixel size array and centered origin
         SAVE_IMG(img, test_save_file, pixel_size=[1.0, 1.5, 2.0], origin="center")
-        print(f"   Saved with anisotropic pixel sizes and centered origin")
+        print("   Saved with anisotropic pixel sizes and centered origin")
 
         # Verify saved file can be read back
         img_loaded = MRCImage(test_save_file)

@@ -17,7 +17,6 @@ sys.path.insert(0, "/sa_shared/git/emClarity/gui")
 
 def test_debug_file_behavior():
     """Test that debug files are appended to, not overwritten"""
-
     # Clean up any existing debug files
     debug_dir = Path("/tmp/emclarity_gui_debug")
     if debug_dir.exists():
@@ -64,7 +63,7 @@ def test_debug_file_behavior():
         debug_files = list(debug_dir.glob("click_debug_*.json"))
         if debug_files:
             latest_file = max(debug_files, key=lambda f: f.stat().st_mtime)
-            with open(latest_file, "r") as f:
+            with open(latest_file) as f:
                 data = json.load(f)
 
             if isinstance(data, list):

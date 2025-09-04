@@ -11,11 +11,7 @@ Date: September 2025
 import os
 import subprocess
 
-import numpy
-import pybind11
-from pybind11 import get_cmake_dir
-from pybind11.setup_helpers import Pybind11Extension, build_ext
-from setuptools import Extension, find_packages, setup
+from setuptools import find_packages, setup
 
 
 # Check for CUDA availability
@@ -88,7 +84,7 @@ def create_cuda_extension():
     # For now, we're using CuPy RawKernel so no actual compilation needed
     # This setup is prepared for future Pybind11 CUDA extensions
 
-    print(f"CUDA setup prepared:")
+    print("CUDA setup prepared:")
     print(f"  Include path: {cuda_include}")
     print(f"  Library path: {cuda_lib}")
 

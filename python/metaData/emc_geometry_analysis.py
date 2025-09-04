@@ -21,13 +21,13 @@ import sys
 from pathlib import Path
 from typing import List, Optional, Union
 
-import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import scipy.io
 import seaborn as sns
 import starfile
+from matplotlib import gridspec
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -553,7 +553,7 @@ class EmClarityGeometryAnalyzer:
 
         # Create individual tomogram plots
         for i, tomo in enumerate(tomos_to_plot):
-            logger.info(f"Processing {i+1}/{len(tomos_to_plot)}: {tomo}")
+            logger.info(f"Processing {i + 1}/{len(tomos_to_plot)}: {tomo}")
 
             try:
                 fig = self.create_tomogram_summary_plot(
@@ -619,12 +619,12 @@ class EmClarityGeometryAnalyzer:
             # Create summary report
             report_path = output_dir / f"{cycle}_summary_report.txt"
             with open(report_path, "w") as f:
-                f.write(f"emClarity Geometry Analysis Summary\n")
+                f.write("emClarity Geometry Analysis Summary\n")
                 f.write(f"Cycle: {cycle}\n")
                 f.write(f"Analysis Date: {pd.Timestamp.now()}\n")
-                f.write(f"=" * 50 + "\n\n")
+                f.write("=" * 50 + "\n\n")
 
-                f.write(f"Dataset Overview:\n")
+                f.write("Dataset Overview:\n")
                 f.write(f"  Number of tomograms: {len(stats_df)}\n")
                 f.write(f"  Total particles: {stats_df['total_particles'].sum()}\n")
                 f.write(
@@ -634,7 +634,7 @@ class EmClarityGeometryAnalyzer:
                     f"  Overall inclusion rate: {stats_df['included_particles'].sum() / stats_df['total_particles'].sum():.3f}\n\n"
                 )
 
-                f.write(f"CCC Statistics:\n")
+                f.write("CCC Statistics:\n")
                 f.write(
                     f"  Mean CCC: {stats_df['mean_ccc'].mean():.4f} ± {stats_df['mean_ccc'].std():.4f}\n"
                 )
@@ -642,14 +642,14 @@ class EmClarityGeometryAnalyzer:
                     f"  CCC range: {stats_df['min_ccc'].min():.4f} to {stats_df['max_ccc'].max():.4f}\n\n"
                 )
 
-                f.write(f"Half-set Distribution:\n")
+                f.write("Half-set Distribution:\n")
                 f.write(f"  Total ODD particles: {stats_df['n_odd'].sum()}\n")
                 f.write(f"  Total EVE particles: {stats_df['n_eve'].sum()}\n")
                 f.write(
                     f"  ODD/EVE ratio: {stats_df['n_odd'].sum() / max(stats_df['n_eve'].sum(), 1):.3f}\n\n"
                 )
 
-                f.write(f"Per-tomogram Statistics:\n")
+                f.write("Per-tomogram Statistics:\n")
                 f.write(
                     f"  Particles per tomogram: {stats_df['included_particles'].mean():.1f} ± {stats_df['included_particles'].std():.1f}\n"
                 )

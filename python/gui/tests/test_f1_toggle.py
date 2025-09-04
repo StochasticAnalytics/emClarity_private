@@ -5,8 +5,6 @@ Test F1 toggle functionality for click logging
 
 import sys
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QLabel,

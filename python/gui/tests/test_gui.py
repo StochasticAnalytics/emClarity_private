@@ -18,8 +18,9 @@ if str(python_root) not in sys.path:
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
 try:
-    from gui.main import EmClarityMainWindow
     from PySide6.QtWidgets import QApplication
+
+    from gui.main import EmClarityMainWindow
 
     def test_gui_creation():
         """Test that the GUI can be created."""

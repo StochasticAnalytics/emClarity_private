@@ -87,7 +87,7 @@ class ParameterConfigLoader:
     def _load_config(self) -> Dict[str, Any]:
         """Load the JSON configuration file."""
         try:
-            with open(self.config_path, "r") as f:
+            with open(self.config_path) as f:
                 return json.load(f)
         except FileNotFoundError:
             raise FileNotFoundError(

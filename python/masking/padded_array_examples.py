@@ -87,7 +87,7 @@ def example_batch_processing():
         result = padder.pad_image(image, pad_low, pad_top)
         results.append(result)
 
-        print(f"Batch {i+1}: processed {image.shape} -> {result.shape}")
+        print(f"Batch {i + 1}: processed {image.shape} -> {result.shape}")
 
     print("✅ Batch processing complete\n")
 
@@ -168,7 +168,7 @@ def example_fourierTransformer_pattern():
         result = processor.process_image(
             image, pad_low=[16, 16, 8], pad_top=[16, 16, 8], zero_first=(i > 0)
         )
-        print(f"Processed image {i+1}: {result.shape}")
+        print(f"Processed image {i + 1}: {result.shape}")
 
     # Get reference to work with stored array directly
     stored_ref = processor.get_stored_reference()

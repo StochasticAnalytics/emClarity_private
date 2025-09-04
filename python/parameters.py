@@ -319,12 +319,11 @@ class UnifiedParameterManager:
     def _load_extended_config(self, config_path: str):
         """Load additional parameter definitions from JSON config."""
         try:
-            with open(config_path, "r") as f:
+            with open(config_path) as f:
                 config_data = json.load(f)
 
             # TODO: Implement loading additional parameters from JSON
             # This would extend the default registry with user-defined parameters
-            pass
 
         except Exception as e:
             logger.warning(f"Could not load extended config from {config_path}: {e}")
@@ -336,7 +335,7 @@ class UnifiedParameterManager:
         if not file_path.exists():
             raise FileNotFoundError(f"MATLAB parameter file not found: {file_path}")
 
-        with open(file_path, "r") as f:
+        with open(file_path) as f:
             content = f.read()
 
         # Remove comments and extract assignments

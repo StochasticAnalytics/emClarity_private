@@ -8,7 +8,6 @@ This script provides a quick overview of what the CI workflows will test.
 
 def show_workflow_summary():
     """Display what the CI workflows will test."""
-
     print("🚀 emClarity Python CI Workflows")
     print("=" * 50)
     print()

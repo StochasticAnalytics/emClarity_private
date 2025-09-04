@@ -38,8 +38,7 @@ from PySide6.QtWidgets import (
 from state_manager import GUIStateManager
 
 if TYPE_CHECKING:
-    from multiprocessing import Queue as MPQueue
-    from multiprocessing import Value as MPValue
+    pass
 
 
 def align_single_asset(
@@ -125,9 +124,9 @@ def align_single_asset(
 
     except Exception as e:
         output_queue.put(
-            {"asset": asset_name, "success": False, "message": f"Error: {str(e)}"}
+            {"asset": asset_name, "success": False, "message": f"Error: {e!s}"}
         )
-        status_queue.put(f"Error in {asset_name}: {str(e)}")
+        status_queue.put(f"Error in {asset_name}: {e!s}")
 
 
 class AlignmentWorker(QThread):
@@ -293,7 +292,7 @@ class AlignmentWorker(QThread):
                 )
 
         except Exception as e:
-            self.finished.emit(False, f"Error in alignment worker: {str(e)}")
+            self.finished.emit(False, f"Error in alignment worker: {e!s}")
 
     def stop(self):
         """Stop all running alignment processes."""
@@ -795,11 +794,10 @@ class AutoAlignWidget(QWidget):
                         if profile_names:
                             self.update_scratch_disk_display()
                         return
-                    else:
-                        if hasattr(self.parent_window, "debug_output"):
-                            self.parent_window.debug_output(
-                                "No profile widget found or no profiles attribute"
-                            )
+                    elif hasattr(self.parent_window, "debug_output"):
+                        self.parent_window.debug_output(
+                            "No profile widget found or no profiles attribute"
+                        )
                     break
 
         if hasattr(self.parent_window, "debug_output"):
@@ -1302,7 +1300,7 @@ class AutoAlignWidget(QWidget):
                     # Fallback to IMOD header command if mrcfile is not available
                     cmd = ["header", "-pixel", asset_path]
                     result = subprocess.run(
-                        cmd, capture_output=True, text=True, timeout=30
+                        cmd, check=False, capture_output=True, text=True, timeout=30
                     )
 
                     if result.returncode != 0:
@@ -1352,12 +1350,12 @@ class AutoAlignWidget(QWidget):
                     try:
                         cmd = ["header", "-pixel", asset_path]
                         result = subprocess.run(
-                            cmd, capture_output=True, text=True, timeout=30
+                            cmd, check=False, capture_output=True, text=True, timeout=30
                         )
 
                         if result.returncode != 0:
                             errors.append(
-                                f"Both mrcfile and header command failed for {asset_name}: {str(e)}"
+                                f"Both mrcfile and header command failed for {asset_name}: {e!s}"
                             )
                             continue
 
@@ -1391,17 +1389,17 @@ class AutoAlignWidget(QWidget):
                                 )
                         else:
                             errors.append(
-                                f"mrcfile failed and no pixel info from IMOD for {asset_name}: {str(e)}"
+                                f"mrcfile failed and no pixel info from IMOD for {asset_name}: {e!s}"
                             )
                     except Exception as fallback_error:
                         errors.append(
-                            f"Both mrcfile and IMOD failed for {asset_name}: mrcfile={str(e)}, imod={str(fallback_error)}"
+                            f"Both mrcfile and IMOD failed for {asset_name}: mrcfile={e!s}, imod={fallback_error!s}"
                         )
 
             except subprocess.TimeoutExpired:
                 errors.append(f"Header command timed out for {asset_name}")
             except Exception as e:
-                errors.append(f"Error processing {asset_name}: {str(e)}")
+                errors.append(f"Error processing {asset_name}: {e!s}")
 
         progress.setValue(len(asset_names))
         progress.close()
@@ -1411,7 +1409,7 @@ class AutoAlignWidget(QWidget):
             QMessageBox.critical(
                 self,
                 "Check Failed",
-                f"Could not get pixel size data for any assets.\n\nErrors:\n"
+                "Could not get pixel size data for any assets.\n\nErrors:\n"
                 + "\n".join(errors[:10]),
             )  # Show first 10 errors
             return
@@ -1432,24 +1430,24 @@ class AutoAlignWidget(QWidget):
 
         # Display results
         if mismatches:
-            result_msg = f"❌ Pixel size mismatch found!\n\n"
+            result_msg = "❌ Pixel size mismatch found!\n\n"
             result_msg += f"Expected: {first_x:.3f} x {first_y:.3f} angstrom\n\n"
             result_msg += "Mismatched assets:\n" + "\n".join(mismatches)
             if errors:
-                result_msg += f"\n\nAdditional errors:\n" + "\n".join(errors[:5])
+                result_msg += "\n\nAdditional errors:\n" + "\n".join(errors[:5])
             QMessageBox.warning(self, "Pixel Size Check", result_msg)
         else:
             # All pixel sizes match - update the unbinned pixel size field
             self.unbinned_pixel_size.setValue(first_x)
 
-            result_msg = f"✅ All pixel sizes match!\n\n"
+            result_msg = "✅ All pixel sizes match!\n\n"
             result_msg += f"Pixel size: {first_x:.3f} x {first_y:.3f} angstrom\n"
             result_msg += f"Checked {len(pixel_size_data)} assets successfully\n"
             result_msg += f"\n📝 Updated unbinned pixel size field to {first_x:.3f} Å"
 
             # Add file integrity info if available
             if pixel_size_data and "dimensions" in pixel_size_data[0]:
-                result_msg += f"\n\nFile details:\n"
+                result_msg += "\n\nFile details:\n"
                 for data in pixel_size_data[:3]:  # Show first 3 assets
                     result_msg += f"• {data['asset']}: {data['dimensions']}\n"
                 if len(pixel_size_data) > 3:

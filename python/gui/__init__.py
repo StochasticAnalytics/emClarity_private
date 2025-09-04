@@ -12,8 +12,8 @@ from .commands import EmClarityCommand, EmClarityCommands
 from .config import EmClarityConfig, get_default_config
 
 __all__ = [
+    "EmClarityCommand",
+    "EmClarityCommands",
     "EmClarityConfig",
     "get_default_config",
-    "EmClarityCommands",
-    "EmClarityCommand",
 ]

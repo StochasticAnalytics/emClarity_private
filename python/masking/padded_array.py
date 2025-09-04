@@ -244,17 +244,16 @@ class PaddedArray:
                 padded_img = cp.zeros(shape, dtype=self.dtype)
                 if self.extrap_val is not None and self.extrap_val != 0:
                     padded_img += self.extrap_val
+        elif self._extrap_params["do_random"]:
+            # Create random array
+            padded_img = np.random.normal(
+                self._extrap_params["mean"], self._extrap_params["std"], shape
+            ).astype(self.dtype)
         else:
-            if self._extrap_params["do_random"]:
-                # Create random array
-                padded_img = np.random.normal(
-                    self._extrap_params["mean"], self._extrap_params["std"], shape
-                ).astype(self.dtype)
-            else:
-                # Create zeros array
-                padded_img = np.zeros(shape, dtype=self.dtype)
-                if self.extrap_val is not None and self.extrap_val != 0:
-                    padded_img += self.extrap_val
+            # Create zeros array
+            padded_img = np.zeros(shape, dtype=self.dtype)
+            if self.extrap_val is not None and self.extrap_val != 0:
+                padded_img += self.extrap_val
 
         return padded_img
 

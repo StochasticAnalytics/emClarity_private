@@ -3,7 +3,6 @@
 Test script to verify all clickable elements in the overview panel are instrumented.
 """
 
-import os
 import sys
 from pathlib import Path
 
@@ -85,13 +84,13 @@ def test_overview_panel_instrumentation():
         else:
             print(f"   ❌ Failed to capture click data for {click_data['element_id']}")
 
-    print(f"\n🎯 Overview Panel Instrumentation Test Complete!")
-    print(f"📋 All major clickable elements in overview panel should be instrumented:")
-    print(f"   • Create new project link")
-    print(f"   • Open existing project link")
-    print(f"   • Browse for project link")
-    print(f"   • Recent project links (dynamic)")
-    print(f"   • Sidebar navigation buttons (via switch_panel)")
+    print("\n🎯 Overview Panel Instrumentation Test Complete!")
+    print("📋 All major clickable elements in overview panel should be instrumented:")
+    print("   • Create new project link")
+    print("   • Open existing project link")
+    print("   • Browse for project link")
+    print("   • Recent project links (dynamic)")
+    print("   • Sidebar navigation buttons (via switch_panel)")
 
 
 if __name__ == "__main__":

@@ -3,7 +3,6 @@
 Sidebar navigation layout for emClarity GUI.
 """
 
-
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
@@ -733,7 +732,6 @@ class SidebarNavigationWidget(QWidget):
 
     def switch_panel(self, panel_name: str):
         """Switch to a different panel."""
-
         # Store previous panel
         previous_panel = self.current_panel
 

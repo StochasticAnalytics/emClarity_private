@@ -32,7 +32,7 @@ class CudaBasicOps:
         """Load CUDA kernels from the .cu file"""
         # First load the utility functions
         utils_file = Path(__file__).parent / "emc_cuda_utils.cuh"
-        with open(utils_file, "r") as f:
+        with open(utils_file) as f:
             utils_content = f.read()
 
         # Remove the header guards and includes to get just the function definitions
@@ -43,7 +43,7 @@ class CudaBasicOps:
 
         # Load the main CUDA file
         cuda_file = Path(__file__).parent / "emc_cuda_basic_ops.cu"
-        with open(cuda_file, "r") as f:
+        with open(cuda_file) as f:
             cuda_source = f.read()
 
         # Replace the include with inline content

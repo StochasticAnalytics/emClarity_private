@@ -57,7 +57,7 @@ __all__ = ["ParameterConverter", "ParameterInfo"]  # Deprecated  # Deprecated
 # Add unified system if available
 if UnifiedParameterManager is not None:
     __all__.extend(
-        ["UnifiedParameterManager", "ParameterDefinition", "get_parameter_manager"]
+        ["ParameterDefinition", "UnifiedParameterManager", "get_parameter_manager"]
     )
 
 __version__ = "1.0.0"

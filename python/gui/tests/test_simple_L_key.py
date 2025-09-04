@@ -3,7 +3,6 @@
 Simple test to verify L key works in the actual GUI
 """
 
-import os
 import sys
 
 # Add GUI module to path

@@ -50,15 +50,15 @@ def test_ctrl_click_behavior():
     try:
         ctrl_pressed = debug_instrumentation.is_ctrl_pressed()
         print(f"   ✅ Ctrl detection available, currently pressed: {ctrl_pressed}")
-        print(f"   💡 Note: Ctrl state depends on actual keyboard at test time")
+        print("   💡 Note: Ctrl state depends on actual keyboard at test time")
     except Exception as e:
         print(f"   ❌ Ctrl detection failed: {e}")
 
-    print(f"\n🎯 Summary:")
-    print(f"   • Regular clicks: Only logged when Ctrl+Click is used")
-    print(f"   • Navigation actions: Always logged (force_log=True)")
-    print(f"   • Rubber band selection: Now just Click+Drag (no Ctrl needed)")
-    print(f"   • GUI operation: Normal clicks work without interference")
+    print("\n🎯 Summary:")
+    print("   • Regular clicks: Only logged when Ctrl+Click is used")
+    print("   • Navigation actions: Always logged (force_log=True)")
+    print("   • Rubber band selection: Now just Click+Drag (no Ctrl needed)")
+    print("   • GUI operation: Normal clicks work without interference")
 
 
 if __name__ == "__main__":

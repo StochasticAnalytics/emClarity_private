@@ -6,10 +6,8 @@ Test the new rubber band behavior:
 """
 
 import sys
-import time
 
-from PySide6.QtCore import QPoint, QRect, Qt
-from PySide6.QtGui import QMouseEvent
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QApplication,
     QLabel,

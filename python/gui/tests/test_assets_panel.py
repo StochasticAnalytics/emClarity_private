@@ -12,8 +12,9 @@ python_root = Path(__file__).parent.parent.parent
 if str(python_root) not in sys.path:
     sys.path.insert(0, str(python_root))
 
-from gui.assets_panel import AssetsPanel
 from PySide6.QtWidgets import QApplication
+
+from gui.assets_panel import AssetsPanel
 
 
 def main():

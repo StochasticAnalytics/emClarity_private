@@ -651,19 +651,19 @@ class UtilsPixelSizePanel(QWidget):
                 updated_count += 1
 
             except Exception as e:
-                failed_files.append(f"{os.path.basename(file_path)} ({str(e)})")
+                failed_files.append(f"{os.path.basename(file_path)} ({e!s})")
 
         # Show result message
         if updated_count > 0:
             message = f"Successfully updated pixel size to {new_pixel_size} Å for {updated_count} file(s)."
             if failed_files:
-                message += f"\n\nFailed to update:\n" + "\n".join(failed_files)
+                message += "\n\nFailed to update:\n" + "\n".join(failed_files)
             QMessageBox.information(self, "Update Complete", message)
         else:
             QMessageBox.warning(
                 self,
                 "Update Failed",
-                f"Failed to update any files:\n" + "\n".join(failed_files),
+                "Failed to update any files:\n" + "\n".join(failed_files),
             )
 
     def revert_pixel_sizes(self):
@@ -694,7 +694,7 @@ class UtilsPixelSizePanel(QWidget):
                 reverted_count += 1
 
             except Exception as e:
-                failed_files.append(f"{os.path.basename(file_path)} ({str(e)})")
+                failed_files.append(f"{os.path.basename(file_path)} ({e!s})")
 
         # Clear backup data for successfully reverted files
         if reverted_count > 0:
@@ -704,13 +704,13 @@ class UtilsPixelSizePanel(QWidget):
         if reverted_count > 0:
             message = f"Successfully reverted pixel sizes for {reverted_count} file(s)."
             if failed_files:
-                message += f"\n\nFailed to revert:\n" + "\n".join(failed_files)
+                message += "\n\nFailed to revert:\n" + "\n".join(failed_files)
             QMessageBox.information(self, "Revert Complete", message)
         else:
             QMessageBox.warning(
                 self,
                 "Revert Failed",
-                f"Failed to revert any files:\n" + "\n".join(failed_files),
+                "Failed to revert any files:\n" + "\n".join(failed_files),
             )
 
 
@@ -832,7 +832,7 @@ class TiltSeriesAssetsPanel(QWidget):
             for row in range(table.rowCount()):
                 item = table.item(row, 1)  # Name column
                 if item:
-                    base_name = f"TS_{row+1:03d}"
+                    base_name = f"TS_{row + 1:03d}"
                     item.setText(f"{base_name}_{asset_suffix}")
 
     def on_group_selected(self, group_name):

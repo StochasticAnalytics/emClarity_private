@@ -507,7 +507,6 @@ class SettingsPanel(QWidget):
         # Note: Since we migrated to legacy interface, profile management signals
         # are now handled within the RunProfileWidget itself
         # Future signal connections can be added here as needed
-        pass
 
     def handle_settings_type_change(self, settings_type):
         """Handle settings type selection from external toolbar."""
