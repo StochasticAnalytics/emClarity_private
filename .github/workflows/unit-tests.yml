@@ -5,13 +5,17 @@ name: Unit Tests
 
 on:
   push:
-    branches: [ main, ctf3d_work, develop ]
+    branches:
+      - main
+      - '*_ci'
     paths:
       - 'python/**'
       - '.github/workflows/**'
       - 'requirements*.txt'
   pull_request:
-    branches: [ main, ctf3d_work ]
+    branches:
+      - main
+      - '*_ci'
     paths:
       - 'python/**'
       - '.github/workflows/**'
