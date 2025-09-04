@@ -4,18 +4,37 @@ on:
   push:
     branches:
       - main
+      - '*_ci'  # CI branches automatically get style fixes applied
+    paths:
+      # Only run when Python code or style config changes
+      - 'python/**/*.py'                      # Python source files only
+      - 'pyproject.toml'                      # Ruff configuration
+      - '.github/workflows/code-style.yml'   # This workflow file
+  pull_request:
+    branches:
+      - main
+    paths:
+      # Same path filters for PRs to avoid unnecessary runs
+      - 'python/**/*.py'
+      - 'pyproject.toml'
+      - '.github/workflows/code-style.yml'
+  workflow_dispatch:  # Manual trigger bypasses path restrictionsn:
+  push:
+    branches:
+      - main
       - '*_ci'
     paths:
-      - 'python/**/*.py'
+      - 'python/**'
       - 'pyproject.toml'
       - '.github/workflows/code-style.yml'
   pull_request:
     branches:
       - main
     paths:
-      - 'python/**/*.py'
+      - 'python/**'
       - 'pyproject.toml'
       - '.github/workflows/code-style.yml'
+  # Always run on CI branches regardless of file changes
   workflow_dispatch:
 
 jobs:
@@ -28,7 +47,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.11'
+        python-version: '3.11'  # Match project target version
         
     - name: Cache pip dependencies
       uses: actions/cache@v4
@@ -44,20 +63,20 @@ jobs:
     - name: Run Ruff linting
       run: |
         echo "::group::Ruff Linting"
-        ruff check python/ --output-format=github
+        ruff check python/ --output-format=github  # GitHub annotations
         echo "::endgroup::"
         
     - name: Run Ruff formatting check
       run: |
         echo "::group::Ruff Formatting"
-        ruff format --check --diff python/
+        ruff format --check --diff python/  # Show what would change
         echo "::endgroup::"
 
-  # Auto-fix for CI branches
+  # Auto-fix for CI branches - helps maintain code quality automatically
   auto-fix:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && endsWith(github.ref_name, '_ci')
-    needs: style-check
+    needs: style-check  # Only run if style check completes
     
     steps:
     - uses: actions/checkout@v4
@@ -74,8 +93,8 @@ jobs:
       
     - name: Auto-fix with Ruff
       run: |
-        ruff check python/ --fix
-        ruff format python/
+        ruff check python/ --fix    # Fix what can be auto-fixed
+        ruff format python/         # Apply consistent formatting
         
     - name: Commit fixes
       run: |

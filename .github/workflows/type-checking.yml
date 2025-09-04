@@ -4,19 +4,21 @@ on:
   push:
     branches:
       - main
-      - '*_ci'
+      - '*_ci'  # CI branches for testing workflows
     paths:
-      - 'python/**/*.py'
-      - 'pyproject.toml'
-      - '.github/workflows/type-checking.yml'
+      # Only run when Python code or type config changes
+      - 'python/**'                              # Any Python files
+      - 'pyproject.toml'                         # Pyright configuration  
+      - '.github/workflows/type-checking.yml'   # This workflow file
   pull_request:
     branches:
       - main
     paths:
-      - 'python/**/*.py'
+      # Same path filters for PRs - efficiency over completeness
+      - 'python/**'
       - 'pyproject.toml'
       - '.github/workflows/type-checking.yml'
-  workflow_dispatch:
+  workflow_dispatch:  # Allow manual trigger regardless of paths
 
 jobs:
   type-check:

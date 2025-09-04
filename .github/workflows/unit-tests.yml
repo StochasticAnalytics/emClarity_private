@@ -5,18 +5,16 @@ name: Unit Tests
 
 on:
   push:
-    branches:
-      - main
-      - '*_ci'
+    branches: [ main, ctf3d_work, develop ]  # Development branches
     paths:
-      - 'python/**'
-      - '.github/workflows/**'
-      - 'requirements*.txt'
+      # Broader path matching since tests validate overall functionality
+      - 'python/**'                        # Any Python code/config changes
+      - '.github/workflows/**'             # Workflow changes affect testing
+      - 'requirements*.txt'                # Dependency changes
   pull_request:
-    branches:
-      - main
-      - '*_ci'
+    branches: [ main, ctf3d_work ]
     paths:
+      # Same broad matching for comprehensive PR validation
       - 'python/**'
       - '.github/workflows/**'
       - 'requirements*.txt'

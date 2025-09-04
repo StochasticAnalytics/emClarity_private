@@ -4,24 +4,26 @@ on:
   push:
     branches:
       - main
-      - '*_ci'
+      - '*_ci'  # Include CI branches for security validation
     paths:
-      - 'python/**/*.py'
-      - 'pyproject.toml'
-      - 'requirements*.txt'
-      - '.github/workflows/security-scan.yml'
+      # Run when code or dependencies change that could affect security
+      - 'python/**/*.py'                       # Python source files
+      - 'pyproject.toml'                       # Project configuration
+      - 'requirements*.txt'                    # Dependency files
+      - '.github/workflows/security-scan.yml' # This workflow file
   pull_request:
     branches:
       - main
     paths:
+      # Same efficient filtering for PRs
       - 'python/**/*.py'
       - 'pyproject.toml'
       - 'requirements*.txt'
       - '.github/workflows/security-scan.yml'
-  workflow_dispatch:
+  workflow_dispatch:  # Manual security scans always allowed
   schedule:
-    # Run weekly security scans on Mondays at 9 AM UTC
-    - cron: '0 9 * * 1'
+    # Weekly security audit regardless of code changes
+    - cron: '0 9 * * 1'  # Mondays at 9 AM UTC
 
 jobs:
   security-scan:
