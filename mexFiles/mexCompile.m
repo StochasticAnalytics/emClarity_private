@@ -1,7 +1,16 @@
 function [] = mexCompile(varargin)
 
 fprintf("\n\nCompile here\n\n");
-mexPATH = '/sa_shared/git/emClarity/mexFiles';
+% Get the source root from environment variable, fallback to current location if not set
+EMC_SOURCE = getenv('EMC_SOURCE_ROOT');
+if isempty(EMC_SOURCE)
+    % Fallback to default private directory
+    EMC_SOURCE = '/sa_shared/git/emClarity_private';
+    fprintf('Warning: EMC_SOURCE_ROOT not set, using default: %s\n', EMC_SOURCE);
+end
+mexPATH = fullfile(EMC_SOURCE, 'mexFiles');
+fprintf('Using mexPATH: %s\n', mexPATH);
+
 CUDA_LIB = '-L/usr/local/cuda/lib64';   ... % NOTE if you leave a space at the end of this string, MATLAB does not parse the option correctly (which wouldn't matter in a normal compile line!)
 getenv('MW_NVCC_PATH')
 getenv('CUDA_HOME')

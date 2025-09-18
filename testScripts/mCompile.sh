@@ -6,6 +6,7 @@
 #   TODO set up a little configure script to do this and check other deps described below.
 # NOTE: You also will need to download the binaries from the emC_dependencies folder on drive
 export emC_DEPS="/sa_shared/software/emClarity_1.6.1.0/bin/deps"
+export EMC_SOURCE_ROOT=/sa_shared/git/emClarity_private  # Source directory for compilation (exported for mexCompile)
 EMC_COMPILED_ROOT=/sa_shared/software/ # This is just for convenience, when you build for yourself
 ############ lines 4-5 in mexFiles/mexCompile
 #mexPATH = '/groups/grigorieff/home/himesb/work/emClarity/mexFiles/';
@@ -44,7 +45,7 @@ outName="$(basename ${mFile} .m)${post}"
 # bugs line. e.g. buggs=5testingFeature
 major=1
 minor=8
-bugs=4
+bugs=5
 nightly=0
 binaryOutName="${major}_${minor}_${bugs}_${nightly}"
 scriptOutName="${major}_${minor}_${bugs}_${nightly}_v23a"
@@ -55,8 +56,8 @@ EMC_COMPILED_DIRNAME=${EMC_COMPILED_ROOT}/${EMC_VERSION}
 
 # The final binary, run script and docs folder will be zipped and put in this location
 # unless it is NONE then it will be left in the bin dir.
-zip_location="${HOME}/tmp"
-#zip_location="NONE"
+#zip_location="${HOME}/tmp"
+zip_location="NONE"
 
 
 
@@ -77,16 +78,28 @@ else
 fi
 
 # NOTE: warnings are disabled to ensure that failed builds are caught. Ideally they would be addressed and removed.
-${MATLAB_FOR_COMPILING} -nosplash -nodisplay -nojvm -r " ${mexCompile} mcc -w disable -m  ${mFile} -a fitInMap.py -a ../alignment/emC_autoAlign -a ../alignment/emC_findBeads -a ../metaData/BH_checkInstall -R -nodisplay -o "$(basename ${mFile} .m)_${binaryOutName}" ; exit" &
-          
-wait
+echo "🔨 Starting emClarity compilation..."
+echo "   This will take several minutes. Filtering verbose output..."
+echo ""
 
-rm mccExcludedFiles.log
-rm readme.txt
-rm run_*.sh
-rm requiredMCRProducts.txt
-rm unresolvedSymbols.txt
-rm includedSupportPackages.txt
+# Run compilation and save full output - use EMC_SOURCE_ROOT for correct paths
+# Use try-catch in MATLAB to ensure we exit with error code on failure
+${MATLAB_FOR_COMPILING} -nosplash -nodisplay -nojvm -r "try; cd('${EMC_SOURCE_ROOT}/testScripts'); addpath(genpath('${EMC_SOURCE_ROOT}')); ${mexCompile} mcc -w disable -m  ${mFile} -a fitInMap.py -a ../alignment/emC_autoAlign -a ../alignment/emC_findBeads -a ../metaData/BH_checkInstall -R -nodisplay -o $(basename ${mFile} .m)_${binaryOutName}; exit(0); catch ME; fprintf('ERROR: %s\n', ME.message); exit(1); end" 2>&1 | tee compilation_full.log | ./analyze_compilation.py
+
+MATLAB_EXIT_CODE=${PIPESTATUS[0]}
+
+if [ $MATLAB_EXIT_CODE -ne 0 ]; then
+  echo "❌ Compilation failed with exit code $MATLAB_EXIT_CODE"
+  echo "   Check compilation_full.log for complete output"
+  exit $MATLAB_EXIT_CODE
+fi
+
+rm -f mccExcludedFiles.log
+rm -f readme.txt
+rm -f run_*.sh
+rm -f requiredMCRProducts.txt
+rm -f unresolvedSymbols.txt
+rm -f includedSupportPackages.txt
 
 if [ -f emClarity ] ; then
   mv emClarity emClarity~
