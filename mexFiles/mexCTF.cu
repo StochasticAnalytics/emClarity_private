@@ -27,15 +27,15 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, mxArray const *prhs[])
   float* exposure = NULL;
   bool use_weights = false;
 
-  if ( nrhs == 12) 
-  { 
+  if ( nrhs == 12)
+  {
     mexPrintf("Doing centered ctf calc\n");
     bool * tmp_bool = (bool *) mxGetData(prhs[11]);
     calc_centered = *tmp_bool;
   }
 
-  if ( nrhs == 14) 
-  { 
+  if ( nrhs == 14)
+  {
     bool * tmp_bool = (bool *) mxGetData(prhs[11]);
     calc_centered = *tmp_bool;
     use_weights = true;

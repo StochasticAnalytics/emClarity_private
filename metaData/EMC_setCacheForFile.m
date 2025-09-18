@@ -91,13 +91,25 @@ for i = 1:numel(alt_list)
   candidatePaths{end+1} = fullfile(base, suffix); %#ok<AGROW>
 end
 
-% Compute free bytes for each candidate base using Java (partition usable space)
+% Compute free bytes for each candidate base using df command
 freeBytes = zeros(1, numel(candidates));
 for i = 1:numel(candidates)
   base = candidates{i};
   try
-    jfile = java.io.File(base);
-    freeBytes(i) = double(jfile.getUsableSpace());
+    % Use df command to get available space in bytes
+    fprintf('EMC_setCacheForFile: querying free using df metaData/EMC_setCacheForFile.m space for %s...\n', base);
+    [status, result] = system(sprintf('df --output=avail --block-size=1 "%s" | tail -n 1', base));
+    if status == 0
+      freeBytes(i) = str2double(strtrim(result));
+      if isnan(freeBytes(i))
+        freeBytes(i) = 0;
+      end
+    else
+      if DEBUG
+        fprintf('EMC_setCacheForFile: df command failed for %s\n', base);
+      end
+      freeBytes(i) = 0;
+    end
   catch ME
     if DEBUG
       fprintf('EMC_setCacheForFile: failed to query free space for %s (%s). Assuming 0.\n', base, ME.message);

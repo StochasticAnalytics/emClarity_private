@@ -338,7 +338,8 @@ parfor iParProc = 1:nParProcesses
                 1,...
                 samplingRate,...
                 tiltWeight,...
-                flgMedianFilter);
+                flgMedianFilter,...
+                emc);
     
   end
 end
@@ -391,9 +392,23 @@ parfor iParProc = 1:nParProcesses
     if samplingRate > 1
       % For now, we are only using the alt_cache for the tomos
       fullStack = sprintf('%aliStacks/%s_ali%d.fixed', tiltList{iTilt}, mapBackIter + 1);
-      inputStack = sprintf('cache/%s_ali%d_bin%d.fixed', tiltList{iTilt}, mapBackIter + 1, samplingRate);
+      alt_cache = emc.alt_cache;
+      inputStack = EMC_setCacheForFile(alt_cache, sprintf('cache/%s_ali%d_bin%d.fixed', tiltList{iTilt}, mapBackIter + 1, samplingRate));
+      % Check if the file exists using the cache selection logic
       if ~emc_check_for_valid_image_file(inputStack)
+        % BH_multi_loadOrBin will create the file in cache/, but we need to move it to the selected cache
+        default_cache_path = sprintf('cache/%s_ali%d_bin%d.fixed', tiltList{iTilt}, mapBackIter + 1, samplingRate);
         BH_multi_loadOrBin(fullStack, samplingRate, 2, false);
+        % If the selected cache is different from default, move the file
+        if ~strcmp(inputStack, default_cache_path)
+          % Ensure the target directory exists
+          inputDir = fileparts(inputStack);
+          if ~exist(inputDir, 'dir')
+            system(sprintf('mkdir -p %s', inputDir));
+          end
+          % Move the file to the selected cache location
+          system(sprintf('mv %s %s', default_cache_path, inputStack));
+        end
       end
     else
       inputStack = sprintf('aliStacks/%s_ali%d.fixed', tiltList{iTilt}, mapBackIter + 1);
@@ -533,7 +548,8 @@ parfor iParProc = 1:nParProcesses
             end
           end
           
-          rawTLT = sprintf('cache/%s.rawtlt', tomoList{iTomo});
+          alt_cache = emc.alt_cache;
+          rawTLT = EMC_setCacheForFile(alt_cache, sprintf('cache/%s.rawtlt', tomoList{iTomo}));
           rawTLT_file = fopen(rawTLT, 'w');
           fprintf(rawTLT_file,'%f\n', TA');
           fclose(rawTLT_file);
@@ -739,7 +755,8 @@ function [] = preBinStacks(TLT, ...
                           usableArea,...
                           samplingRate,...
                           tiltWeight,...
-                          flgMedianFilter)
+                          flgMedianFilter,...
+                          emc)
 
 
 
@@ -749,9 +766,23 @@ suffix = '';
 
 % TODO: this could all be in loadOrBin
 fullStack = sprintf('%sStacks/%s_ali%d%s.fixed', prefix,STACK_PRFX, mapBackIter+1, suffix);
-inputStack = sprintf('cache/%s_ali%d%s_bin%d.fixed', STACK_PRFX, mapBackIter+1, suffix, samplingRate);
+alt_cache = emc.alt_cache;
+inputStack = EMC_setCacheForFile(alt_cache, sprintf('cache/%s_ali%d%s_bin%d.fixed', STACK_PRFX, mapBackIter+1, suffix, samplingRate));
+% Check if the file exists using the cache selection logic
 if ~emc_check_for_valid_image_file(inputStack)
+  % BH_multi_loadOrBin will create the file in cache/, but we need to move it to the selected cache
+  default_cache_path = sprintf('cache/%s_ali%d%s_bin%d.fixed', STACK_PRFX, mapBackIter+1, suffix, samplingRate);
   BH_multi_loadOrBin(fullStack, samplingRate, 2, false);
+  % If the selected cache is different from default, move the file
+  if ~strcmp(inputStack, default_cache_path)
+    % Ensure the target directory exists
+    inputDir = fileparts(inputStack);
+    if ~exist(inputDir, 'dir')
+      system(sprintf('mkdir -p %s', inputDir));
+    end
+    % Move the file to the selected cache location
+    system(sprintf('mv %s %s', default_cache_path, inputStack));
+  end
 end
 
 
