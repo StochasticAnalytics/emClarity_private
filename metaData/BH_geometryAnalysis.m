@@ -643,9 +643,8 @@ switch OPERATION
     fprintf('AssignAndMergeToBranch: files_read=%d, rows_for_branch=%d, total_kept=%d, total_ignored=%d\n', numel(file_list), total_rows_current_branch, total_kept, total_ignored);
 
     % Store the modified geometry in Post_ field instead of overwriting
-    if strcmpi(STAGEofALIGNMENT, 'Cluster')
-      subTomoMeta.(cycleNumber).Post_AssignAndMergeToBranch.ClusterResults.(cluster_key) = geometry_copy;
-    end
+    % geometry_copy already contains the complete geometry structure with all tomogram fields
+    subTomoMeta.(cycleNumber).Post_AssignAndMergeToBranch = geometry_copy;
   
   case 'ShiftAll'
     % No option to shift eve/odd separately.

@@ -209,7 +209,7 @@ In matlab.depfun.internal/Completion/computePartsList (line 2548)
 In matlab.depfun.internal/Completion/requirements (line 3088)
 In matlab.depfun.internal.requirements (line 218)
 In matlab.depfun.internal.mcc_call_requirements (line 59)] 
-[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 742 Column:
+[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 743 Column:
 10
 The temporary variable 'volHeader' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'volHeader' is used before it is set, a runtime error will occur. For more
@@ -223,7 +223,7 @@ In matlab.depfun.internal/Completion/computePartsList (line 2548)
 In matlab.depfun.internal/Completion/requirements (line 3088)
 In matlab.depfun.internal.requirements (line 218)
 In matlab.depfun.internal.mcc_call_requirements (line 59)] 
-[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 957 Column:
+[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 958 Column:
 27
 The temporary variable 'estPeakCoord' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'estPeakCoord' is used before it is set, a runtime error will occur. For more
@@ -237,7 +237,7 @@ In matlab.depfun.internal/Completion/computePartsList (line 2548)
 In matlab.depfun.internal/Completion/requirements (line 3088)
 In matlab.depfun.internal.requirements (line 218)
 In matlab.depfun.internal.mcc_call_requirements (line 59)] 
-[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 1036 Column:
+[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 1037 Column:
 31
 The temporary variable 'iRotMask' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'iRotMask' is used before it is set, a runtime error will occur. For more
@@ -251,7 +251,7 @@ In matlab.depfun.internal/Completion/computePartsList (line 2548)
 In matlab.depfun.internal/Completion/requirements (line 3088)
 In matlab.depfun.internal.requirements (line 218)
 In matlab.depfun.internal.mcc_call_requirements (line 59)] 
-[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 1240 Column:
+[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 1241 Column:
 23
 The temporary variable 'rXYZ' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'rXYZ' is used before it is set, a runtime error will occur. For more
@@ -265,7 +265,7 @@ In matlab.depfun.internal/Completion/computePartsList (line 2548)
 In matlab.depfun.internal/Completion/requirements (line 3088)
 In matlab.depfun.internal.requirements (line 218)
 In matlab.depfun.internal.mcc_call_requirements (line 59)] 
-[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 1352 Column:
+[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 1353 Column:
 19
 The temporary variable 'bestRotPeak' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'bestRotPeak' is used before it is set, a runtime error will occur. For more
@@ -279,7 +279,7 @@ In matlab.depfun.internal/Completion/computePartsList (line 2548)
 In matlab.depfun.internal/Completion/requirements (line 3088)
 In matlab.depfun.internal.requirements (line 218)
 In matlab.depfun.internal.mcc_call_requirements (line 59)] 
-[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 1534 Column:
+[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 1535 Column:
 11
 The temporary variable 'nonZeroInits' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'nonZeroInits' is used before it is set, a runtime error will occur. For more
@@ -293,7 +293,7 @@ In matlab.depfun.internal/Completion/computePartsList (line 2548)
 In matlab.depfun.internal/Completion/requirements (line 3088)
 In matlab.depfun.internal.requirements (line 218)
 In matlab.depfun.internal.mcc_call_requirements (line 59)] 
-[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 1536 Column:
+[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 1537 Column:
 11
 The temporary variable 'sortCCC' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'sortCCC' is used before it is set, a runtime error will occur. For more
@@ -307,7 +307,7 @@ In matlab.depfun.internal/Completion/computePartsList (line 2548)
 In matlab.depfun.internal/Completion/requirements (line 3088)
 In matlab.depfun.internal.requirements (line 218)
 In matlab.depfun.internal.mcc_call_requirements (line 59)] 
-[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 97 Column: 7
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 98 Column: 7
 The temporary variable 'mapBackPrfx' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'mapBackPrfx' is used before it is set, a runtime error will occur. For more
 information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
@@ -320,7 +320,7 @@ In matlab.depfun.internal/Completion/computePartsList (line 2548)
 In matlab.depfun.internal/Completion/requirements (line 3088)
 In matlab.depfun.internal.requirements (line 218)
 In matlab.depfun.internal.mcc_call_requirements (line 59)] 
-[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 99 Column: 7
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 100 Column: 7
 The temporary variable 'mbEST' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'mbEST' is used before it is set, a runtime error will occur. For more
 information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
@@ -333,7 +333,7 @@ In matlab.depfun.internal/Completion/computePartsList (line 2548)
 In matlab.depfun.internal/Completion/requirements (line 3088)
 In matlab.depfun.internal.requirements (line 218)
 In matlab.depfun.internal.mcc_call_requirements (line 59)] 
-[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 108 Column: 7
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 109 Column: 7
 The temporary variable 'PRJ_STACK' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'PRJ_STACK' is used before it is set, a runtime error will occur. For more
 information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
@@ -346,7 +346,7 @@ In matlab.depfun.internal/Completion/computePartsList (line 2548)
 In matlab.depfun.internal/Completion/requirements (line 3088)
 In matlab.depfun.internal.requirements (line 218)
 In matlab.depfun.internal.mcc_call_requirements (line 59)] 
-[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 109 Column: 7
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 110 Column: 7
 The temporary variable 'PRJ_OUT' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'PRJ_OUT' is used before it is set, a runtime error will occur. For more
 information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
@@ -359,7 +359,7 @@ In matlab.depfun.internal/Completion/computePartsList (line 2548)
 In matlab.depfun.internal/Completion/requirements (line 3088)
 In matlab.depfun.internal.requirements (line 218)
 In matlab.depfun.internal.mcc_call_requirements (line 59)] 
-[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 110 Column: 7
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 111 Column: 7
 The temporary variable 'PRJ_OLD' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'PRJ_OLD' is used before it is set, a runtime error will occur. For more
 information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
@@ -372,7 +372,7 @@ In matlab.depfun.internal/Completion/computePartsList (line 2548)
 In matlab.depfun.internal/Completion/requirements (line 3088)
 In matlab.depfun.internal.requirements (line 218)
 In matlab.depfun.internal.mcc_call_requirements (line 59)] 
-[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 111 Column: 7
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 112 Column: 7
 The temporary variable 'outputDirectory' will be cleared at the beginning of each iteration of
 the parfor-loop. If 'outputDirectory' is used before it is set, a runtime error will occur. For
 more information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
@@ -385,7 +385,7 @@ In matlab.depfun.internal/Completion/computePartsList (line 2548)
 In matlab.depfun.internal/Completion/requirements (line 3088)
 In matlab.depfun.internal.requirements (line 218)
 In matlab.depfun.internal.mcc_call_requirements (line 59)] 
-[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 246 Column: 7
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 247 Column: 7
 The temporary variable 'mbTLT' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'mbTLT' is used before it is set, a runtime error will occur. For more
 information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
@@ -398,7 +398,7 @@ In matlab.depfun.internal/Completion/computePartsList (line 2548)
 In matlab.depfun.internal/Completion/requirements (line 3088)
 In matlab.depfun.internal.requirements (line 218)
 In matlab.depfun.internal.mcc_call_requirements (line 59)] 
-[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 247 Column: 7
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 248 Column: 7
 The temporary variable 'defShifts' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'defShifts' is used before it is set, a runtime error will occur. For more
 information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
@@ -411,7 +411,7 @@ In matlab.depfun.internal/Completion/computePartsList (line 2548)
 In matlab.depfun.internal/Completion/requirements (line 3088)
 In matlab.depfun.internal.requirements (line 218)
 In matlab.depfun.internal.mcc_call_requirements (line 59)] 
-[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 315 Column: 7
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 316 Column: 7
 The temporary variable 'tmp_xf' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'tmp_xf' is used before it is set, a runtime error will occur. For more
 information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
@@ -424,7 +424,7 @@ In matlab.depfun.internal/Completion/computePartsList (line 2548)
 In matlab.depfun.internal/Completion/requirements (line 3088)
 In matlab.depfun.internal.requirements (line 218)
 In matlab.depfun.internal.mcc_call_requirements (line 59)] 
-[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 321 Column: 7
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 322 Column: 7
 The temporary variable 'tmp_combined_xf' will be cleared at the beginning of each iteration of
 the parfor-loop. If 'tmp_combined_xf' is used before it is set, a runtime error will occur. For
 more information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
@@ -437,7 +437,7 @@ In matlab.depfun.internal/Completion/computePartsList (line 2548)
 In matlab.depfun.internal/Completion/requirements (line 3088)
 In matlab.depfun.internal.requirements (line 218)
 In matlab.depfun.internal.mcc_call_requirements (line 59)] 
-[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 359 Column: 7
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 360 Column: 7
 The temporary variable 'updateScale' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'updateScale' is used before it is set, a runtime error will occur. For more
 information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
@@ -450,7 +450,7 @@ In matlab.depfun.internal/Completion/computePartsList (line 2548)
 In matlab.depfun.internal/Completion/requirements (line 3088)
 In matlab.depfun.internal.requirements (line 218)
 In matlab.depfun.internal.mcc_call_requirements (line 59)] 
-[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 374 Column: 9
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 375 Column: 9
 The temporary variable 'dXYZ' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'dXYZ' is used before it is set, a runtime error will occur. For more
 information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
@@ -463,7 +463,7 @@ In matlab.depfun.internal/Completion/computePartsList (line 2548)
 In matlab.depfun.internal/Completion/requirements (line 3088)
 In matlab.depfun.internal.requirements (line 218)
 In matlab.depfun.internal.mcc_call_requirements (line 59)] 
-[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 422 Column: 7
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 423 Column: 7
 The temporary variable 'STACK' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'STACK' is used before it is set, a runtime error will occur. For more
 information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
@@ -476,7 +476,7 @@ In matlab.depfun.internal/Completion/computePartsList (line 2548)
 In matlab.depfun.internal/Completion/requirements (line 3088)
 In matlab.depfun.internal.requirements (line 218)
 In matlab.depfun.internal.mcc_call_requirements (line 59)] 
-[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Correct3d.m Line: 366 Column: 9
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Correct3d.m Line: 367 Column: 9
 The temporary variable 'tomoList' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'tomoList' is used before it is set, a runtime error will occur. For more
 information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
@@ -489,7 +489,7 @@ In matlab.depfun.internal/Completion/computePartsList (line 2548)
 In matlab.depfun.internal/Completion/requirements (line 3088)
 In matlab.depfun.internal.requirements (line 218)
 In matlab.depfun.internal.mcc_call_requirements (line 59)] 
-[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Correct3d.m Line: 536 Column: 13
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Correct3d.m Line: 537 Column: 13
 The temporary variable 'TA' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'TA' is used before it is set, a runtime error will occur. For more
 information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
@@ -502,7 +502,7 @@ In matlab.depfun.internal/Completion/computePartsList (line 2548)
 In matlab.depfun.internal/Completion/requirements (line 3088)
 In matlab.depfun.internal.requirements (line 218)
 In matlab.depfun.internal.mcc_call_requirements (line 59)] 
-[Warning: File: /sa_shared/git/emClarity_private/synthetic/BH_synthetic_mapBack.m Line: 1286
+[Warning: File: /sa_shared/git/emClarity_private/synthetic/BH_synthetic_mapBack.m Line: 1287
 Column: 9
 The temporary variable 'dataPrj' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'dataPrj' is used before it is set, a runtime error will occur. For more
@@ -516,7 +516,7 @@ In matlab.depfun.internal/Completion/computePartsList (line 2548)
 In matlab.depfun.internal/Completion/requirements (line 3088)
 In matlab.depfun.internal.requirements (line 218)
 In matlab.depfun.internal.mcc_call_requirements (line 59)] 
-[Warning: File: /sa_shared/git/emClarity_private/synthetic/BH_synthetic_mapBack.m Line: 1304
+[Warning: File: /sa_shared/git/emClarity_private/synthetic/BH_synthetic_mapBack.m Line: 1305
 Column: 9
 The temporary variable 'refPrj' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'refPrj' is used before it is set, a runtime error will occur. For more
@@ -530,7 +530,7 @@ In matlab.depfun.internal/Completion/computePartsList (line 2548)
 In matlab.depfun.internal/Completion/requirements (line 3088)
 In matlab.depfun.internal.requirements (line 218)
 In matlab.depfun.internal.mcc_call_requirements (line 59)] 
-[Warning: File: /sa_shared/git/emClarity_private/synthetic/BH_synthetic_mapBack.m Line: 1322
+[Warning: File: /sa_shared/git/emClarity_private/synthetic/BH_synthetic_mapBack.m Line: 1323
 Column: 9
 The temporary variable 'samplingMask' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'samplingMask' is used before it is set, a runtime error will occur. For more
@@ -544,7 +544,7 @@ In matlab.depfun.internal/Completion/computePartsList (line 2548)
 In matlab.depfun.internal/Completion/requirements (line 3088)
 In matlab.depfun.internal.requirements (line 218)
 In matlab.depfun.internal.mcc_call_requirements (line 59)] 
-[Warning: File: /sa_shared/git/emClarity_private/synthetic/BH_synthetic_mapBack.m Line: 1424
+[Warning: File: /sa_shared/git/emClarity_private/synthetic/BH_synthetic_mapBack.m Line: 1425
 Column: 7
 The temporary variable 'cccPRJ' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'cccPRJ' is used before it is set, a runtime error will occur. For more
@@ -583,7 +583,7 @@ In matlab.depfun.internal/Completion/computeDependencies (line 290)
 In matlab.depfun.internal/Completion/calltree (line 2992)
 In matlab.depfun.internal.Manifest (line 31)
 In matlab.depfun.internal.genmanifest (line 11)] 
-[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 742 Column:
+[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 743 Column:
 10
 The temporary variable 'volHeader' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'volHeader' is used before it is set, a runtime error will occur. For more
@@ -596,7 +596,7 @@ In matlab.depfun.internal/Completion/computeDependencies (line 290)
 In matlab.depfun.internal/Completion/calltree (line 2992)
 In matlab.depfun.internal.Manifest (line 31)
 In matlab.depfun.internal.genmanifest (line 11)] 
-[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 957 Column:
+[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 958 Column:
 27
 The temporary variable 'estPeakCoord' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'estPeakCoord' is used before it is set, a runtime error will occur. For more
@@ -609,7 +609,7 @@ In matlab.depfun.internal/Completion/computeDependencies (line 290)
 In matlab.depfun.internal/Completion/calltree (line 2992)
 In matlab.depfun.internal.Manifest (line 31)
 In matlab.depfun.internal.genmanifest (line 11)] 
-[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 1036 Column:
+[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 1037 Column:
 31
 The temporary variable 'iRotMask' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'iRotMask' is used before it is set, a runtime error will occur. For more
@@ -622,7 +622,7 @@ In matlab.depfun.internal/Completion/computeDependencies (line 290)
 In matlab.depfun.internal/Completion/calltree (line 2992)
 In matlab.depfun.internal.Manifest (line 31)
 In matlab.depfun.internal.genmanifest (line 11)] 
-[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 1240 Column:
+[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 1241 Column:
 23
 The temporary variable 'rXYZ' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'rXYZ' is used before it is set, a runtime error will occur. For more
@@ -635,7 +635,7 @@ In matlab.depfun.internal/Completion/computeDependencies (line 290)
 In matlab.depfun.internal/Completion/calltree (line 2992)
 In matlab.depfun.internal.Manifest (line 31)
 In matlab.depfun.internal.genmanifest (line 11)] 
-[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 1352 Column:
+[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 1353 Column:
 19
 The temporary variable 'bestRotPeak' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'bestRotPeak' is used before it is set, a runtime error will occur. For more
@@ -648,7 +648,7 @@ In matlab.depfun.internal/Completion/computeDependencies (line 290)
 In matlab.depfun.internal/Completion/calltree (line 2992)
 In matlab.depfun.internal.Manifest (line 31)
 In matlab.depfun.internal.genmanifest (line 11)] 
-[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 1534 Column:
+[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 1535 Column:
 11
 The temporary variable 'nonZeroInits' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'nonZeroInits' is used before it is set, a runtime error will occur. For more
@@ -661,7 +661,7 @@ In matlab.depfun.internal/Completion/computeDependencies (line 290)
 In matlab.depfun.internal/Completion/calltree (line 2992)
 In matlab.depfun.internal.Manifest (line 31)
 In matlab.depfun.internal.genmanifest (line 11)] 
-[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 1536 Column:
+[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 1537 Column:
 11
 The temporary variable 'sortCCC' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'sortCCC' is used before it is set, a runtime error will occur. For more
@@ -674,7 +674,7 @@ In matlab.depfun.internal/Completion/computeDependencies (line 290)
 In matlab.depfun.internal/Completion/calltree (line 2992)
 In matlab.depfun.internal.Manifest (line 31)
 In matlab.depfun.internal.genmanifest (line 11)] 
-[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 97 Column: 7
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 98 Column: 7
 The temporary variable 'mapBackPrfx' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'mapBackPrfx' is used before it is set, a runtime error will occur. For more
 information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
@@ -686,7 +686,7 @@ In matlab.depfun.internal/Completion/computeDependencies (line 290)
 In matlab.depfun.internal/Completion/calltree (line 2992)
 In matlab.depfun.internal.Manifest (line 31)
 In matlab.depfun.internal.genmanifest (line 11)] 
-[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 99 Column: 7
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 100 Column: 7
 The temporary variable 'mbEST' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'mbEST' is used before it is set, a runtime error will occur. For more
 information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
@@ -698,7 +698,7 @@ In matlab.depfun.internal/Completion/computeDependencies (line 290)
 In matlab.depfun.internal/Completion/calltree (line 2992)
 In matlab.depfun.internal.Manifest (line 31)
 In matlab.depfun.internal.genmanifest (line 11)] 
-[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 108 Column: 7
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 109 Column: 7
 The temporary variable 'PRJ_STACK' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'PRJ_STACK' is used before it is set, a runtime error will occur. For more
 information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
@@ -710,7 +710,7 @@ In matlab.depfun.internal/Completion/computeDependencies (line 290)
 In matlab.depfun.internal/Completion/calltree (line 2992)
 In matlab.depfun.internal.Manifest (line 31)
 In matlab.depfun.internal.genmanifest (line 11)] 
-[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 109 Column: 7
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 110 Column: 7
 The temporary variable 'PRJ_OUT' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'PRJ_OUT' is used before it is set, a runtime error will occur. For more
 information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
@@ -722,7 +722,7 @@ In matlab.depfun.internal/Completion/computeDependencies (line 290)
 In matlab.depfun.internal/Completion/calltree (line 2992)
 In matlab.depfun.internal.Manifest (line 31)
 In matlab.depfun.internal.genmanifest (line 11)] 
-[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 110 Column: 7
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 111 Column: 7
 The temporary variable 'PRJ_OLD' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'PRJ_OLD' is used before it is set, a runtime error will occur. For more
 information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
@@ -734,7 +734,7 @@ In matlab.depfun.internal/Completion/computeDependencies (line 290)
 In matlab.depfun.internal/Completion/calltree (line 2992)
 In matlab.depfun.internal.Manifest (line 31)
 In matlab.depfun.internal.genmanifest (line 11)] 
-[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 111 Column: 7
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 112 Column: 7
 The temporary variable 'outputDirectory' will be cleared at the beginning of each iteration of
 the parfor-loop. If 'outputDirectory' is used before it is set, a runtime error will occur. For
 more information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
@@ -746,7 +746,7 @@ In matlab.depfun.internal/Completion/computeDependencies (line 290)
 In matlab.depfun.internal/Completion/calltree (line 2992)
 In matlab.depfun.internal.Manifest (line 31)
 In matlab.depfun.internal.genmanifest (line 11)] 
-[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 246 Column: 7
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 247 Column: 7
 The temporary variable 'mbTLT' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'mbTLT' is used before it is set, a runtime error will occur. For more
 information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
@@ -758,7 +758,7 @@ In matlab.depfun.internal/Completion/computeDependencies (line 290)
 In matlab.depfun.internal/Completion/calltree (line 2992)
 In matlab.depfun.internal.Manifest (line 31)
 In matlab.depfun.internal.genmanifest (line 11)] 
-[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 247 Column: 7
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 248 Column: 7
 The temporary variable 'defShifts' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'defShifts' is used before it is set, a runtime error will occur. For more
 information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
@@ -770,7 +770,7 @@ In matlab.depfun.internal/Completion/computeDependencies (line 290)
 In matlab.depfun.internal/Completion/calltree (line 2992)
 In matlab.depfun.internal.Manifest (line 31)
 In matlab.depfun.internal.genmanifest (line 11)] 
-[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 315 Column: 7
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 316 Column: 7
 The temporary variable 'tmp_xf' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'tmp_xf' is used before it is set, a runtime error will occur. For more
 information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
@@ -782,7 +782,7 @@ In matlab.depfun.internal/Completion/computeDependencies (line 290)
 In matlab.depfun.internal/Completion/calltree (line 2992)
 In matlab.depfun.internal.Manifest (line 31)
 In matlab.depfun.internal.genmanifest (line 11)] 
-[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 321 Column: 7
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 322 Column: 7
 The temporary variable 'tmp_combined_xf' will be cleared at the beginning of each iteration of
 the parfor-loop. If 'tmp_combined_xf' is used before it is set, a runtime error will occur. For
 more information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
@@ -794,7 +794,7 @@ In matlab.depfun.internal/Completion/computeDependencies (line 290)
 In matlab.depfun.internal/Completion/calltree (line 2992)
 In matlab.depfun.internal.Manifest (line 31)
 In matlab.depfun.internal.genmanifest (line 11)] 
-[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 359 Column: 7
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 360 Column: 7
 The temporary variable 'updateScale' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'updateScale' is used before it is set, a runtime error will occur. For more
 information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
@@ -806,7 +806,7 @@ In matlab.depfun.internal/Completion/computeDependencies (line 290)
 In matlab.depfun.internal/Completion/calltree (line 2992)
 In matlab.depfun.internal.Manifest (line 31)
 In matlab.depfun.internal.genmanifest (line 11)] 
-[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 374 Column: 9
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 375 Column: 9
 The temporary variable 'dXYZ' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'dXYZ' is used before it is set, a runtime error will occur. For more
 information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
@@ -818,7 +818,7 @@ In matlab.depfun.internal/Completion/computeDependencies (line 290)
 In matlab.depfun.internal/Completion/calltree (line 2992)
 In matlab.depfun.internal.Manifest (line 31)
 In matlab.depfun.internal.genmanifest (line 11)] 
-[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 422 Column: 7
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 423 Column: 7
 The temporary variable 'STACK' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'STACK' is used before it is set, a runtime error will occur. For more
 information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
@@ -830,7 +830,7 @@ In matlab.depfun.internal/Completion/computeDependencies (line 290)
 In matlab.depfun.internal/Completion/calltree (line 2992)
 In matlab.depfun.internal.Manifest (line 31)
 In matlab.depfun.internal.genmanifest (line 11)] 
-[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Correct3d.m Line: 366 Column: 9
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Correct3d.m Line: 367 Column: 9
 The temporary variable 'tomoList' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'tomoList' is used before it is set, a runtime error will occur. For more
 information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
@@ -842,7 +842,7 @@ In matlab.depfun.internal/Completion/computeDependencies (line 290)
 In matlab.depfun.internal/Completion/calltree (line 2992)
 In matlab.depfun.internal.Manifest (line 31)
 In matlab.depfun.internal.genmanifest (line 11)] 
-[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Correct3d.m Line: 536 Column: 13
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Correct3d.m Line: 537 Column: 13
 The temporary variable 'TA' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'TA' is used before it is set, a runtime error will occur. For more
 information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
@@ -854,7 +854,7 @@ In matlab.depfun.internal/Completion/computeDependencies (line 290)
 In matlab.depfun.internal/Completion/calltree (line 2992)
 In matlab.depfun.internal.Manifest (line 31)
 In matlab.depfun.internal.genmanifest (line 11)] 
-[Warning: File: /sa_shared/git/emClarity_private/synthetic/BH_synthetic_mapBack.m Line: 1286
+[Warning: File: /sa_shared/git/emClarity_private/synthetic/BH_synthetic_mapBack.m Line: 1287
 Column: 9
 The temporary variable 'dataPrj' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'dataPrj' is used before it is set, a runtime error will occur. For more
@@ -867,7 +867,7 @@ In matlab.depfun.internal/Completion/computeDependencies (line 290)
 In matlab.depfun.internal/Completion/calltree (line 2992)
 In matlab.depfun.internal.Manifest (line 31)
 In matlab.depfun.internal.genmanifest (line 11)] 
-[Warning: File: /sa_shared/git/emClarity_private/synthetic/BH_synthetic_mapBack.m Line: 1304
+[Warning: File: /sa_shared/git/emClarity_private/synthetic/BH_synthetic_mapBack.m Line: 1305
 Column: 9
 The temporary variable 'refPrj' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'refPrj' is used before it is set, a runtime error will occur. For more
@@ -880,7 +880,7 @@ In matlab.depfun.internal/Completion/computeDependencies (line 290)
 In matlab.depfun.internal/Completion/calltree (line 2992)
 In matlab.depfun.internal.Manifest (line 31)
 In matlab.depfun.internal.genmanifest (line 11)] 
-[Warning: File: /sa_shared/git/emClarity_private/synthetic/BH_synthetic_mapBack.m Line: 1322
+[Warning: File: /sa_shared/git/emClarity_private/synthetic/BH_synthetic_mapBack.m Line: 1323
 Column: 9
 The temporary variable 'samplingMask' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'samplingMask' is used before it is set, a runtime error will occur. For more
@@ -893,7 +893,7 @@ In matlab.depfun.internal/Completion/computeDependencies (line 290)
 In matlab.depfun.internal/Completion/calltree (line 2992)
 In matlab.depfun.internal.Manifest (line 31)
 In matlab.depfun.internal.genmanifest (line 11)] 
-[Warning: File: /sa_shared/git/emClarity_private/synthetic/BH_synthetic_mapBack.m Line: 1424
+[Warning: File: /sa_shared/git/emClarity_private/synthetic/BH_synthetic_mapBack.m Line: 1425
 Column: 7
 The temporary variable 'cccPRJ' will be cleared at the beginning of each iteration of the
 parfor-loop. If 'cccPRJ' is used before it is set, a runtime error will occur. For more

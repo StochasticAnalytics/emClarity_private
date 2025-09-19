@@ -46,19 +46,15 @@ if strcmpi(STAGEofALIGNMENT, 'RawAlignment')
 
   % Check if we should use a Post_ operation result
   if strcmpi(postOperation, 'AssignAndMergeToBranch')
-    % Use the Post_AssignAndMergeToBranch geometry directly
+    % Use the Post_AssignAndMergeToBranch geometry (should already be proper geometry)
     if isfield(subTomoMeta.(cycleNumber), 'Post_AssignAndMergeToBranch')
-      % For now, just copy the entire Post_ structure
-      % TODO: Properly handle cluster-specific results when structure is defined
       subTomoMeta.(cycleNumber).('RawAlign') = subTomoMeta.(cycleNumber).Post_AssignAndMergeToBranch;
     else
       error('Post_AssignAndMergeToBranch field not found in cycle %s', cycleNumber);
     end
   elseif strcmpi(postOperation, 'RemoveClasses')
-    % Use the Post_RemoveClasses geometry directly
+    % Use the Post_RemoveClasses geometry (should already be proper geometry)
     if isfield(subTomoMeta.(cycleNumber), 'Post_RemoveClasses')
-      % For now, just copy the entire Post_ structure
-      % TODO: Properly handle cluster-specific results when structure is defined
       subTomoMeta.(cycleNumber).('RawAlign') = subTomoMeta.(cycleNumber).Post_RemoveClasses;
     else
       error('Post_RemoveClasses field not found in cycle %s', cycleNumber);

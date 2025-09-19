@@ -57,6 +57,15 @@ for iTomo = 1:nTomograms
   
   % Load in the geometry for the tomogram, and get number of subTomos.
   positionList = geometry.(tomoList{iTomo});
+
+  % DEBUG: Check dimensions of positionList % REVERT
+  fprintf('DEBUG: Tomo %s - positionList size: %dx%d\n', tomoList{iTomo}, size(positionList,1), size(positionList,2)); % REVERT
+
+  % Check if we have enough columns % REVERT
+  if size(positionList, 2) < 26 % REVERT
+    error('Position list for tomo %s only has %d columns, expected at least 26', tomoList{iTomo}, size(positionList, 2)); % REVERT
+  end % REVERT
+
   includeList = find(positionList(:,26) ~= -9999);
   
   nTotal = nTotal + length(includeList);

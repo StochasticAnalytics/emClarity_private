@@ -202,7 +202,7 @@ ln -s emClarity_${scriptOutName} emClarity
 cd ../../
 
 if [[ ${zip_location} != "NONE" ]]; then
-  zip -r --symlinks ${EMC_VERSION}.zip ./${EMC_VERSION}
+  zip -qr --symlinks ${EMC_VERSION}.zip ./${EMC_VERSION}
   mv ${EMC_VERSION}.zip ${zip_location}
 fi
 
