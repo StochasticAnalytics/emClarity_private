@@ -317,11 +317,15 @@ switch varargin{1}
     end
   case 'skip'
     if emcProgramHelp || ...
-        length(varargin) ~= 3
-      fprintf(['\nUsage: emClarity skip param.m iter\n']);
+        (length(varargin) ~= 3 && length(varargin) ~= 4)
+      fprintf(['\nUsage: emClarity skip param.m iter [optional: AssignAndMergeToBranch|RemoveClasses]\n']);
     else
       emC_testParse(varargin{2});
-      BH_skipClassAlignment(varargin{2},varargin{3},'RawAlignment','1');
+      if length(varargin) == 4
+        BH_skipClassAlignment(varargin{2},varargin{3},'RawAlignment','1',varargin{4});
+      else
+        BH_skipClassAlignment(varargin{2},varargin{3},'RawAlignment','1');
+      end
     end
   case 'rescale'
     if emcProgramHelp || ...

@@ -56,8 +56,8 @@ EMC_COMPILED_DIRNAME=${EMC_COMPILED_ROOT}/${EMC_VERSION}
 
 # The final binary, run script and docs folder will be zipped and put in this location
 # unless it is NONE then it will be left in the bin dir.
-#zip_location="${HOME}/tmp"
-zip_location="NONE"
+zip_location="${HOME}/tmp"
+#zip_location="NONE"
 
 
 

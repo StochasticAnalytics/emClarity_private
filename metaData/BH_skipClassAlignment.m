@@ -1,4 +1,4 @@
-function [  ] = BH_skipClassAlignment( PARAMETER_FILE, CYCLE, STAGEofALIGNMENT, flgGold )
+function [  ] = BH_skipClassAlignment( PARAMETER_FILE, CYCLE, STAGEofALIGNMENT, flgGold, postOperation )
 %Skip the alignment of class averages, while updating the appropriate
 %fields in subTomoMeta
 %   In Particular, useful for the first cycle (0) so that averges may be
@@ -10,8 +10,12 @@ function [  ] = BH_skipClassAlignment( PARAMETER_FILE, CYCLE, STAGEofALIGNMENT, 
 %   members that have been placed in the wrong class due to missing wedge
 %   bias, which is only weakly accounted for in template matching.s
 
-if (nargin ~= 4)
-  error('args = PARAMETER_FILE, CYCLE, STAGEofALIGNMENT, flgGold')
+if (nargin ~= 4 && nargin ~= 5)
+  error('args = PARAMETER_FILE, CYCLE, STAGEofALIGNMENT, flgGold, [optional: postOperation]')
+end
+
+if nargin < 5
+  postOperation = '';
 end
 
 flgGold = EMC_str2double(flgGold);
@@ -38,15 +42,43 @@ outputPrefix = sprintf('%s_%s', cycleNumber, emc.('subTomoMeta'));
 
 
 if strcmpi(STAGEofALIGNMENT, 'RawAlignment')
-  
-  if (emc.multi_reference_alignment || emc.classification)
-    if (emc.classification)
-      subTomoMeta.(cycleNumber).('RawAlign') = subTomoMeta.(cycleNumber).('ClusterClsGeom');
+
+  % Check if we should use a Post_ operation result
+  if strcmpi(postOperation, 'AssignAndMergeToBranch')
+    % Use the Post_AssignAndMergeToBranch geometry
+    if isfield(subTomoMeta.(cycleNumber), 'Post_AssignAndMergeToBranch')
+      if (emc.multi_reference_alignment || emc.classification)
+        cluster_key = 'Cls' + string(1) + '_nClass' + string(subTomoMeta.currentCycle.Nclusters(1));
+        subTomoMeta.(cycleNumber).('RawAlign') = subTomoMeta.(cycleNumber).Post_AssignAndMergeToBranch.ClusterResults.(cluster_key);
+      else
+        error('Post_AssignAndMergeToBranch only works with classification/multi-reference');
+      end
     else
-      subTomoMeta.(cycleNumber).('RawAlign') = subTomoMeta.(cycleNumber).('ClusterRefGeom');
+      error('Post_AssignAndMergeToBranch field not found in cycle %s', cycleNumber);
+    end
+  elseif strcmpi(postOperation, 'RemoveClasses')
+    % Use the Post_RemoveClasses geometry
+    if isfield(subTomoMeta.(cycleNumber), 'Post_RemoveClasses')
+      if (emc.multi_reference_alignment || emc.classification)
+        cluster_key = 'Cls' + string(1) + '_nClass' + string(subTomoMeta.currentCycle.Nclusters(1));
+        subTomoMeta.(cycleNumber).('RawAlign') = subTomoMeta.(cycleNumber).Post_RemoveClasses.ClusterResults.(cluster_key);
+      else
+        error('Post_RemoveClasses only works with classification/multi-reference');
+      end
+    else
+      error('Post_RemoveClasses field not found in cycle %s', cycleNumber);
     end
   else
-    subTomoMeta.(cycleNumber).('RawAlign') = subTomoMeta.(cycleNumber).('Avg_geometry');
+    % Default behavior - use normal geometry
+    if (emc.multi_reference_alignment || emc.classification)
+      if (emc.classification)
+        subTomoMeta.(cycleNumber).('RawAlign') = subTomoMeta.(cycleNumber).('ClusterClsGeom');
+      else
+        subTomoMeta.(cycleNumber).('RawAlign') = subTomoMeta.(cycleNumber).('ClusterRefGeom');
+      end
+    else
+      subTomoMeta.(cycleNumber).('RawAlign') = subTomoMeta.(cycleNumber).('Avg_geometry');
+    end
   end
 
 else

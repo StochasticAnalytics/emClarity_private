@@ -22,7 +22,7 @@ function  BH_geometryAnalysis( PARAMETER_FILE, CYCLE, ...
 %     - Validates each montage tile: must have exactly one positive label; unlabeled
 %       or conflicting tiles raise errors. Builds per-branch geometry copies in-memory
 %       and defers saving (writes subTomoMeta_branch_<b>.mat at end of function).
-%     - No modification to the in-memory masterTM during the case execution.
+%     - No modification to the in-memory subTomoMeta during the case execution.
 %
 %   AssignToTrunk
 %     - VECTOR_OP: same format as AssignToBranch.
@@ -50,7 +50,7 @@ if (nargin ~= 6)
 end
 
 remove_cycles = false;
-assignBranchTriggered = false; % set true when OPERATION == 'AssignToBranch'
+assignBranchTriggered = false; % set true when OPERATION == 'AssignClassToBranch'
 assignBranch_nBranches = 0;    % number of branches = max(classIDX)-1
 assignBranch_geometry = {};    % cell array of geometries per branch index
 CYCLE = EMC_str2double(CYCLE);
@@ -203,8 +203,16 @@ outputPrefix = sprintf('%s_%s', cycleNumber, emc.('subTomoMeta'));
          clusterGeom = 'ClusterRefGeom';
         end
         
+        % Skip Pre_ backup for assign methods and RemoveClasses
+        skip_backup = strcmpi(OPERATION, 'AssignClassToBranch') || ...
+                      strcmpi(OPERATION, 'AssignClassFromBranch') || ...
+                      strcmpi(OPERATION, 'AssignAndMergeToBranch') || ...
+                      strcmpi(OPERATION, 'RemoveClasses');
+
         %geometry = subTomoMeta.(cycleNumber).ClusterResults.(cluster_key);
-        subTomoMeta.(cycleNumber).(sprintf('Pre_%s_ClusterResults', OPERATION)).(cluster_key) = geometry;
+        if ~skip_backup
+          subTomoMeta.(cycleNumber).(sprintf('Pre_%s_ClusterResults', OPERATION)).(cluster_key) = geometry;
+        end
         try
           locations= subTomoMeta.(cycleNumber).(img_name){2};
           classVector{1} = subTomoMeta.(cycleNumber).(img_name){3}(1,:);
@@ -221,7 +229,7 @@ outputPrefix = sprintf('%s_%s', cycleNumber, emc.('subTomoMeta'));
 % % %     extList = subTomoMeta.mapExt;
 mapBackIter = subTomoMeta.currentTomoCPR; 
 
-    masterTM = subTomoMeta; clear subTomoMeta
+    % No longer need to copy to masterTM - work directly with subTomoMeta
 %   
 % catch 
 %   error('failed to load geometry')
@@ -233,9 +241,9 @@ nTomograms = length(tomoList);
 
 switch OPERATION
   case 'SwitchCurrentCycle'
-    masterTM.currentCycle = VECTOR_OP(1);
+    subTomoMeta.currentCycle = VECTOR_OP(1);
   case 'SwitchCurrentTomoCpr'
-    masterTM.currentTomoCPR = VECTOR_OP(1);    
+    subTomoMeta.currentTomoCPR = VECTOR_OP(1);    
   case 'SwitchExposureDose'
     % While transitioning , edit the dose column in the tilt geometry.
     
@@ -273,11 +281,11 @@ switch OPERATION
       system('rm cache/*.rec*');
     end
 
-  [stack_list, ~] = BH_returnIncludedTilts( masterTM.mapBackGeometry );
+  [stack_list, ~] = BH_returnIncludedTilts( subTomoMeta.mapBackGeometry );
 
     for iStack = 1:length(stack_list)
       stack_prfx = stack_list{iStack};
-      tomo_names = masterTM.mapBackGeometry.(stack_prfx).tomoList;
+      tomo_names = subTomoMeta.mapBackGeometry.(stack_prfx).tomoList;
       for iTomo = 1:length(tomo_names)
 
         new_tlt = sprintf('fixedStacks/ctf/%s_ali%d_ctf.tlt', stack_prfx,mapBackIter+1); 
@@ -304,7 +312,10 @@ switch OPERATION
       fclose(csv_fid);
     end
   case 'RemoveClasses'
-     
+
+    % Create a copy of geometry to work with
+    geometry_copy = geometry;
+
   classes_to_keep = [];
     % make a 2d array same size as montage
     clear blankClassMont
@@ -360,9 +371,9 @@ switch OPERATION
     nRemoved = 0;
     nRemain = 0;
     for iTomo = 1:nTomograms
-      positionList = geometry.(tomoList{iTomo});
-    
-      
+      positionList = geometry_copy.(tomoList{iTomo});
+
+
       toRemove = ismember(positionList(:,7),  halfNUM) & ...
                  ismember(positionList(:,26), classesToKill);
 
@@ -374,31 +385,49 @@ switch OPERATION
 
       nTotal = nTotal + sum(nOrig);
       nRemoved = nRemoved + sum(toRemove)
-      
-      geometry.(tomoList{iTomo}) = positionList;
+
+      geometry_copy.(tomoList{iTomo}) = positionList;
     end
 
-    
+
    fprintf(fileOUT, '\nremoved:\t%d\nremaining:%d\norig:%d\n',nRemoved,nRemain,nTotal);
     fclose(fileOUT);
+
+    % Store the modified geometry in Post_ field instead of overwriting
+    if strcmpi(STAGEofALIGNMENT, 'Cluster')
+      subTomoMeta.(cycleNumber).Post_RemoveClasses.ClusterResults.(cluster_key) = geometry_copy;
+    end
   
-  case 'AssignToBranch'
+  case 'AssignClassToBranch'
   % Assign montage tiles to branches using VECTOR_OP labels.
   % Contract:
   % - Input VECTOR_OP: [class_idx, <ignored>, x, y] with class 1 == ignore.
   % - Each tile must have exactly one positive label inside its bbox; unlabeled or conflicting labels error.
-  % - Output: no mutation to masterTM here; per-branch geometries cached and saved at end.
+  % - Output: no mutation to subTomoMeta here; per-branch geometries cached and saved at end.
   % Failure modes: out-of-bounds label, unlabeled tile, conflicting labels.
 
     if ~(strcmpi(STAGEofALIGNMENT, 'Cluster'))
-      error('AssignToBranch is only valid at STAGEofALIGNMENT=Cluster');
+      error('AssignClassToBranch is only valid at STAGEofALIGNMENT=Cluster');
     end
 
   % Build tile mapping (and branch count) using shared helper; validates VECTOR_OP
-  [tile_to_branch, n_branches] = emc_build_tile_to_branch(VECTOR_OP, locations, 'AssignToBranch');
+  fprintf('\n=== DEBUG AssignClassToBranch: Starting ===\n'); % revert
+  fprintf('DEBUG: VECTOR_OP size = %s\n', mat2str(size(VECTOR_OP))); % revert
+  fprintf('DEBUG: Number of locations (tiles) = %d\n', length(locations)); % revert
+  fprintf('DEBUG: First 10 VECTOR_OP rows:\n'); % revert
+  for debug_i = 1:min(10, size(VECTOR_OP,1)) % revert
+    fprintf('  Row %d: [classIdx=%d, col2=%g, x=%d, y=%d]\n', debug_i, VECTOR_OP(debug_i,1), VECTOR_OP(debug_i,2), VECTOR_OP(debug_i,3), VECTOR_OP(debug_i,4)); % revert
+  end % revert
+  [tile_to_branch, n_branches] = emc_build_tile_to_branch(VECTOR_OP, locations, 'AssignClassToBranch');
   assignBranch_nBranches = n_branches;
+  fprintf('DEBUG: After emc_build_tile_to_branch: n_branches=%d\n', n_branches); % revert
+  fprintf('DEBUG: tile_to_branch mapping:\n'); % revert
+  for debug_i = 1:length(tile_to_branch) % revert
+    fprintf('  Tile %d -> Branch %d\n', debug_i, tile_to_branch(debug_i)); % revert
+  end % revert
 
     % Build per-branch geometries without altering 'geometry'
+  % Build per-branch geometries without altering 'geometry'
   % Build per-branch geometries without altering 'geometry'
   branch_geometries = emc_assign_branch_geometries(geometry, tomoList, tile_to_branch, n_branches, COL_CLASS);
 
@@ -408,9 +437,15 @@ switch OPERATION
 
     % Summary logging: tiles per branch and per-tomo assignment counts
     tiles_ignored = sum(tile_to_branch == 0);
-    fprintf('AssignToBranch: tiles ignored=%d\n', tiles_ignored);
+    fprintf('\nDEBUG: Counting tiles_ignored...\n'); % revert
+    fprintf('DEBUG: tile_to_branch values: %s\n', mat2str(tile_to_branch')); % revert
+    fprintf('DEBUG: Number of zeros in tile_to_branch: %d\n', sum(tile_to_branch == 0)); % revert
+    fprintf('DEBUG: Tiles with branch 0 (ignored): '); % revert
+    ignored_indices = find(tile_to_branch == 0); % revert
+    fprintf('%s\n', mat2str(ignored_indices')); % revert
+    fprintf('AssignClassToBranch: tiles ignored=%d\n', tiles_ignored);
     for b = 1:n_branches
-      fprintf('AssignToBranch: tiles -> branch %d = %d\n', b, sum(tile_to_branch == b));
+      fprintf('AssignClassToBranch: tiles -> branch %d = %d\n', b, sum(tile_to_branch == b));
     end
     % Per-tomo particle distribution based on original classes
     total_per_branch = zeros(n_branches,1);
@@ -420,31 +455,41 @@ switch OPERATION
       position_list_orig = geometry.(tName);
       included_mask = (position_list_orig(:,COL_CLASS) ~= -9999);
       orig_classes = position_list_orig(included_mask, COL_CLASS);
+      fprintf('  DEBUG: Tomo %s - orig_classes unique values: %s\n', tName, mat2str(unique(orig_classes)')); % revert
+      tiles_with_zero = find(tile_to_branch == 0); % revert
+      fprintf('  DEBUG: Tiles mapped to branch 0 (positions): %s\n', mat2str(tiles_with_zero')); % revert
       ignore_count = sum(ismember(orig_classes, find(tile_to_branch == 0)));
       counts_line = zeros(1,n_branches);
       for b = 1:n_branches
+        tiles_for_branch = find(tile_to_branch == b); % revert
+        fprintf('    DEBUG: Branch %d gets tiles: %s\n', b, mat2str(tiles_for_branch')); % revert
         cnt_b = sum(ismember(orig_classes, find(tile_to_branch == b)));
         counts_line(b) = cnt_b; total_per_branch(b) = total_per_branch(b) + cnt_b;
       end
       total_ignored = total_ignored + ignore_count;
-      fprintf('AssignToBranch: %s -> branch_counts=%s, ignored=%d\n', tName, mat2str(counts_line), ignore_count);
+      fprintf('AssignClassToBranch: %s -> branch_counts=%s, ignored=%d\n', tName, mat2str(counts_line), ignore_count);
     end
-    fprintf('AssignToBranch: totals per branch=%s, total ignored=%d\n', mat2str(total_per_branch'), total_ignored);
+    fprintf('AssignClassToBranch: totals per branch=%s, total ignored=%d\n', mat2str(total_per_branch'), total_ignored);
   
-  case 'AssignToTrunk'
-  % Prepare mapping files for future AssignAndMerge without modifying metadata.
+  case 'AssignClassFromBranch'
+  % Prepare mapping files for future AssignAndMergeToBranch without modifying metadata.
   % Contract:
   % - Input VECTOR_OP: [class_idx, <ignored>, x, y] with class 1 == ignore.
-  % - Output files: cycleNNN_trunk_<b>_from_<origin>.txt (TSV: tName, subtomoIDX, mappedClass=b).
+  % - Output files: cycleNNN_branch_<b>_from_<origin>.txt (TSV: tName, subtomoIDX, mappedClass=b).
   %   <origin> is parsed from subTomoMeta suffix _branch_<num>; 0 if not present.
   % Failure modes: out-of-bounds label, unlabeled/conflicting tiles.
 
     if ~(strcmpi(STAGEofALIGNMENT, 'Cluster'))
-      error('AssignToTrunk is only valid at STAGEofALIGNMENT=Cluster');
+      error('AssignClassFromBranch is only valid at STAGEofALIGNMENT=Cluster');
     end
 
   % Build tile mapping (and branch count) using shared helper
-  [tile_to_branch, n_branches] = emc_build_tile_to_branch(VECTOR_OP, locations, 'AssignToTrunk');
+  fprintf('\n=== DEBUG AssignClassFromBranch: Starting ===\n'); % revert
+  fprintf('DEBUG: VECTOR_OP size = %s\n', mat2str(size(VECTOR_OP))); % revert
+  fprintf('DEBUG: Number of locations (tiles) = %d\n', length(locations)); % revert
+  [tile_to_branch, n_branches] = emc_build_tile_to_branch(VECTOR_OP, locations, 'AssignClassFromBranch');
+  fprintf('DEBUG: After emc_build_tile_to_branch: n_branches=%d\n', n_branches); % revert
+  fprintf('DEBUG: tile_to_branch mapping: %s\n', mat2str(tile_to_branch')); % revert
 
   % Determine originating branch for disambiguation
   origin_branch = 0;
@@ -459,23 +504,30 @@ switch OPERATION
   file_ids = cell(n_branches,1);
   lines_per_branch = zeros(n_branches,1);
     for b = 1:n_branches
-      out_path = sprintf('%s_trunk_%d_from_%d.txt', cycleNumber, b, origin_branch);
+      out_path = sprintf('%s_branch_%d_from_%d.txt', cycleNumber, b, origin_branch);
       fid = fopen(out_path, 'w');
-      if fid == -1, error('AssignToTrunk: failed to open %s for writing', out_path); end
+      if fid == -1, error('AssignClassFromBranch: failed to open %s for writing', out_path); end
       fprintf(fid, '# tName\tsubtomoIDX\tmappedClass\n');
       file_ids{b} = fid;
     end
 
     % Write assignments: for each tile mapped to branch b, list all rows with origClass==iClass
+    fprintf('DEBUG: Writing assignments to files...\n'); % revert
     for iTomo = 1:nTomograms
       tomo_name = tomoList{iTomo};
       position_list = geometry.(tomo_name);
       original_class_labels = position_list(:,COL_CLASS);
       subtomo_idx = position_list(:,COL_SUBTOMO_IDX);
+      unique_classes = unique(original_class_labels(original_class_labels ~= -9999)); % revert
+      fprintf('  DEBUG: Tomo %s has classes: %s\n', tomo_name, mat2str(unique_classes')); % revert
       for tile_index = 1:length(tile_to_branch)
         b = tile_to_branch(tile_index);
-        if b <= 0, continue; end
+        if b <= 0
+          fprintf('    DEBUG: tile %d -> branch %d (ignored)\n', tile_index, b); % revert
+          continue;
+        end
         class_mask = (original_class_labels == tile_index);
+        fprintf('    DEBUG: tile %d -> branch %d, looking for class %d, found %d particles\n', tile_index, b, tile_index, sum(class_mask)); % revert
         if any(class_mask)
           fid = file_ids{b};
           idx_list = find(class_mask)';
@@ -490,37 +542,37 @@ switch OPERATION
     % Close files
     for b = 1:n_branches
       fclose(file_ids{b});
-      fprintf('AssignToTrunk: wrote %s_trunk_%d_from_%d.txt (rows=%d)\n', cycleNumber, b, origin_branch, lines_per_branch(b));
+      fprintf('AssignClassFromBranch: wrote %s_branch_%d_from_%d.txt (rows=%d)\n', cycleNumber, b, origin_branch, lines_per_branch(b));
     end
-    fprintf('AssignToTrunk: tiles ignored=%d\n', sum(tile_to_branch==0));
+    fprintf('AssignClassFromBranch: tiles ignored=%d\n', sum(tile_to_branch==0));
     for b = 1:n_branches
-      fprintf('AssignToTrunk: tiles -> branch %d = %d\n', b, sum(tile_to_branch==b));
+      fprintf('AssignClassFromBranch: tiles -> branch %d = %d\n', b, sum(tile_to_branch==b));
     end
 
-  case 'AssignAndMerge'
+  case 'AssignAndMergeToBranch'
   % Merge assignments: choose current branch based on subTomoMeta name, then
   % for all cycle-prefixed mapping files, set class=b for matches and -9999 otherwise.
   % Contract:
-  % - Input files: cycleNNN_trunk_<current_branch>_from_*.txt (TSV header + rows tName,subtomoIDX,mappedClass).
+  % - Input files: cycleNNN_branch_<current_branch>_from_*.txt (TSV header + rows tName,subtomoIDX,mappedClass).
   % - Behavior: detect current branch from subTomoMeta suffix _branch_<num> and apply.
-  % Failure modes: missing trunk files, invalid branch suffix, file read errors.
+  % Failure modes: missing branch files, invalid branch suffix, file read errors.
     if ~(strcmpi(STAGEofALIGNMENT, 'Cluster'))
-      error('AssignAndMerge is only valid at STAGEofALIGNMENT=Cluster');
+      error('AssignAndMergeToBranch is only valid at STAGEofALIGNMENT=Cluster');
     end
   meta_name = emc.('subTomoMeta');
     branch_tokens = regexp(meta_name, '_branch_(\d+)$', 'tokens');
     if isempty(branch_tokens)
-      error('AssignAndMerge: could not determine branch from subTomoMeta "%s"; expected suffix _branch_<num>', meta_name);
+      error('AssignAndMergeToBranch: could not determine branch from subTomoMeta "%s"; expected suffix _branch_<num>', meta_name);
     end
     current_branch = str2double(branch_tokens{1}{1});
     if isnan(current_branch) || current_branch < 1
-      error('AssignAndMerge: invalid branch number parsed from subTomoMeta "%s"', meta_name);
+      error('AssignAndMergeToBranch: invalid branch number parsed from subTomoMeta "%s"', meta_name);
     end
 
-    % Discover mapping files for this cycle with trunk matching current branch; origin wildcard
-    file_list = dir(sprintf('%s_trunk_%d_from_*.txt', cycleNumber, current_branch));
+    % Discover mapping files for this cycle with branch matching current branch; origin wildcard
+    file_list = dir(sprintf('%s_branch_%d_from_*.txt', cycleNumber, current_branch));
     if isempty(file_list)
-      error('AssignAndMerge: no mapping files found for current branch. Expected files like %s_trunk_%d_from_*.txt', cycleNumber, current_branch);
+      error('AssignAndMergeToBranch: no mapping files found for current branch. Expected files like %s_branch_%d_from_*.txt', cycleNumber, current_branch);
     end
 
   % Build a keep list (by tName) for current branch
@@ -530,7 +582,7 @@ switch OPERATION
     file_path = file_list(file_i).name;
     fid = fopen(file_path, 'r');
     if fid == -1
-      error('AssignAndMerge: failed to open %s', file_path);
+      error('AssignAndMergeToBranch: failed to open %s', file_path);
     end
     % header then rows: tName\tsubtomoIDX\tmappedClass
     header_line = fgetl(fid); %#ok<NASGU>
@@ -557,13 +609,17 @@ switch OPERATION
     end
   end
 
-    % Apply to geometry:
+    % Apply to a COPY of geometry (not modifying the original):
     % - Set -9999 by default for rows that were previously included
     % - Assign class=current_branch for any mapped subtomoIDs (revive if previously -9999)
+
+    % Create a deep copy of the geometry
+    geometry_copy = geometry;
+
     total_kept = 0; total_ignored = 0;
     for iTomo = 1:nTomograms
       tName = tomoList{iTomo};
-      position_list = geometry.(tName);
+      position_list = geometry_copy.(tName);
       included_mask = (position_list(:,COL_CLASS) ~= -9999);
       % default ignore for all included
       position_list(included_mask,COL_CLASS) = -9999;
@@ -578,10 +634,15 @@ switch OPERATION
         kept_here = 0; ignored_here = 0;
       end
       total_kept = total_kept + kept_here; total_ignored = total_ignored + ignored_here;
-      fprintf('AssignAndMerge: %s -> kept=%d, ignored=%d\n', tName, kept_here, ignored_here);
-      geometry.(tName) = position_list;
+      fprintf('AssignAndMergeToBranch: %s -> kept=%d, ignored=%d\n', tName, kept_here, ignored_here);
+      geometry_copy.(tName) = position_list;
     end
-    fprintf('AssignAndMerge: files_read=%d, rows_for_branch=%d, total_kept=%d, total_ignored=%d\n', numel(file_list), total_rows_current_branch, total_kept, total_ignored);
+    fprintf('AssignAndMergeToBranch: files_read=%d, rows_for_branch=%d, total_kept=%d, total_ignored=%d\n', numel(file_list), total_rows_current_branch, total_kept, total_ignored);
+
+    % Store the modified geometry in Post_ field instead of overwriting
+    if strcmpi(STAGEofALIGNMENT, 'Cluster')
+      subTomoMeta.(cycleNumber).Post_AssignAndMergeToBranch.ClusterResults.(cluster_key) = geometry_copy;
+    end
   
   case 'ShiftAll'
     % No option to shift eve/odd separately.
@@ -628,13 +689,13 @@ switch OPERATION
   case 'RemoveTomos'
     
     if (listTomos)
-  f=fieldnames(masterTM.mapBackGeometry.tomoName);
+  f=fieldnames(subTomoMeta.mapBackGeometry.tomoName);
       tomoFid = fopen('tomoList.txt','w');
       fprintf(tomoFid,'%s\n',f{:});
       fclose(tomoFid);   
     else
       tomoList = importdata(VECTOR_OP);
-      f=fieldnames(masterTM.mapBackGeometry.tomoName);
+      f=fieldnames(subTomoMeta.mapBackGeometry.tomoName);
     
       for iOrig = 1:length(f)
   flg_remove = 1;
@@ -645,33 +706,33 @@ switch OPERATION
           end
         end
         if (flg_remove)
-          if isfield(masterTM.reconGeometry.(f{iOrig}))
-            masterTM.reconGeometry = rmfield(masterTM.reconGeometry,f{iOrig});
+          if isfield(subTomoMeta.reconGeometry, f{iOrig})
+            subTomoMeta.reconGeometry = rmfield(subTomoMeta.reconGeometry,f{iOrig});
           end
-          if isfield(masterTM.tiltGeometry.(f{iOrig}))
-            masterTM.tiltGeometry = rmfield(masterTM.tiltGeometry,f{iOrig});
+          if isfield(subTomoMeta.tiltGeometry, f{iOrig})
+            subTomoMeta.tiltGeometry = rmfield(subTomoMeta.tiltGeometry,f{iOrig});
           end
 
-          if isfield(masterTM.(cycleNumber).RawAlign.f{iOrig})
-            masterTM.(cycleNumber).RawAlign = rmfield(masterTM.(cycleNumber).RawAlign,(f{iOrig}));
+          if isfield(subTomoMeta.(cycleNumber).RawAlign, f{iOrig})
+            subTomoMeta.(cycleNumber).RawAlign = rmfield(subTomoMeta.(cycleNumber).RawAlign, f{iOrig});
           end
-          if isfield(masterTM.mapBackGeometry.tomoName.(f{iOrig}))
-            tN = masterTM.mapBackGeometry.tomoName.(f{iOrig}).tomoIdx;
-            tName = masterTM.mapBackGeometry.tomoName.(f{iOrig}).tiltName;
-            if isfield(masterTM.mapBackGeometry,tName)
-              masterTM.mapBackGeometry.(tName).nTomos = masterTM.mapBackGeometry.(tName).nTomos - 1;
-                keep_rows = ismember(1:size(masterTM.mapBackGeometry.(tName).coords,1),tN);
-                masterTM.mapBackGeometry.(tName).coords = masterTM.mapBackGeometry.(tName).coords(~keep_rows,:);
-                masterTM.mapBackGeometry.tomoName = rmfield(masterTM.mapBackGeometry.tomoName,f{iOrig});
-              if masterTM.mapBackGeometry.(tName).nTomos == 0 
-                masterTM.mapBackGeometry = rmfield(masterTM.mapBackGeometry,tName);
+          if isfield(subTomoMeta.mapBackGeometry.tomoName, f{iOrig})
+            tN = subTomoMeta.mapBackGeometry.tomoName.(f{iOrig}).tomoIdx;
+            tName = subTomoMeta.mapBackGeometry.tomoName.(f{iOrig}).tiltName;
+            if isfield(subTomoMeta.mapBackGeometry, tName)
+              subTomoMeta.mapBackGeometry.(tName).nTomos = subTomoMeta.mapBackGeometry.(tName).nTomos - 1;
+                keep_rows = ismember(1:size(subTomoMeta.mapBackGeometry.(tName).coords,1),tN);
+                subTomoMeta.mapBackGeometry.(tName).coords = subTomoMeta.mapBackGeometry.(tName).coords(~keep_rows,:);
+                subTomoMeta.mapBackGeometry.tomoName = rmfield(subTomoMeta.mapBackGeometry.tomoName,f{iOrig});
+              if subTomoMeta.mapBackGeometry.(tName).nTomos == 0 
+                subTomoMeta.mapBackGeometry = rmfield(subTomoMeta.mapBackGeometry,tName);
               end
             end
           end
         
         end
       end
-      geometry = masterTM.tiltGeometry;  
+      geometry = subTomoMeta.tiltGeometry;  
     end   
     
       
@@ -743,12 +804,12 @@ switch OPERATION
     saveas(gcf, file_out,'pdf')
  
   case 'TrimOldCycles'
-    % Trim subTomoMeta/masterTM by removing all cycleXXX structs with XXX <= VECTOR_OP(1)
+    % Trim subTomoMeta by removing all cycleXXX structs with XXX <= VECTOR_OP(1)
     trim_cycle = VECTOR_OP(1);
     if isnan(trim_cycle) || trim_cycle < 0
       error('TrimOldCycles: invalid cycle value %s', mat2str(VECTOR_OP));
     end
-    flds = fieldnames(masterTM);
+    flds = fieldnames(subTomoMeta);
     cycle_names = {};
     cycle_ids = [];
     for i = 1:numel(flds)
@@ -768,7 +829,7 @@ switch OPERATION
     n_keep   = sum(to_keep_mask);
     if n_remove > 0
       rm_list = cycle_names(to_remove_mask);
-      masterTM = rmfield(masterTM, rm_list);
+      subTomoMeta = rmfield(subTomoMeta, rm_list);
       fprintf('TrimOldCycles: removed %d cycle(s) <= %03d\n', n_remove, trim_cycle);
     else
       fprintf('TrimOldCycles: nothing to remove at or below cycle %03d\n', trim_cycle);
@@ -778,7 +839,7 @@ switch OPERATION
     else
       fprintf('TrimOldCycles: %d cycle(s) remain > %03d\n', n_keep, trim_cycle);
     end
-    % geometry remains unchanged; final save below will persist masterTM
+    % geometry remains unchanged; final save below will persist subTomoMeta
     
     
     case 'RemoveIgnoredParticles'
@@ -846,12 +907,12 @@ end
 switch STAGEofALIGNMENT
   
   case 'TiltAlignment'
-    masterTM.tiltGeometry = geometry;
+    subTomoMeta.tiltGeometry = geometry;
   
   case 'RawAlignment'
-    masterTM.(cycleNumber).RawAlign = geometry;
+    subTomoMeta.(cycleNumber).RawAlign = geometry;
   case 'Cluster'
-    masterTM.(cycleNumber).(clusterGeom) = geometry;
+    subTomoMeta.(cycleNumber).(clusterGeom) = geometry;
 
   otherwise
     error('STAGE_ALIGNMENTS: [Tilt,Class,No,Raw]Alignment, not %s', ...
@@ -860,30 +921,32 @@ end
 
 % Currently set only if calling RemoveIgnoredParticles
 if (remove_cycles)
-  for iCycle = shiftXYZ(3):-1:0
+  % Remove cycles BEFORE the specified cycle (keeping the specified cycle and later)
+  for iCycle = 0:(shiftXYZ(3)-1)
     cycleName = sprintf('cycle%0.3u', iCycle);
-    if isfield(masterTM, cycleName)
-      masterTM = rmfield(masterTM, cycleName);
+    if isfield(subTomoMeta, cycleName)
+      fprintf('Removing cycle %s from metadata\n', cycleName);
+      subTomoMeta = rmfield(subTomoMeta, cycleName);
     end
   end
 end
 
 if assignBranchTriggered
-  % Save per-branch variants without modifying masterTM
+  % Save per-branch variants without modifying subTomoMeta
   for b = 1:assignBranch_nBranches
-    branchMasterTM = masterTM;
-    % Only Cluster stage supported for AssignToBranch
+    branchMasterTM = subTomoMeta;
+    % Only Cluster stage supported for AssignClassToBranch
     if strcmpi(STAGEofALIGNMENT, 'Cluster')
       branchMasterTM.(cycleNumber).(clusterGeom) = assignBranch_geometry{b};
     else
-      error('AssignToBranch saving encountered unexpected stage: %s', STAGEofALIGNMENT);
+      error('AssignClassToBranch saving encountered unexpected stage: %s', STAGEofALIGNMENT);
     end
     subTomoMeta = branchMasterTM; %#ok<NASGU>
     outBase = sprintf('%s_branch_%d', emc.('subTomoMeta'), b);
     save(outBase, 'subTomoMeta', '-v7.3');
   end
 else
-  subTomoMeta = masterTM;
+  % No longer need to copy back - just save subTomoMeta directly
   save(emc.('subTomoMeta'), 'subTomoMeta', '-v7.3');
 end
 end
@@ -918,12 +981,21 @@ function [tile_to_branch, n_branches] = emc_build_tile_to_branch(VECTOR_OP, loca
     error('%s: expects VECTOR_OP with 4 columns: [classIDX, <ignored>, x, y]', whoami);
   end
 
+  fprintf('\n=== DEBUG emc_build_tile_to_branch START ===\n'); % revert
+  fprintf('DEBUG: whoami = %s\n', whoami); % revert
+  fprintf('DEBUG: VECTOR_OP has %d rows\n', size(VECTOR_OP,1)); % revert
+  fprintf('DEBUG: locations has %d tiles\n', length(locations)); % revert
+
   montage_size = max(locations{end}(2),locations{end}(4));
+  fprintf('DEBUG: montage_size = %d\n', montage_size); % revert
   label_montage = zeros(montage_size, montage_size, 'single');
 
   for label_idx = 1:size(VECTOR_OP,1)
     class_idx = VECTOR_OP(label_idx,1);
     x_idx = VECTOR_OP(label_idx,3); y_idx = VECTOR_OP(label_idx,4);
+    if mod(label_idx, 100) == 1 || label_idx <= 10 % revert
+      fprintf('DEBUG: Processing label %d: class_idx=%d at (%d,%d)\n', label_idx, class_idx, x_idx, y_idx); % revert
+    end % revert
     if class_idx < 1
       error('%s: classIDX must be >= 1 at row %d (got %d)', whoami, label_idx, class_idx);
     end
@@ -932,46 +1004,70 @@ function [tile_to_branch, n_branches] = emc_build_tile_to_branch(VECTOR_OP, loca
     end
     label_montage(x_idx,y_idx) = class_idx; %#ok<AGROW>
   end
+  fprintf('DEBUG: Finished populating label_montage\n'); % revert
 
   max_class_idx = max(VECTOR_OP(:,1));
-  n_branches = max_class_idx - 1;
-  if n_branches < 1
+  fprintf('DEBUG: max_class_idx = %d\n', max_class_idx); % revert
+  fprintf('DEBUG: unique class indices in VECTOR_OP: %s\n', mat2str(unique(VECTOR_OP(:,1))')); % revert
+  % Allow n branches for n+1 class labels (including ignore class)
+  % This handles cases where class labels can exceed initial tile count due to branch-from-branch scenarios
+  if max_class_idx == 1
+    % Only ignore class present
     error('%s: need at least one classIDX > 1 to form branches (max classIDX=%d)', whoami, max_class_idx);
   end
+  n_branches = max_class_idx - 1;
+  fprintf('DEBUG: n_branches = %d\n', n_branches); % revert
 
   n_tiles = length(locations);
+  fprintf('DEBUG: n_tiles = %d\n', n_tiles); % revert
   row_starts = zeros(n_tiles,1); col_starts = zeros(n_tiles,1);
   for ii = 1:n_tiles
     row_starts(ii) = locations{ii}(1);
     col_starts(ii) = locations{ii}(3);
+    if ii <= 5 % revert
+      fprintf('DEBUG: Tile %d location: [%d %d %d %d]\n', ii, locations{ii}(1), locations{ii}(2), locations{ii}(3), locations{ii}(4)); % revert
+    end % revert
   end
   row_vals_top = sort(unique(row_starts),'ascend');
   n_rows = numel(row_vals_top);
+  fprintf('DEBUG: n_rows = %d\n', n_rows); % revert
   tile_to_branch = zeros(n_tiles,1,'int32');
+  fprintf('DEBUG: Starting tile-to-branch mapping...\n'); % revert
   for tile_index = 1:n_tiles
     x1 = locations{tile_index}(1); x2 = locations{tile_index}(2);
     y1 = locations{tile_index}(3); y2 = locations{tile_index}(4);
+    fprintf('\nDEBUG: Processing tile %d with bbox [%d:%d, %d:%d]\n', tile_index, x1, x2, y1, y2); % revert
     region = label_montage(x1:x2, y1:y2);
+    fprintf('DEBUG: Region size: %s\n', mat2str(size(region))); % revert
     vals = unique(region(:)); vals = vals(vals > 0);
+    fprintf('DEBUG: All unique values in region (including 0): %s\n', mat2str(unique(region(:))')); % revert
+    fprintf('DEBUG: Non-zero unique values (vals): %s\n', mat2str(vals')); % revert
     row_from_top = find(row_vals_top == x1, 1, 'first'); if isempty(row_from_top), row_from_top = 1; end
     tiles_in_row = find(row_starts == x1); [~, col_order] = sort(col_starts(tiles_in_row), 'ascend');
     col_idx = find(tiles_in_row(col_order) == tile_index, 1, 'first'); if isempty(col_idx), col_idx = 1; end
     row_from_bottom = n_rows - row_from_top + 1; %#ok<NASU> % retained for error context
+    fprintf('DEBUG: Tile position: row_from_bottom=%d, col_idx=%d\n', row_from_bottom, col_idx); % revert
     if isempty(vals)
       error('%s: tile (row=%d, col=%d) has no label; every tile must have at least one label [bbox %d:%d,%d:%d]', ...
             whoami, row_from_bottom, col_idx, x1, x2, y1, y2);
     end
     unique_labels = unique(vals);
+    fprintf('DEBUG: unique_labels for tile %d: %s\n', tile_index, mat2str(unique_labels')); % revert
     if numel(unique_labels) > 1
       error('%s: tile (row=%d, col=%d) has conflicting labels %s [bbox %d:%d,%d:%d]', ...
             whoami, row_from_bottom, col_idx, mat2str(unique_labels'), x1, x2, y1, y2);
     end
     if unique_labels == 1
+      fprintf('DEBUG: Tile %d has label 1 (ignore), setting tile_to_branch=%d\n', tile_index, 0); % revert
       tile_to_branch(tile_index) = 0;
     else
+      fprintf('DEBUG: Tile %d has label %d, setting tile_to_branch=%d\n', tile_index, unique_labels, unique_labels-1); % revert
       tile_to_branch(tile_index) = int32(unique_labels - 1);
     end
   end
+  fprintf('\nDEBUG: Final tile_to_branch mapping: %s\n', mat2str(tile_to_branch')); % revert
+  fprintf('DEBUG: Tiles mapped to branch 0 (ignored): %s\n', mat2str(find(tile_to_branch == 0)')); % revert
+  fprintf('=== DEBUG emc_build_tile_to_branch END ===\n\n'); % revert
 end
 
 function branch_geometries = emc_assign_branch_geometries(geometry, tomo_list, tile_to_branch, n_branches, COL_CLASS)
@@ -987,7 +1083,10 @@ function branch_geometries = emc_assign_branch_geometries(geometry, tomo_list, t
 %
 % Output
 %   branch_geometries - cell of structs, one per branch, same schema as geometry.
+  fprintf('\n=== DEBUG emc_assign_branch_geometries START ===\n'); % revert
   n_tiles = length(tile_to_branch);
+  fprintf('DEBUG: n_tiles=%d, n_branches=%d, COL_CLASS=%d\n', n_tiles, n_branches, COL_CLASS); % revert
+  fprintf('DEBUG: tile_to_branch mapping: %s\n', mat2str(tile_to_branch')); % revert
   branch_geometries = cell(n_branches,1);
   for b = 1:n_branches
     branch_geometries{b} = geometry;
@@ -997,22 +1096,47 @@ function branch_geometries = emc_assign_branch_geometries(geometry, tomo_list, t
     position_list_orig = geometry.(tName);
     original_class_labels = position_list_orig(:,COL_CLASS);
     included_mask = (position_list_orig(:,COL_CLASS) ~= -9999);
+
+    fprintf('\nDEBUG: Processing tomo %s\n', tName); % revert
+    unique_classes = unique(original_class_labels(included_mask)); % revert
+    fprintf('DEBUG: Unique class labels in this tomo (excluding -9999): %s\n', mat2str(unique_classes')); % revert
+    fprintf('DEBUG: Number of included particles: %d\n', sum(included_mask)); % revert
+
     for b = 1:n_branches
       pl = position_list_orig;
       pl(included_mask,COL_CLASS) = -9999;
       branch_geometries{b}.(tName) = pl;
     end
+
+    fprintf('DEBUG: Assigning particles to branches based on tile_index...\n'); % revert
     for tile_index = 1:n_tiles
       b = tile_to_branch(tile_index);
-      if b <= 0, continue; end
+      fprintf('  DEBUG: tile_index=%d -> branch=%d\n', tile_index, b); % revert
+      if b <= 0
+        fprintf('    -> Skipping (branch 0 = ignore)\n'); % revert
+        continue;
+      end
       class_mask = (original_class_labels == tile_index);
+      num_particles = sum(class_mask); % revert
+      fprintf('    -> Looking for particles with class==%d: found %d particles\n', tile_index, num_particles); % revert
       if any(class_mask)
         branch_pl = branch_geometries{b}.(tName);
         branch_pl(class_mask,COL_CLASS) = b;
         branch_geometries{b}.(tName) = branch_pl;
+        fprintf('    -> Assigned %d particles to branch %d\n', num_particles, b); % revert
       end
     end
+
+    % Debug: Check final assignment % revert
+    fprintf('DEBUG: Final particle counts per branch for %s:\n', tName); % revert
+    for b = 1:n_branches % revert
+      branch_pl = branch_geometries{b}.(tName); % revert
+      assigned_count = sum(branch_pl(:,COL_CLASS) == b); % revert
+      ignored_count = sum(branch_pl(:,COL_CLASS) == -9999); % revert
+      fprintf('  Branch %d: assigned=%d, ignored=%d\n', b, assigned_count, ignored_count); % revert
+    end % revert
   end
+  fprintf('=== DEBUG emc_assign_branch_geometries END ===\n\n'); % revert
 end
 
 
