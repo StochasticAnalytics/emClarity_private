@@ -22,30 +22,27 @@ function subTomoMeta = BH_loadSubTomoMeta(identifier, metadata_format)
     % Ensure format is lowercase
     metadata_format = lower(metadata_format);
 
-    % Create minimal emc structure for the wrapper
-    emc = struct('metadata_format', metadata_format);
-    
+    % For now, always use legacy mode until wrapper class is fully implemented
+    % In the future, this will check metadata_format and use the appropriate loader
+
+    % Determine whether to use wrapper (only in development mode when class exists)
+    use_wrapper = strcmpi(metadata_format, 'development') && exist('BH_subTomoMeta', 'class') == 8;
+
     % Load metadata
     if use_wrapper
-        % Check if wrapper class exists
-        if exist('BH_subTomoMeta', 'class') == 8
-            try
-                % Use wrapper class
-                subTomoMeta = BH_subTomoMeta(identifier, emc);
-            catch ME
-                % Fall back to legacy if wrapper fails
-                warning('BH_loadSubTomoMeta:WrapperFailed', ...
-                        'Wrapper failed (%s), using legacy mode', ME.message);
-                subTomoMeta = load_legacy(identifier);
-            end
-        else
-            % Wrapper not available, use legacy
-            warning('BH_loadSubTomoMeta:NoWrapper', ...
-                    'Wrapper class not found, using legacy mode');
+        try
+            % Create minimal emc structure for the wrapper
+            emc = struct('metadata_format', metadata_format);
+            % Use wrapper class
+            subTomoMeta = BH_subTomoMeta(identifier, emc);
+        catch ME
+            % Fall back to legacy if wrapper fails
+            warning('BH_loadSubTomoMeta:WrapperFailed', ...
+                    'Wrapper failed (%s), using legacy mode', ME.message);
             subTomoMeta = load_legacy(identifier);
         end
     else
-        % Explicitly requested legacy mode
+        % Use legacy mode (default for now)
         subTomoMeta = load_legacy(identifier);
     end
 end

@@ -55,7 +55,8 @@ end
 
 emc = BH_parseParameterFile(PARAMETER_FILE);
 cycleNumber = sprintf('cycle%0.3u', CYCLE);
-load(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta');
+% Load using wrapper
+subTomoMeta = BH_loadSubTomoMeta(emc.('subTomoMeta'), emc.('metadata_format'));
 mapBackIter = subTomoMeta.currentTomoCPR;
 reconScaling = 1;
 
@@ -1589,7 +1590,8 @@ else
   subTomoMeta.(cycleNumber).('newIgnored_rawAlign') = gather(nIgnored);
   
   clear bestAngles rawAlign
-  save(emc.('subTomoMeta'), 'subTomoMeta');
+  % Save using wrapper
+  BH_saveSubTomoMeta(emc.('subTomoMeta'), subTomoMeta);
    
 end
 

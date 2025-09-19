@@ -155,7 +155,8 @@ if (recon_for_templateMatching)
   mapBackIter = 0;
   CYCLE = 0;
 else
-  load(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta');
+  % Load using wrapper
+  subTomoMeta = BH_loadSubTomoMeta(emc.('subTomoMeta'), emc.('metadata_format'));
   mapBackIter = subTomoMeta.currentTomoCPR;
   CYCLE = subTomoMeta.currentCycle;
 end

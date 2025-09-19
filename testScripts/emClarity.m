@@ -257,7 +257,8 @@ switch varargin{1}
       fprintf(['\nUsage: emClarity getActiveTilts param.m\n']);
     else
       emc = emC_testParse(varargin{2});
-      load(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta');
+      % Load using wrapper
+      subTomoMeta = BH_loadSubTomoMeta(emc.('subTomoMeta'), emc.('metadata_format'));
       [tiltNameList, nTiltSeries] = BH_returnIncludedTilts( subTomoMeta.mapBackGeometry );
       fprintf('%d\n',nTiltSeries);
       return 
@@ -707,7 +708,8 @@ switch varargin{1}
         
         % Read in the parameter file and subTomoMeta
         cycleNumber = sprintf('cycle%0.3u', cycle);
-        load(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta');
+        % Load using wrapper
+        subTomoMeta = BH_loadSubTomoMeta(emc.('subTomoMeta'), emc.('metadata_format'));
         emc = BH_parseParameterFile(varargin{2});
         % Make sure the cycle has been run
         if ~isfield(subTomoMeta, cycleNumber)

@@ -28,7 +28,8 @@ end
 cycleNumber = sprintf('cycle%0.3u', CYCLE);
 
 
-load(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta');
+% Load using wrapper
+subTomoMeta = BH_loadSubTomoMeta(emc.('subTomoMeta'), emc.('metadata_format'));
 
 
 mapBackIter = subTomoMeta.currentTomoCPR;
@@ -1561,7 +1562,8 @@ cycleNumber = gather(cycleNumber);
 subTomoMeta.('currentCycle') = gather(CYCLE);
 
 
-save(emc.subTomoMeta, 'subTomoMeta', '-v7.3');
+% Save using wrapper
+BH_saveSubTomoMeta(emc.subTomoMeta, subTomoMeta);
 
 
 
@@ -1598,7 +1600,8 @@ refWGT = cell(2,1);
 refWGT_SQRT = cell(2,1);
 
 if ~( flgEstSNR )
-  load(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta');
+  % Load using wrapper
+subTomoMeta = BH_loadSubTomoMeta(emc.('subTomoMeta'), emc.('metadata_format'));
   %%%%%%%%%%%%%55 Reweight now that the FSC is calculated
   
   for iGold = 1:2
@@ -1791,7 +1794,8 @@ if ~( flgEstSNR )
   if (emc.flgCutOutVolumes && volumesNeedToBeExtracted)
     subTomoMeta.('volumesAreCutOut') = 1;
   end
-  save(emc.('subTomoMeta'), 'subTomoMeta', '-v7.3');
+  % Save using wrapper
+  BH_saveSubTomoMeta(emc.('subTomoMeta'), subTomoMeta);
   
 end
 

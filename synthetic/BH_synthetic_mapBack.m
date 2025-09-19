@@ -131,7 +131,8 @@ fprintf('Using %d workers as max of %d %d*nGPUs and %d nWorkers visible\n', ...
   nWorkers,gpuScale,nGPUs*gpuScale,pInfo.NumWorkers);
 
 
-load(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta');
+% Load using wrapper
+subTomoMeta = BH_loadSubTomoMeta(emc.('subTomoMeta'), emc.('metadata_format'));
 mapBackIter = subTomoMeta.currentTomoCPR;
 
 % FIXME: rename this to something more descriptive

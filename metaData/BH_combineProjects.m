@@ -156,7 +156,8 @@ end
  
 outputName = strsplit(outputName, '.mat');
 subTomoMeta = masterTM.subTomoMeta;
-save(sprintf('%s.mat',outputName{1}),'subTomoMeta');
+% Save using wrapper
+BH_saveSubTomoMeta(outputName{1}, subTomoMeta);
 
 
 end

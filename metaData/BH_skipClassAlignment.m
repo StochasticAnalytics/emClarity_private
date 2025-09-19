@@ -34,7 +34,8 @@ cycleNumber = sprintf('cycle%0.3u', EMC_str2double(CYCLE));
 emc = BH_parseParameterFile(PARAMETER_FILE);
 
 
-load(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta');
+% Load using wrapper
+subTomoMeta = BH_loadSubTomoMeta(emc.('subTomoMeta'), emc.('metadata_format'));
 outputPrefix = sprintf('%s_%s', cycleNumber, emc.('subTomoMeta'));
 
 
@@ -45,26 +46,20 @@ if strcmpi(STAGEofALIGNMENT, 'RawAlignment')
 
   % Check if we should use a Post_ operation result
   if strcmpi(postOperation, 'AssignAndMergeToBranch')
-    % Use the Post_AssignAndMergeToBranch geometry
+    % Use the Post_AssignAndMergeToBranch geometry directly
     if isfield(subTomoMeta.(cycleNumber), 'Post_AssignAndMergeToBranch')
-      if (emc.multi_reference_alignment || emc.classification)
-        cluster_key = 'Cls' + string(1) + '_nClass' + string(subTomoMeta.currentCycle.Nclusters(1));
-        subTomoMeta.(cycleNumber).('RawAlign') = subTomoMeta.(cycleNumber).Post_AssignAndMergeToBranch.ClusterResults.(cluster_key);
-      else
-        error('Post_AssignAndMergeToBranch only works with classification/multi-reference');
-      end
+      % For now, just copy the entire Post_ structure
+      % TODO: Properly handle cluster-specific results when structure is defined
+      subTomoMeta.(cycleNumber).('RawAlign') = subTomoMeta.(cycleNumber).Post_AssignAndMergeToBranch;
     else
       error('Post_AssignAndMergeToBranch field not found in cycle %s', cycleNumber);
     end
   elseif strcmpi(postOperation, 'RemoveClasses')
-    % Use the Post_RemoveClasses geometry
+    % Use the Post_RemoveClasses geometry directly
     if isfield(subTomoMeta.(cycleNumber), 'Post_RemoveClasses')
-      if (emc.multi_reference_alignment || emc.classification)
-        cluster_key = 'Cls' + string(1) + '_nClass' + string(subTomoMeta.currentCycle.Nclusters(1));
-        subTomoMeta.(cycleNumber).('RawAlign') = subTomoMeta.(cycleNumber).Post_RemoveClasses.ClusterResults.(cluster_key);
-      else
-        error('Post_RemoveClasses only works with classification/multi-reference');
-      end
+      % For now, just copy the entire Post_ structure
+      % TODO: Properly handle cluster-specific results when structure is defined
+      subTomoMeta.(cycleNumber).('RawAlign') = subTomoMeta.(cycleNumber).Post_RemoveClasses;
     else
       error('Post_RemoveClasses field not found in cycle %s', cycleNumber);
     end
@@ -86,7 +81,8 @@ else
     ['the former requires the latter to exist.\n']);
 end
 
-save(emc.('subTomoMeta'), 'subTomoMeta', '-v7.3');
+% Save using wrapper
+BH_saveSubTomoMeta(emc.('subTomoMeta'), subTomoMeta);
 
 
 end

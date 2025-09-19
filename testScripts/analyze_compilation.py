@@ -90,16 +90,6 @@ def main():
     print("EMCLARITY COMPILATION ANALYSIS")
     print("=" * 80)
 
-    # Errors first
-    if errors:
-        print("\n❌ ERRORS FOUND:")
-        print("-" * 40)
-        for error in errors:
-            print(error)
-        print()
-    else:
-        print("\n✅ No compilation errors detected")
-
     # Summary statistics
     print("\n📊 SUMMARY:")
     print(f"  • MEX files compiled: {mex_compiled}")
@@ -120,7 +110,17 @@ def main():
         for line in important_lines[-10:]:  # Last 10 important events
             print(f"  {line}")
 
+    # Errors last (most important)
     print("\n" + "=" * 80)
+    if errors:
+        print("❌ COMPILATION ERRORS FOUND:")
+        print("-" * 40)
+        for error in errors:
+            print(error)
+        print("\n⚠️  Compilation had errors - please review above")
+    else:
+        print("✅ No compilation errors detected - build successful!")
+    print("=" * 80)
 
     # Return exit code based on errors
     return 1 if errors else 0

@@ -391,7 +391,8 @@ subTomoMeta.('currentCycle') = 0;
 subTomoMeta.('currentTomoCPR') = mapBackIter;
 subTomoMeta.('currentResForDefocusError') = lowResCut;
 subTomoMeta.('maxGoldStandard') = maxGoldStandard;
-save(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta', '-v7.3');
+% Save using wrapper
+BH_saveSubTomoMeta(emc.('subTomoMeta'), subTomoMeta);
 
 
 if (bh_global_do_profile)

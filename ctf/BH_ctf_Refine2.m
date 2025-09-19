@@ -6,7 +6,8 @@ function [ cccStorage, maxAst, maxAng, astigAngSearch] = BH_ctf_Refine2(PARAMETE
 % Load in the tomo and tilt info
 emc = BH_parseParameterFile(PARAMETER_FILE);
 try
-  load(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta');
+  % Load using wrapper
+  subTomoMeta = BH_loadSubTomoMeta(emc.('subTomoMeta'), emc.('metadata_format'));
   mapBackIter = subTomoMeta.currentTomoCPR; clear subTomoMeta
 catch
   mapBackIter = 0;

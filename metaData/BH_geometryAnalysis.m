@@ -158,7 +158,8 @@ outputPrefix = sprintf('%s_%s', cycleNumber, emc.('subTomoMeta'));
 
 
 %try
-  load(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta');
+  % Load using wrapper
+  subTomoMeta = BH_loadSubTomoMeta(emc.('subTomoMeta'), emc.('metadata_format'));
   switch STAGEofALIGNMENT
     case 'TiltAlignment'
      geometry = subTomoMeta.tiltGeometry;
@@ -167,7 +168,8 @@ outputPrefix = sprintf('%s_%s', cycleNumber, emc.('subTomoMeta'));
       if (undoOP)
         subTomoMeta.(cycleNumber).RawAlign = ...
         subTomoMeta.(cycleNumber).(sprintf('Pre_%s_RawAlign', OPERATION));
-  save(emc.('subTomoMeta'), 'subTomoMeta', '-v7.3');
+  % Save using wrapper
+  BH_saveSubTomoMeta(emc.('subTomoMeta'), subTomoMeta);
         error('No Error, just exiting.\n')
       else      
         geometry = subTomoMeta.(cycleNumber).RawAlign;
@@ -191,7 +193,8 @@ outputPrefix = sprintf('%s_%s', cycleNumber, emc.('subTomoMeta'));
       if (undoOP)
         subTomoMeta.(cycleNumber).ClusterResults.(cluster_key) = ...
         subTomoMeta.(cycleNumber).(sprintf('Pre_%s_ClusterResults', OPERATION)).(cluster_key);
-  save(emc.('subTomoMeta'), 'subTomoMeta', '-v7.3');
+  % Save using wrapper
+  BH_saveSubTomoMeta(emc.('subTomoMeta'), subTomoMeta);
         error('No Error, just exiting.\n')
       else     
 
@@ -947,7 +950,8 @@ if assignBranchTriggered
   end
 else
   % No longer need to copy back - just save subTomoMeta directly
-  save(emc.('subTomoMeta'), 'subTomoMeta', '-v7.3');
+  % Save using wrapper
+  BH_saveSubTomoMeta(emc.('subTomoMeta'), subTomoMeta);
 end
 end
 

@@ -16,7 +16,8 @@ catch
 end
 
 try
-  load(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta');
+  % Load using wrapper
+  subTomoMeta = BH_loadSubTomoMeta(emc.('subTomoMeta'), emc.('metadata_format'));
   mapBackIter = subTomoMeta.currentTomoCPR;
 catch
   mapBackIter = 0;
@@ -499,7 +500,8 @@ if (emc.eucentric_fit && mapBackIter)
       end
     end
   end
-  save(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta', '-v7.3');
+  % Save using wrapper
+  BH_saveSubTomoMeta(emc.('subTomoMeta'), subTomoMeta);
 end
 
 if ( flgParallel )

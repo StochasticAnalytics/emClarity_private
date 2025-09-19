@@ -29,7 +29,8 @@ gDev = gpuDevice(gpuIDX);
 emc = BH_parseParameterFile(PARAMETER_FILE);
 cycleNumber = sprintf('cycle%0.3d',CYCLE);
 
-load(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta');
+% Load using wrapper
+subTomoMeta = BH_loadSubTomoMeta(emc.('subTomoMeta'), emc.('metadata_format'));
 
 
 geom = subTomoMeta.(cycleNumber).Avg_geometry;

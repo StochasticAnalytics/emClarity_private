@@ -94,7 +94,8 @@ fprintf('Using %d workers as max of %d %d*nGPUs and %d nWorkers visible\n', ...
   nWorkers,gpuScale,nGPUs*gpuScale,pInfo.NumWorkers);
 
 
-load(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta');
+% Load using wrapper
+subTomoMeta = BH_loadSubTomoMeta(emc.('subTomoMeta'), emc.('metadata_format'));
 if (classIDX == -1)
   classIDX = 0;
 end
@@ -140,7 +141,8 @@ fprintf('Using Average geometry %s\n',cycleNumber);
 end
 
 
-load(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta');
+% Load using wrapper
+subTomoMeta = BH_loadSubTomoMeta(emc.('subTomoMeta'), emc.('metadata_format'));
 resForFitting = 1.3*mean(subTomoMeta.currentResForDefocusError);
 tiltGeometry = subTomoMeta.tiltGeometry;
 

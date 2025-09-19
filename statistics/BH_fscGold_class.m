@@ -34,7 +34,8 @@ CYCLE = EMC_str2double(CYCLE);
 system('mkdir -p FSC');
 
 emc = BH_parseParameterFile(PARAMETER_FILE);
-load(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta');
+% Load using wrapper
+subTomoMeta = BH_loadSubTomoMeta(emc.('subTomoMeta'), emc.('metadata_format'));
 masterTM = subTomoMeta;
 
 cycleNumber = sprintf('cycle%0.3u', CYCLE);
@@ -916,7 +917,8 @@ for iRef = 1:nReferences
 end
 
 subTomoMeta = masterTM;
-save(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta', '-v7.3');
+% Save using wrapper
+BH_saveSubTomoMeta(emc.('subTomoMeta'), subTomoMeta);
 clearvars -except refWGT
 end
 

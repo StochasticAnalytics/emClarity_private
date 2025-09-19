@@ -35,7 +35,8 @@ nFeatures = size(featureVector{1,1})
 
 nCores       = BH_multi_parallelWorkers(emc.('nCpuCores'));
 
-load(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta');
+% Load using wrapper
+subTomoMeta = BH_loadSubTomoMeta(emc.('subTomoMeta'), emc.('metadata_format'));
 masterTM = subTomoMeta; clear subTomoMeta
 
 
@@ -412,7 +413,8 @@ for iGold = 1:1+flgGold
   
   subTomoMeta = masterTM;
   
-  save(emc.('subTomoMeta'), 'subTomoMeta', '-v7.3');
+  % Save using wrapper
+  BH_saveSubTomoMeta(emc.('subTomoMeta'), subTomoMeta);
   
   %save(sprintf('%s_pca.mat',OUTPUT_PREFIX), 'nTOTAL','U', 'S', 'V', 'coeffs')
   fprintf('Total execution time on set %s: %f seconds\n', halfSet, seconds(datetime("now") - startTime));

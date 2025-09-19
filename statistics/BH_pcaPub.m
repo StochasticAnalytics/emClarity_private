@@ -215,7 +215,8 @@ else
 end
 
 
-load(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta');
+% Load using wrapper
+subTomoMeta = BH_loadSubTomoMeta(emc.('subTomoMeta'), emc.('metadata_format'));
 mapBackIter = subTomoMeta.currentTomoCPR;
 
 
@@ -955,7 +956,8 @@ for iGold = 1:1+flgGold
   subTomoMeta.(cycleNumber).('newIgnored_PCA').(halfSet) = gather(nIgnored);
   
   subTomoMeta = subTomoMeta;
-  save(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta', '-v7.3');
+  % Save using wrapper
+  BH_saveSubTomoMeta(emc.('subTomoMeta'), subTomoMeta);
   
   for iScale = 1:emc.n_scale_spaces
     dataMatrix{iScale}(:,1+nTempPrev:nTemp-1+nTempPrev) = ...
