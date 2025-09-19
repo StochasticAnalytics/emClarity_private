@@ -58,49 +58,10 @@ classdef BH_subTomoMeta_io < handle
         
         function data = load_partitioned(obj)
             %load_partitioned Load from partitioned STAR/JSON files
-            
-            part_dir = sprintf('%s_star', obj.base_path);
-            
-            if ~exist(part_dir, 'dir')
-                % Try alternate naming
-                part_dir = sprintf('%s', obj.base_path);
-                if ~exist(fullfile(part_dir, 'index.json'), 'file')
-                    error('BH_subTomoMeta_io:DirectoryNotFound', ...
-                          'Partitioned metadata directory not found: %s', part_dir);
-                end
-            end
-            
-            fprintf('  Loading partitioned format from %s/...\n', part_dir);
-            
-            % Load index
-            index_file = fullfile(part_dir, 'index.json');
-            obj.index = obj.load_json(index_file);
-            
-            % Initialize data structure
-            data = struct();
-            
-            % Load configuration
-            if isfield(obj.index, 'config_file')
-                config = obj.load_json(fullfile(part_dir, obj.index.config_file));
-                fields = fieldnames(config);
-                for i = 1:length(fields)
-                    data.(fields{i}) = config.(fields{i});
-                end
-            end
-            
-            % Load cycles
-            if isfield(obj.index, 'cycles')
-                cycle_names = fieldnames(obj.index.cycles);
-                for i = 1:length(cycle_names)
-                    cycle = cycle_names{i};
-                    data.(cycle) = obj.load_cycle_partitioned(part_dir, cycle);
-                end
-            end
-            
-            % Load geometry data
-            if isfield(obj.index, 'geometry')
-                data = obj.load_geometry_partitioned(data, part_dir);
-            end
+            %   Placeholder for future implementation
+
+            error('BH_subTomoMeta_io:NotImplemented', ...
+                  'Partitioned format loading not yet implemented. Please use legacy format.');
         end
         
         function save_legacy(obj, data)
@@ -124,55 +85,10 @@ classdef BH_subTomoMeta_io < handle
         
         function save_partitioned(obj, data)
             %save_partitioned Save to partitioned STAR/JSON files
-            
-            part_dir = sprintf('%s_star', obj.base_path);
-            
-            % Create directory if needed
-            if ~exist(part_dir, 'dir')
-                mkdir(part_dir);
-            end
-            
-            fprintf('  Saving partitioned format to %s/...\n', part_dir);
-            
-            % Initialize or update index
-            if isempty(obj.index)
-                obj.index = obj.create_index();
-            end
-            obj.index.last_modified = datestr(now, 'yyyy-mm-ddTHH:MM:SS');
-            
-            % Save configuration fields
-            config = struct();
-            config_fields = {'currentCycle', 'currentTomoCPR', 'maxGoldStandard', ...
-                            'nSubTomoInitial', 'currentResForDefocusError'};
-            for i = 1:length(config_fields)
-                if isfield(data, config_fields{i})
-                    config.(config_fields{i}) = data.(config_fields{i});
-                end
-            end
-            obj.save_json(fullfile(part_dir, 'config.json'), config);
-            
-            % Save cycles
-            fields = fieldnames(data);
-            cycle_fields = fields(startsWith(fields, 'cycle'));
-            
-            for i = 1:length(cycle_fields)
-                cycle = cycle_fields{i};
-                obj.save_cycle_partitioned(part_dir, cycle, data.(cycle));
-                
-                % Update index
-                if ~isfield(obj.index.cycles, cycle)
-                    obj.index.cycles.(cycle) = struct();
-                end
-                obj.index.cycles.(cycle).last_modified = datestr(now);
-            end
-            
-            % Save geometry data if present
-            if isfield(data, 'mapBackGeometry') || isfield(data, 'tiltGeometry')
-                obj.save_geometry_partitioned(data, part_dir);
-            end
-            
-            % Save index
-            obj.save_json(fullfile(part_dir, 'index.json'), obj.index);
+            %   Placeholder for future implementation
+
+            error('BH_subTomoMeta_io:NotImplemented', ...
+                  'Partitioned format saving not yet implemented. Please use legacy format.');
         end
         
         function fields = get_field_list(obj)

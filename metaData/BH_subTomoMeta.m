@@ -67,8 +67,12 @@ classdef BH_subTomoMeta < handle
             % Initialize I/O handler
             obj.io_handler = BH_subTomoMeta_io(identifier, emc);
             
-            % Initialize export handler
-            obj.export_handler = BH_exportHandler();
+            % Initialize export handler (only if available)
+            if exist('BH_exportHandler', 'class') == 8
+                obj.export_handler = BH_exportHandler();
+            else
+                obj.export_handler = [];
+            end
             
             % Load metadata based on format
             obj.load();
@@ -203,14 +207,19 @@ classdef BH_subTomoMeta < handle
             %exportToRELION Export metadata to RELION format
             %   output_dir - Directory for RELION STAR files
             %   varargin - Optional parameters (cycle, validate, etc.)
-            
+
+            if isempty(obj.export_handler)
+                error('BH_subTomoMeta:ExportUnavailable', ...
+                      'Export handler not available. Export functionality not implemented yet.');
+            end
+
             fprintf('\nExporting to RELION format...\n');
             options = obj.parse_export_options(varargin{:});
-            
+
             % Use export handler
             obj.export_handler.exportToRELION(obj.get_data(), ...
                                                output_dir, options);
-            
+
             fprintf('Export complete. Output in: %s\n', output_dir);
         end
         
@@ -218,14 +227,19 @@ classdef BH_subTomoMeta < handle
             %exportToPEET Export metadata to PEET format
             %   output_dir - Directory for PEET files
             %   varargin - Optional parameters
-            
+
+            if isempty(obj.export_handler)
+                error('BH_subTomoMeta:ExportUnavailable', ...
+                      'Export handler not available. Export functionality not implemented yet.');
+            end
+
             fprintf('\nExporting to PEET format...\n');
             options = obj.parse_export_options(varargin{:});
-            
+
             % Use export handler
             obj.export_handler.exportToPEET(obj.get_data(), ...
                                             output_dir, options);
-            
+
             fprintf('Export complete. Output in: %s\n', output_dir);
         end
         
@@ -233,14 +247,19 @@ classdef BH_subTomoMeta < handle
             %exportToCryoSPARC Export metadata to CryoSPARC format
             %   output_dir - Directory for CryoSPARC files
             %   varargin - Optional parameters
-            
+
+            if isempty(obj.export_handler)
+                error('BH_subTomoMeta:ExportUnavailable', ...
+                      'Export handler not available. Export functionality not implemented yet.');
+            end
+
             fprintf('\nExporting to CryoSPARC format...\n');
             options = obj.parse_export_options(varargin{:});
-            
+
             % Use export handler
             obj.export_handler.exportToCryoSPARC(obj.get_data(), ...
                                                  output_dir, options);
-            
+
             fprintf('Export complete. Output in: %s\n', output_dir);
         end
         

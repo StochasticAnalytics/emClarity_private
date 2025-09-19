@@ -42,7 +42,9 @@ end
 
 % Backup the current geometry
 system(sprintf('cp %s.mat preDupRemoval_%s.mat',emc.('subTomoMeta'),emc.('subTomoMeta')));
-load(sprintf('%s.mat', emc.('subTomoMeta')), 'subTomoMeta');
+
+% Load using wrapper function
+subTomoMeta = BH_loadSubTomoMeta(emc.('subTomoMeta'), emc.('metadata_format'));
 geometry = subTomoMeta.(cycleNumber).RawAlign;
 
 
@@ -155,7 +157,9 @@ end % end loop over tomorams
 fprintf('%d of %d particles removed\n', nRemoved, nTotal);
 
 subTomoMeta.(cycleNumber).RawAlign = geometry;
-save(emc.('subTomoMeta'), 'subTomoMeta', '-v7.3');
+
+% Save using wrapper function
+BH_saveSubTomoMeta(emc.('subTomoMeta'), subTomoMeta);
 
 end
 

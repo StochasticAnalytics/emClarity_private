@@ -25,7 +25,7 @@ stringValues = {'subTomoMeta'; ...
   'Ali_mType';'Cls_mType';'Cls_mType';'Raw_mType';'Fsc_mType'; ...
   'Pca_distMeasure';'Kms_mType';'flgPrecision';'Tmp_xcfScale';...
   'fastScratchDisk';'Tmp_eraseMaskType';'startingDirection';'Peak_mType';'symmetry'; ...
-  'gmm_covariance_type';'distance_metric';'alt_cache'};
+  'gmm_covariance_type';'distance_metric';'alt_cache';'metadata_format'};
 for i = 1:size(p2,1)
   pNameVal = strsplit(p2{i,1},'=');
   if length(pNameVal) == 1
@@ -225,7 +225,18 @@ else
       emc.alt_cache{i} = t{i};
     end
   end
+end
 
+% metadata_format: storage format for subTomoMeta (legacy, partitioned, or development)
+if ~isfield(emc, 'metadata_format')
+  emc.metadata_format = 'legacy';  % Default to legacy format
+else
+  % Validate the format
+  valid_formats = {'legacy', 'partitioned', 'development'};
+  if ~ismember(lower(emc.metadata_format), valid_formats)
+    error('Invalid metadata_format: %s. Must be legacy, partitioned, or development', emc.metadata_format);
+  end
+  emc.metadata_format = lower(emc.metadata_format);
 end
 
 
