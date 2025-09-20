@@ -11,8 +11,8 @@ function [  ] = BH_ctf_Correct3d( PARAMETER_FILE, varargin )
 
 emc = BH_parseParameterFile(PARAMETER_FILE);
 
-% Apply a Wiener filter with this many zeros during Ctf multiplication
-global bh_global_turn_on_phase_plate
+% phase_plate_mode is now handled in BH_parseParameterFile
+phase_plate_mode = emc.phase_plate_mode;
 subTomoMeta = struct();
 resTarget = 15;
 
@@ -22,11 +22,8 @@ tiltWeight = [0.2,0];
 shiftDefocusOrigin = emc.set_defocus_origin_using_subtomos;
 tiltStart = 1;
 
-try
-  flgEraseBeads_aferCTF = emc.('erase_beads_after_ctf');
-catch
-  flgEraseBeads_aferCTF = false; % If false they SHOULD be erased in ctf estimate/update, but since the user could change parameter, include here.
-end
+% erase_beads_after_ctf is now handled in BH_parseParameterFile
+flgEraseBeads_aferCTF = emc.erase_beads_after_ctf;
 
 % Test David's new super sampling in reconstruction. No check that this
 % version (currently 4.10.40) is properly sourced.
@@ -72,16 +69,14 @@ recon_subset=[1,-1];
 if nargin > 1
   if strcmpi(varargin{1},'templateSearch')
     recon_for_templateMatching = true;
-    if (bh_global_turn_on_phase_plate(1))
+    if (phase_plate_mode)
       fprintf('WARNING: the filtered tomogram should only be used for viz, not template matching.');
     end
   else
     if strcmpi(varargin{1},'split')
         % Default to zero for normal use
         recon_for_subTomo = true;
-        if isempty(bh_global_turn_on_phase_plate)
-          bh_global_turn_on_phase_plate = 0;
-        end
+        % phase_plate_mode is already set from parameters
     else
       error('Extra argument to ctf 3d either templateSearch/split and optionally a vector [iProjcess, nProcesses (from 1)]');
     end
@@ -101,9 +96,7 @@ if nargin > 1
 else
   % Default to zero for normal use
   recon_for_subTomo = true;
-  if isempty(bh_global_turn_on_phase_plate)
-    bh_global_turn_on_phase_plate = 0;
-  end
+  % phase_plate_mode is already set from parameters
 end
 
 fprintf('recon_subset is [%d,%d]\n',recon_subset(1),recon_subset(2));
@@ -123,7 +116,7 @@ try
 catch
 end
 
-if (bh_global_turn_on_phase_plate(1) && any(emc.whitenPS))
+if (phase_plate_mode && any(emc.whitenPS))
   fprintf('WARNING: phakePhasePlate and whitening are conflicting preocesses. Turning off whitening.\n');
   emc.whitenPS = [0,0,0];
 end
@@ -299,7 +292,7 @@ parfor iParProc = 1:nParProcesses
         tomoList = tiltTomoList{iTilt};
       end
       nTomos = length(tomoList);
-      if (bh_global_turn_on_phase_plate(1))
+      if (phase_plate_mode)
         filtered = '_filtered';
       else
         filtered = '';
@@ -502,7 +495,7 @@ parfor iParProc = 1:nParProcesses
                                             preCombDefocus,samplingRate,...
                                             applyExposureFilter,surfaceFit,...
                                             useSurfaceFit,...
-                                            bh_global_turn_on_phase_plate,...
+                                            phase_plate_mode,...
                                             filterProjectionsForTomoCPRBackground,...
                                             emc.whitenPS, ...
                                             flip_defocus_offset, ...
@@ -670,10 +663,10 @@ parfor iParProc = 1:nParProcesses
     maskedStack = [];
     
     for iTomo = 1:nTomos
-      % Note that bh_global_turn_on_phase_plate could be true for any of the recon_for_stage bools, so it must
+      % Note that phase_plate_mode could be true for any of the recon_for_stage bools, so it must
       % be checked first.
       alt_cache = emc.alt_cache;
-      if (bh_global_turn_on_phase_plate(1))
+      if (phase_plate_mode)
         reconNameFull = EMC_setCacheForFile(alt_cache, sprintf('cache/%s_bin%d_filtered.rec', tomoList{iTomo}, samplingRate));
       else
         reconNameFull = EMC_setCacheForFile(alt_cache, sprintf('cache/%s_bin%d.rec', tomoList{iTomo},samplingRate));

@@ -58,30 +58,25 @@ if (modLocal)
   end
 end
 skipFitting = 0;
-try
-  PHASE_PLATE_SHIFT = emc.('PHASE_PLATE_SHIFT').*pi
-catch
-  PHASE_PLATE_SHIFT = [0,0]
-end
+% PHASE_PLATE_SHIFT is now handled in BH_parseParameterFile (already multiplied by pi)
+PHASE_PLATE_SHIFT = emc.PHASE_PLATE_SHIFT;
 if sum(PHASE_PLATE_SHIFT)
   skipFitting = 1;
 end
 
 flgStandardOrdeDoCalc = 1;
-try
-  flgCosineDose = emc.('oneOverCosineDose');
-  startingAngle = emc.('startingAngle');
-  startingDirection = emc.('startingDirection');
-  doseSymmetricIncrement = emc.('doseSymmetricIncrement');
-  doseAtMinTilt = emc.('doseAtMinTilt');
-  
-  flgOldDose = 0;
-  tltOrder = calc_dose_scheme(emc,rawTLT,anglesSkipped,PHASE_PLATE_SHIFT);
-  
-  
-catch
-  fprintf('\nFalling back on old dose specification through a *.order file\n\n');
-  fprintf('Parameters flgCosineDose=(0/1 bool), \nstartingAngle=, \nstartingDirection=[pos/neg],\ndoseSymmetricIncrement=[0, or # tilts per sweep],\n doseAtMinTilt are needed for the new method.\n');
+% Dose parameters are now handled in BH_parseParameterFile
+flgCosineDose = emc.oneOverCosineDose;
+startingAngle = emc.startingAngle;
+startingDirection = emc.startingDirection;
+doseSymmetricIncrement = emc.doseSymmetricIncrement;
+doseAtMinTilt = emc.doseAtMinTilt;
+
+flgOldDose = 0;
+tltOrder = calc_dose_scheme(emc,rawTLT,anglesSkipped,PHASE_PLATE_SHIFT);
+
+% Check if we need to fall back to old dose method
+if ~flgCosineDose && startingAngle == 0 && doseAtMinTilt == 0
   pause(2);
   tltOrder = load(collectionORDER);
   flgOldDose = 1;
@@ -154,11 +149,8 @@ fprintf('Using a tile size of %d\n',emc.ctf_tile_size);
 overlap = floor(emc.ctf_tile_size ./ tileOverlap);
 
 % Size to padTile to should be even, large, and preferably a power of 2
-try
-  paddedSize = emc.('paddedSize');
-catch
-  paddedSize = 768;
-end
+% paddedSize is now handled in BH_parseParameterFile
+paddedSize = emc.paddedSize;
 
 padVAL = BH_multi_padVal([emc.ctf_tile_size,emc.ctf_tile_size], [paddedSize,paddedSize]);
 
@@ -300,11 +292,8 @@ if ( resample_stack)
 
   outputStackName = sprintf('aliStacks/%s%s',stackNameOUT,extension);
 
-  try
-    erase_beads_after_ctf = emc.('erase_beads_after_ctf');
-  catch
-    erase_beads_after_ctf = false;
-  end
+  % erase_beads_after_ctf is now handled in BH_parseParameterFile
+  erase_beads_after_ctf = emc.erase_beads_after_ctf;
 
   if (erase_beads_after_ctf)
     flgEraseBeads = 0;

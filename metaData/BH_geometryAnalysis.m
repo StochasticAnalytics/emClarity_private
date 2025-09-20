@@ -100,16 +100,10 @@ end
 cycleNumber = sprintf('cycle%0.3u', CYCLE);
 
 emc = BH_parseParameterFile(PARAMETER_FILE);
-try
-  conserveDiskSpace = emc.('conserveDiskSpace');
-catch
-  conserveDiskSpace = 0;
-end
-try
-  percentCut   = emc.('removeBottomPercent');
-catch
-  percentCut = 0.0;
-end
+% conserveDiskSpace is now handled in BH_parseParameterFile
+conserveDiskSpace = emc.conserveDiskSpace;
+% removeBottomPercent is now handled in BH_parseParameterFile
+percentCut = emc.removeBottomPercent;
 
 
 if percentCut < 0 

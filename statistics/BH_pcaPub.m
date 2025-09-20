@@ -102,7 +102,8 @@ startTime =  datetime("now");
 CYCLE = EMC_str2double(CYCLE);
 PREVIOUS_PCA = EMC_str2double(PREVIOUS_PCA);
 
-global bh_global_binary_pcaMask_threshold;
+% pca_mask_threshold is now handled in BH_parseParameterFile
+pca_mask_threshold = emc.pca_mask_threshold;
 
 
 % Previous_pca has two functions, when true and > 0 use the decomposition
@@ -501,7 +502,7 @@ for iScale = 1:emc.n_scale_spaces
     end
     masks.('volMask').(stHALF).(stSCALE) = (volTMP);
     
-    masks.('binary').(stHALF).(stSCALE)  = (volTMP >= bh_global_binary_pcaMask_threshold);
+    masks.('binary').(stHALF).(stSCALE)  = (volTMP >= pca_mask_threshold);
     masks.('binary').(stHALF).(stSCALE)  = ...
       masks.('binary').(stHALF).(stSCALE)(:);
     masks.('binaryApply').(stHALF).(stSCALE)  = (volTMP >= 0.01);

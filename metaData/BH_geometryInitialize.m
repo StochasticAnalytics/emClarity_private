@@ -3,15 +3,13 @@ function [ ] = BH_geometryInitialize( PARAMETER_FILE, varargin )
 %   For now just BH, but also to work with Relion set up.
 
 % Option for testing euler angles will remove.
-global bh_global_do_profile;
-if isempty(bh_global_do_profile)
-  bh_global_do_profile = false;
-end
+% enable_profiling is now handled in BH_parseParameterFile
+enable_profiling = emc.enable_profiling;
 
 convertEulers = 0;
 direction = '';
 
-if (bh_global_do_profile)
+if (enable_profiling)
   profile on;
 end
 
@@ -105,11 +103,8 @@ end
 % often lead to and FSC of ~ 26A initially.
 
 % 40 may be too conservative, especially for low defocus tomos
-try
-  lowResCut = emc.('lowResCut');
-catch
-  lowResCut = 40;
-end
+% lowResCut is now handled in BH_parseParameterFile
+lowResCut = emc.lowResCut;
 
 maxGoldStandard = lowResCut;%emc.('Tmp_bandpassFilter')(3);
 dupSampling = emc.('Tmp_samplingRate')
@@ -395,7 +390,7 @@ subTomoMeta.('maxGoldStandard') = maxGoldStandard;
 BH_saveSubTomoMeta(emc.('subTomoMeta'), subTomoMeta);
 
 
-if (bh_global_do_profile)
+if (enable_profiling)
   profile off;
   profsave;
 end

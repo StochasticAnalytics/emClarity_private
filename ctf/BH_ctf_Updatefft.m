@@ -8,19 +8,16 @@ flgSkipUpdate = 0;
 % To avoid accidently masking any failures in subsequent update, clean out
 % all stacks and reconstructions from the local cache.
 
-try
-  % Should be negative, but to test.
-  defShiftSign = emc.('testFlipSign');
-catch
-  defShiftSign = -1;
-end
+% defShiftSign is now handled in BH_parseParameterFile
+defShiftSign = emc.defShiftSign;
 
-try
-  % Load using wrapper
-  subTomoMeta = BH_loadSubTomoMeta(emc.('subTomoMeta'), emc.('metadata_format'));
+% Load using wrapper
+subTomoMeta = BH_loadSubTomoMeta(emc.('subTomoMeta'), emc.('metadata_format'));
+if isfield(subTomoMeta, 'currentTomoCPR')
   mapBackIter = subTomoMeta.currentTomoCPR;
-catch
-  mapBackIter = 0;
+else
+  % mapBackIter is handled in BH_parseParameterFile as fallback
+  mapBackIter = emc.mapBackIter;
 end
 
 % if isnan(EMC_str2double(STACK_PRFX))
@@ -53,11 +50,8 @@ if emc.eucentric_fit
   eucShiftsResults = cell(size(ITER_LIST));
 end
 % BH_geometryAnalysis(sprintf('%s',PARAMETER_FILE),sprintf('%d',subTomoMeta.currentCycle),'TiltAlignment','UpdateTilts',sprintf('[%d,0,0]',subTomoMeta.currentCycle),'STD')
-try
-  conserveDiskSpace = emc.('conserveDiskSpace');
-catch
-  conserveDiskSpace = 0;
-end
+% conserveDiskSpace is now handled in BH_parseParameterFile
+conserveDiskSpace = emc.conserveDiskSpace;
 
 try
   EMC_parpool(nWorkers);
@@ -275,11 +269,8 @@ parfor iGPU = 1:nWorkers
     outputStackName = sprintf('%s/%s%s',outputDirectory,INPUT_CELL{iStack,6},INPUT_CELL{iStack,5});
     oldStackName = sprintf('%s/%s%s',outputDirectory,PRJ_OLD,INPUT_CELL{iStack,5});
     
-    try
-      erase_beads_after_ctf = emc.('erase_beads_after_ctf');
-    catch
-      erase_beads_after_ctf = false;
-    end
+    % erase_beads_after_ctf is now handled in BH_parseParameterFile
+    erase_beads_after_ctf = emc.erase_beads_after_ctf;
     
     if (erase_beads_after_ctf)
       flgEraseBeads = 0;

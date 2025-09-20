@@ -875,3 +875,239 @@ if isfield(emc, 'remove_duplicates')
 else
   emc.remove_duplicates = true;
 end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% CTF-related parameters that were previously loaded elsewhere
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Phase plate shift for CTF correction (multiplied by pi when used)
+if isfield(emc, 'PHASE_PLATE_SHIFT')
+  EMC_assert_numeric(emc.PHASE_PLATE_SHIFT, 2);
+  emc.PHASE_PLATE_SHIFT = emc.PHASE_PLATE_SHIFT .* pi;
+else
+  emc.PHASE_PLATE_SHIFT = [0, 0];
+end
+
+% Padded size for CTF operations
+if isfield(emc, 'paddedSize')
+  EMC_assert_numeric(emc.paddedSize, 1, [256, 2048]);
+else
+  emc.paddedSize = 768;  % Standardizing on 768 as default
+end
+
+% Whether to erase beads after CTF correction
+if isfield(emc, 'erase_beads_after_ctf')
+  EMC_assert_boolean(emc.erase_beads_after_ctf);
+else
+  emc.erase_beads_after_ctf = false;
+end
+
+% Sign flip test for defocus (legacy parameter)
+if isfield(emc, 'testFlipSign')
+  EMC_assert_numeric(emc.testFlipSign, 1, [-1, 1]);
+  emc.defShiftSign = emc.testFlipSign;  % Alias for compatibility
+else
+  emc.defShiftSign = -1;
+  emc.testFlipSign = -1;  % Keep both for backward compatibility
+end
+
+% Map back iteration counter
+if isfield(emc, 'mapBackIter')
+  EMC_assert_numeric(emc.mapBackIter, 1, [0, 1000]);
+else
+  emc.mapBackIter = 0;
+end
+
+% Force no defocus stretch in CTF refinement
+if isfield(emc, 'force_no_defocus_stretch')
+  EMC_assert_boolean(emc.force_no_defocus_stretch);
+else
+  emc.force_no_defocus_stretch = false;
+end
+
+% Fraction of extra tilt data to use in refinement
+if isfield(emc, 'fraction_of_extra_tilt_data')
+  EMC_assert_numeric(emc.fraction_of_extra_tilt_data, 1, [0.0, 1.0]);
+else
+  emc.fraction_of_extra_tilt_data = 0.25;
+end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Disk and memory management parameters
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Conserve disk space by removing intermediate files
+if isfield(emc, 'conserveDiskSpace')
+  EMC_assert_numeric(emc.conserveDiskSpace, 1, [0, 2]);
+else
+  emc.conserveDiskSpace = 0;
+end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Geometry and analysis parameters
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Remove bottom percentage of particles based on scores
+if isfield(emc, 'removeBottomPercent')
+  EMC_assert_numeric(emc.removeBottomPercent, 1, [0.0, 100.0]);
+else
+  emc.removeBottomPercent = 0.0;
+end
+
+% Low resolution cutoff in Angstroms
+if isfield(emc, 'lowResCut')
+  EMC_assert_numeric(emc.lowResCut, 1, [10, 200]);
+else
+  emc.lowResCut = 40;
+end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Alignment parameters
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Whether to constrain alignment search based on symmetry
+if isfield(emc, 'symmetry_constrained_search')
+  EMC_assert_boolean(emc.symmetry_constrained_search);
+else
+  emc.symmetry_constrained_search = false;
+end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Dose-related parameters for tilt series
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Use one over cosine dose weighting
+if isfield(emc, 'oneOverCosineDose')
+  EMC_assert_boolean(emc.oneOverCosineDose);
+else
+  emc.oneOverCosineDose = false;
+end
+
+% Starting angle for dose accumulation
+if isfield(emc, 'startingAngle')
+  EMC_assert_numeric(emc.startingAngle, 1, [-90, 90]);
+else
+  emc.startingAngle = 0;
+end
+
+% Starting direction for tilt series acquisition
+if isfield(emc, 'startingDirection')
+  EMC_assert_string_value(emc.startingDirection, {'pos', 'neg'}, false);
+else
+  emc.startingDirection = 'pos';
+end
+
+% Dose symmetric increment (0 or number of tilts per sweep)
+if isfield(emc, 'doseSymmetricIncrement')
+  EMC_assert_numeric(emc.doseSymmetricIncrement, 1, [0, 100]);
+else
+  emc.doseSymmetricIncrement = 0;
+end
+
+% Dose at minimum tilt angle
+if isfield(emc, 'doseAtMinTilt')
+  EMC_assert_numeric(emc.doseAtMinTilt, 1, [0, 1000]);
+else
+  emc.doseAtMinTilt = 0;
+end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Parameters replacing global variables
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Debug print mode (replaces emc_debug_print global)
+if isfield(emc, 'debug_print')
+  EMC_assert_boolean(emc.debug_print);
+else
+  emc.debug_print = false;
+end
+
+% Binary mask low pass for shape masking (replaces bh_global_binary_mask_low_pass)
+if isfield(emc, 'shape_mask_lowpass_override')
+  EMC_assert_numeric(emc.shape_mask_lowpass_override, 1, [10, 100]);
+elseif isfield(emc, 'setMaskLowPass')
+  % Support legacy parameter name
+  EMC_assert_numeric(emc.setMaskLowPass, 1, [10, 100]);
+  emc.shape_mask_lowpass_override = emc.setMaskLowPass;
+else
+  % Use existing shape_mask_lowpass if no override
+  emc.shape_mask_lowpass_override = 0; % 0 means use shape_mask_lowpass
+end
+
+% Binary mask threshold (replaces bh_global_binary_mask_threshold)
+if isfield(emc, 'shape_mask_threshold_override')
+  EMC_assert_numeric(emc.shape_mask_threshold_override, 1, [0.1, 10.0]);
+elseif isfield(emc, 'setMaskThreshold')
+  % Support legacy parameter name
+  EMC_assert_numeric(emc.setMaskThreshold, 1, [0.1, 10.0]);
+  emc.shape_mask_threshold_override = emc.setMaskThreshold;
+else
+  % Use existing shape_mask_threshold if no override
+  emc.shape_mask_threshold_override = 0; % 0 means use shape_mask_threshold
+end
+
+% PCA mask threshold (replaces bh_global_binary_pcaMask_threshold)
+if isfield(emc, 'pca_mask_threshold')
+  EMC_assert_numeric(emc.pca_mask_threshold, 1, [0.0, 5.0]);
+elseif isfield(emc, 'setPcaMaskThreshold')
+  % Support legacy parameter name
+  EMC_assert_numeric(emc.setPcaMaskThreshold, 1, [0.0, 5.0]);
+  emc.pca_mask_threshold = emc.setPcaMaskThreshold;
+else
+  emc.pca_mask_threshold = 0.5;
+end
+
+% Volume scaling factor (replaces bh_global_vol_est_scaling)
+if isfield(emc, 'particle_volume_scaling')
+  EMC_assert_numeric(emc.particle_volume_scaling, 1, [0.1, 10.0]);
+elseif isfield(emc, 'setParticleVolumeScaling')
+  % Support legacy parameter name
+  EMC_assert_numeric(emc.setParticleVolumeScaling, 1, [0.1, 10.0]);
+  emc.particle_volume_scaling = emc.setParticleVolumeScaling;
+else
+  emc.particle_volume_scaling = 1.0;
+end
+
+% Phase plate mode (replaces bh_global_turn_on_phase_plate)
+if isfield(emc, 'phase_plate_mode')
+  EMC_assert_boolean(emc.phase_plate_mode);
+elseif isfield(emc, 'phakePhasePlate')
+  % Support legacy parameter name
+  EMC_assert_numeric(emc.phakePhasePlate, 1);
+  emc.phase_plate_mode = (emc.phakePhasePlate ~= 0);
+else
+  emc.phase_plate_mode = false;
+end
+
+% Use Fourier interpolation (replaces bh_global_do_2d_fourier_interp)
+if isfield(emc, 'use_fourier_interp')
+  EMC_assert_boolean(emc.use_fourier_interp);
+elseif isfield(emc, 'useFourierInterp')
+  % Support legacy parameter name
+  EMC_assert_numeric(emc.useFourierInterp, 1);
+  emc.use_fourier_interp = (emc.useFourierInterp ~= 0);
+else
+  emc.use_fourier_interp = true;
+end
+
+% Enable profiling (replaces bh_global_do_profile)
+if isfield(emc, 'enable_profiling')
+  EMC_assert_boolean(emc.enable_profiling);
+elseif isfield(emc, 'doProfile')
+  % Support legacy parameter name
+  EMC_assert_boolean(emc.doProfile);
+  emc.enable_profiling = emc.doProfile;
+else
+  emc.enable_profiling = false;
+end
+
+% TomoCPR diagnostics saving (replaces bh_global_save_tomoCPR_diagnostics - unused but keep for future)
+if isfield(emc, 'save_tomocpr_diagnostics')
+  EMC_assert_boolean(emc.save_tomocpr_diagnostics);
+elseif isfield(emc, 'tomoCprDiagnostics')
+  % Support legacy parameter name
+  EMC_assert_numeric(emc.tomoCprDiagnostics, 1);
+  emc.save_tomocpr_diagnostics = (emc.tomoCprDiagnostics ~= 0);
+else
+  emc.save_tomocpr_diagnostics = false;
+end

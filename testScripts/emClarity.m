@@ -10,8 +10,6 @@ cudaStart='';
 useV2 = false;
 useV1 = false;
 
-cmdIN = sprintf('emClarity %s ',varargin{1});
-
 % first argument is the program to run or "help" to print a list of available
 % options.
 setenv('MATLAB_SHELL','/bin/bash');
@@ -90,11 +88,24 @@ end
 cudaCleanup  = onCleanup(@() setenv('CUDA_VISIBLE_DEVICES', origCUDA));
 timeStart = datetime();
 fprintf('\n\t\t***************************************\n\n');
-fprintf('emClarity version %s\n', varargin{1});
+if isdeployed && nArgs > 0
+  fprintf('emClarity version %s\n', varargin{1});
+else
+  fprintf('emClarity (interactive)\n');
+end
 fprintf('run starting on %s\n', timeStart);
 fprintf('cmd ');
-for iArg = 2:length(varargin)
-  cmdIN = [cmdIN sprintf('%s ',varargin{iArg})];
+% Start from 2 if deployed (skip version), 1 otherwise
+startIdx = 1;
+if isdeployed && length(varargin) > 1 && ~strcmp(varargin{1},'help')
+  startIdx = 2;
+end
+% Initialize cmdIN to avoid undefined variable error
+cmdIN = 'emClarity ';
+for iArg = startIdx:length(varargin)
+  if iArg > 1 || ~isdeployed
+    cmdIN = [cmdIN sprintf('%s ',varargin{iArg})];
+  end
   fprintf('%s ', varargin{iArg});
 end
 fprintf('\n\n')
@@ -132,11 +143,16 @@ if nArgs > 0
     end
   end
 else
-  myErr = sprintf('\n\n\tRun with help for a list of functions\n\n');
-  error(myErr);
-  %   checkHelp = 0;
+  % When no arguments provided, show help
+  emcHelp = true;
+  varargin = {'help'}; % Set to help so the switch statement works
+  nArgs = 1;
 end
 
+% Now that varargin is guaranteed to have at least one element, update command string if needed
+if nArgs > 0
+  cmdIN = sprintf('emClarity %s ',varargin{1});
+end
 
 multiGPUs = 1;
 emc = struct();
@@ -152,13 +168,7 @@ if nArgs > 1 && ~(emcHelp || emcProgramHelp)
       error('alignFrames is not yet in production. Soon though!')
       % nothing to parse
       multiGPUs = 0;
-    case 'benchmark'
-      % nothing to parse
-      multiGPUs= 0;
     case 'removeNeighbors'
-      % nothing to parse
-      multiGPUs = 0;
-    case 'combineProjects'
       % nothing to parse
       multiGPUs = 0;
     case 'cleanTemplateSearch'
@@ -200,35 +210,39 @@ diaryCleanup = onCleanup(@() diary('off'));
 
 switch varargin{1}
   case 'help'
-    fprintf(['\nAvailable commands (case sensitive):\n\n',...
-      '\nhelp - this message\n',...
-      '\n\t\t for more details, emClarity <program> help\n',...
-      '\ncheck - system check for dependencies\n',...
-      '\nsegment - define subregions to reconstruct\n',...
-      '\ngetActiveTilts - get the number of active tilt-series\n',...
-      '\ninit - create a new project from template matching results.\n',...
-  '\nautoAlign - align tilt-series\n',...
-      '\navg - average subtomograms\n',...
-      '\nfsc - calculate the fsc\n',...
-      '\nmask - create a mask\n',...
-      '\nbenchmark - run a benchmark\n',...
-      '\ncalcWeights - calculate the weights for a given cycle\n',...
-      '\nalignRaw - align one or more references against individual subtomograms.\n',...
-      '\npca - reduce dimensionality prior to clustering, possibly on smaller subset of data.\n',...
-      '\ncluster - use one of a number of approaches to sort populations.\n',...
-  '\nskip - after averaging classes & possible removing some, skip to next cycle.\n',...
-      '\ngeometry - edit or analyze the experimental metadata.\n',...
-      '\ncombineProjects - combine two or more projects together', ...
-      '\nctf - estimate, correct, or refine the CTF.\n',...
-      '\ntomoCPR - tomogram constrained projection refinement\n',...
-      '\ntemplateSearch - template matching/ global search\n',...
-      '\ncleanTemplateSearch - clean search results based on neighbor constraints\n',...
-      '\nrescale - change the mag on a volume\n',...
-      '\nreconstruct - reconstruct a volume from a set of subtomograms\n',...
-      '\nremoveDuplicates - remove subtomos that have migrated to the same position\n',...
-      '\nexperimental - experimental options\n',...
-      '\nmontage - unstack and/or rotate the elements of a montage about x\n',...
-      '\nremoveNeighbors - clean templateSearch results based on lattice constraints\n']);
+    fprintf(['\n=== emClarity Commands ===\n\n',...
+      'For detailed help on any command, use: emClarity <command> help\n\n',...
+      '--- Project Setup & System ---\n',...
+      '  help                - Show this help message\n',...
+      '  check               - Check system dependencies and installation\n',...
+      '  init                - Initialize new project from template matching results\n',...
+      '  segment             - Define subregions to reconstruct\n\n',...
+      '--- Tilt-Series Processing ---\n',...
+      '  autoAlign           - Align tilt-series using IMOD\n',...
+      '  ctf                 - Estimate, correct, or refine CTF parameters\n',...
+      '  tomoCPR             - Tomogram constrained projection refinement\n',...
+      '  getActiveTilts      - Report number of active tilt-series\n\n',...
+      '--- Particle Picking ---\n',...
+      '  templateSearch      - Template matching/global particle search\n',...
+      '  cleanTemplateSearch - [experimental, likely broken] Remove based on neighbor constraints\n',...
+      '  removeNeighbors     - [experimental, likely broken] Clean based on lattice constraints\n\n',...
+      '--- Sub-tomogram Averaging ---\n',...
+      '  avg                 - Average aligned subtomograms\n',...
+      '  alignRaw            - Align subtomograms to reference(s)\n',...
+      '  skip                - Skip alignment after averaging/removing classes\n\n',...
+      '--- Resolution & Analysis ---\n',...
+      '  fsc                 - Calculate Fourier Shell Correlation\n',...
+      '  plotFSC             - Plot FSC curves from multiple cycles\n\n',...
+      '--- Classification & PCA ---\n',...
+      '  pca                 - Principal component analysis for clustering\n',...
+      '  cluster             - Sort populations using various approaches\n\n',...
+      '--- Utilities ---\n',...
+      '  geometry            - Edit or analyze experimental metadata\n',...
+      '  mask                - Create masks for volumes\n',...
+      '  rescale             - Change magnification of volume\n',...
+      '  reconstruct         - Reconstruct volume from subtomograms\n',...
+      '  montage             - Unstack/rotate montage elements\n',...
+      '  experimental        - Access experimental features\n\n']);
     
     % Currently disabled options. Multi-reference alignment
     % % %                       '\nalignRef - align one or more references against a primary ref\n',...
@@ -368,21 +382,6 @@ switch varargin{1}
       end
       
     end
-  case 'benchmark'
-    if emcProgramHelp || ...
-        length(varargin) ~= 4
-      fprintf(['\nUsage: emClarity benchmark fileNameOut fastScratchDisk nWorkers\n']);
-    else
-      BH_benchmark(varargin{2},varargin{3},varargin{4});
-    end
-  case 'calcWeights'
-    if emcProgramHelp || ...
-        length(varargin) ~= 6
-      fprintf(['\nUsage: emClarity calcWeights param.m cycle prefixOUT symmetry [gpuIDX, tiltStart, tiltStop]\n']);
-    else
-      
-      BH_weightMask_dpRUN(varargin{2},varargin{3},varargin{4},varargin{5},varargin{6});
-    end
   case 'avg'
     if emcProgramHelp || ...
         length(varargin) ~= 4
@@ -411,6 +410,23 @@ switch varargin{1}
     else
       BH_fscGold_class(varargin{2}, varargin{3}, varargin{4},varargin{5},varargin{6});
     end
+  case 'plotFSC'
+    if emcProgramHelp || ...
+        length(varargin) < 3 || length(varargin) > 4
+      fprintf(['\nUsage: emClarity plotFSC\n',...
+        'subTomoMeta_name (without .mat)\n',...
+        'cycle_list (e.g., ''16'' or ''[10,12,14,16]'')\n',...
+        '[optional] reference_list (e.g., ''1'' or ''[1,2]'', default: ''1'')\n\n',...
+        'Examples:\n',...
+        '  emClarity plotFSC project1 ''[10,12,14,16]'' ''1''\n',...
+        '  emClarity plotFSC project1 16 ''[1,2]''\n']);
+    else
+      if length(varargin) == 3
+        BH_plotMultiCycleFSC(varargin{2}, varargin{3});
+      else
+        BH_plotMultiCycleFSC(varargin{2}, varargin{3}, varargin{4});
+      end
+    end
   case 'alignRaw'
     if emcProgramHelp || ...
         (length(varargin) ~= 3 && length(varargin) ~= 4)
@@ -428,26 +444,6 @@ switch varargin{1}
       end
     end
     
-  case 'alignRef'
-    if emcProgramHelp || ...
-        length(varargin) ~= 3
-      fprintf(['\nparam.m\n',...
-        'cycle number\n',...
-        'stage of alignment\n']);
-    else
-      emC_testParse(varargin{2});
-      BH_alignReferences3d(varargin{2}, varargin{3});
-    end
-  case 'alignCls'
-    if emcProgramHelp || ...
-        length(varargin) ~= 3
-      fprintf(['\nparam.m\n',...
-        'cycle number\n',...
-        'stage of alignment\n']);
-    else
-      emC_testParse(varargin{2});
-      BH_alignClassRotAvg3d(varargin{2}, varargin{3});
-    end
 
   case 'pca'
     if emcProgramHelp || ...
@@ -576,16 +572,6 @@ switch varargin{1}
       end
       BH_synthetic_mapBack(varargin{2}, varargin{3}, varargin{4},tiltStart);
     end
-  case 'removeDuplicates'
-    if emcProgramHelp || ...
-        length(varargin) ~= 3
-      fprintf(['\nparam.m\n',...
-        'cycle number\n',...
-        ]);
-    else
-      emC_testParse(varargin{2});
-      BH_removeDuplicates(varargin{2}, varargin{3} );
-    end
   case 'geometry'
     if emcProgramHelp || ...
         length(varargin) ~= 7
@@ -603,8 +589,6 @@ switch varargin{1}
       BH_geometryAnalysis(varargin{2}, varargin{3},varargin{4}, ...
         varargin{5}, varargin{6},varargin{7});
     end
-  case 'combineProjects'
-    BH_combineProjects(varargin{1},varargin(2:end));
     
     
   case 'templateSearch'
@@ -844,149 +828,53 @@ function [ emc  ] = emC_testParse( paramTest )
   % dependent on the current resolution of the sub-tomogram, and that a
   % single set of values will not work for everything.
   
-  % Note that these must also be declared in the relevant functions
-  
+  % Note that most global variables have been moved to the parameter file
+  % Only variables used by functions without parameter access remain as globals
+
+  %%%%%%% Variables still needed for BH_mask3d.m and EMC_maskReference.m %%%%%%%
   global emc_debug_print;
   try
-    emc_debug_print = emc.('debugPrint');
+    emc_debug_print = emc.('debug_print');
   catch
     emc_debug_print = false;
   end
 
-  %%%%%%% BH_mask3d.m %%%%%%%
   global bh_global_binary_mask_low_pass;
-  global bh_global_binary_mask_threshold;
-  %%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  
-  %%%%%%% BH_pcaPub.m %%%%%%%
-  global bh_global_binary_pcaMask_threshold;
-  %%%%%%%%%%%%%%%%%%%%%%%%%%%
-  
-  %%%%%%% Anything that reads geometry. This way if size changes, its okay.
-  %%%%%%% Needed only for tracking multiple copies of a single particle.
-  %%%%%%% (Currently not used)
-  global bh_global_nCol
-  bh_global_nCol = 26;
-  %%%%%%%
-  
-  %%%%%% BH_mask3d - affects then the FSC calc
-  global bh_global_vol_est_scaling;
-  global bh_global_MTF;
-  
-  %%%%%
-  global bh_global_fast_scratch_disk;
-  global bh_global_ram_disk;
-  
-  %%%%%%% BH_ctfCorrect_3d
-  %%%%%%% Wiener filter and cut off past this point
-  global bh_global_turn_on_phase_plate;
-  
-  try
-    bh_global_turn_on_phase_plate = emc.('phakePhasePlate');
-  catch
-    bh_global_turn_on_phase_plate = 0;
-  end
-  
-  %%%%%%% BH_ctf_estimate, updateFFT
-  %%%% Can't pad K3 images enough to avoid ghosting until mexInterp is
-  %%%% ready
-  global bh_global_do_2d_fourier_interp;
-  try
-    bh_global_do_2d_fourier_interp = emc.('useFourierInterp');
-  catch
-    bh_global_do_2d_fourier_interp = 1;
-  end
-  
-  global bh_global_save_tomoCPR_diagnostics;
-  try
-    bh_global_save_tomoCPR_diagnostics = emc.('tomoCprDiagnostics');
-  catch
-    bh_global_save_tomoCPR_diagnostics = 0;
-  end
-  
-  global bh_global_imodProjectionShifts;
-  bh_global_imodProjectionShifts = [ -0.5, -0.5, 0.5 ; -0.5, -0.5, 0; 0.5,0.5,1.0 ];
-  
-  %%%%%%%%%%%%%%
-  
-  %%%%% For profiling
-  global bh_global_do_profile;
-  try
-    bh_global_do_profile = emc.('doProfile');
-  catch
-    bh_global_do_profile = false;
-  end
-  
-  
-  try
-    bh_global_fast_scratch_disk  = emc.('fastScratchDisk');
-  catch
-    bh_global_fast_scratch_disk='';
-  end
-  
-  global emc_debug_print
-  emc_debug_print = emc.('debug_print');
-
-  try
-    bh_global_ram_disk = emc.('ramDisk');
-  catch
-    bh_global_ram_disk = '/dev/shm';
-  end
-  
-  [status , fileAttributes] = fileattrib(bh_global_ram_disk);
-  if (status && fileAttributes.UserWrite)
-    fprintf('Found and using your ramDisk\n');
-  else
-    fprintf('\nRan into an error trying to write to the fastScatchDisk %s\n',bh_global_ram_disk);
-    fprintf('Please check that it exists and is writable status (%d) UserWrite (%d)\n', status, fileAttributes.UserWrite);
-    bh_global_ram_disk = '';
-  end
-  
-  
   try
     bh_global_binary_mask_low_pass = emc.('setMaskLowPass');
   catch
     % These seem to be okay for higher-resolution data (EMPIAR ribo sets)
     bh_global_binary_mask_low_pass = 14;
   end
-  
+
+  global bh_global_binary_mask_threshold;
   try
     bh_global_binary_mask_threshold = emc.('setMaskThreshold');
   catch
     bh_global_binary_mask_threshold = 2.5;
   end
-  
-  try
-    bh_global_binary_pcaMask_threshold = emc.('setPcaMaskThreshold');
-  catch
-    bh_global_binary_pcaMask_threshold = 0.5;
-  end
-  
-  global bh_global_kFactorScaling;
-  try
-    bh_global_kFactorScaling = emc.('kFactorScaling');
-  catch
-    bh_global_kFactorScaling = 1.0;
-  end
-  
+
+  global bh_global_vol_est_scaling;
   try
     bh_global_vol_est_scaling = emc.('setParticleVolumeScaling');
   catch
     % The low pass version of the map used for the estimate overestimates
     % the molecular volume at the hydration radius of the underlying atoms.
-    % This flag will override the value I've calculated which depends on
-    % the masking resolution. TODO when the map resolution is lower than
-    % the masking resolution, this will again underestimate the scaling,
-    % artificialy *de*pressing the FSC. Left to zero this is calculated in
-    % mask_3d
-    bh_global_vol_est_scaling = 0.0;
+    bh_global_vol_est_scaling = 1.0;
   end
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-  
-  fprintf('nExpGlobals %2.2f maskLP, %2.2f maskThr, %2.2f pcaMaskThr\n', ...
-    bh_global_binary_mask_low_pass, ...
-    bh_global_binary_mask_threshold, ...
-    bh_global_binary_pcaMask_threshold);
+  %%%%%%% MOVED TO PARAMETERS - NOW HANDLED IN BH_parseParameterFile %%%%%%%
+  % The following variables have been moved to the parameter file:
+  % - bh_global_binary_pcaMask_threshold -> emc.pca_mask_threshold
+  % - bh_global_turn_on_phase_plate -> emc.phase_plate_mode
+  % - bh_global_do_2d_fourier_interp -> emc.use_fourier_interp
+  % - bh_global_do_profile -> emc.enable_profiling
+  % - bh_global_save_tomoCPR_diagnostics -> emc.save_tomocpr_diagnostics
+  % - bh_global_nCol, bh_global_MTF, bh_global_fast_scratch_disk,
+  %   bh_global_ram_disk, bh_global_imodProjectionShifts,
+  %   bh_global_kFactorScaling (all removed - never used)
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%
 % catch
 %   error('error parsing parameter file %s\n', paramTest)
 % end

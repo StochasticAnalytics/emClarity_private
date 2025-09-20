@@ -502,13 +502,10 @@ if (emc.use_new_grid_search)
   nAngles = sum(gridSearch.number_of_angles_at_each_theta);
     inPlaneSearch = gridSearch.parameter_map.psi
 
-  try
-    symmetry_constrained_search = emc.('symmetry_constrained_search');
-    if (symmetry_constrained_search)
-      fprintf('Using symmetry constrained search\n');
-    end
-  catch
-    symmetry_constrained_search = false;
+  % symmetry_constrained_search is now handled in BH_parseParameterFile
+  symmetry_constrained_search = emc.symmetry_constrained_search;
+  if (symmetry_constrained_search)
+    fprintf('Using symmetry constrained search\n');
   end
   
   if (symmetry_constrained_search)

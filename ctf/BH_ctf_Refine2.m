@@ -13,11 +13,8 @@ catch
   mapBackIter = 0;
 end
 
-try
-  testNoRefine = emc.('force_no_defocus_stretch');
-catch
-  testNoRefine = false;
-end
+% force_no_defocus_stretch is now handled in BH_parseParameterFile
+testNoRefine = emc.force_no_defocus_stretch;
 if (testNoRefine)
   fprintf('\nWarning force_no_defocus_stretch is only for testing!\n\n');
 end
@@ -26,11 +23,8 @@ end
 % plane and does not have wildly different image stats, using it could
 % improve the thon rings on tilted data. Zero will produce the "normal"
 % process, 1 will use the same area as the min tilt,
-try
-  fraction_of_extra_tilt_data = emc.('fraction_of_extra_tilt_data')
-catch
-  fraction_of_extra_tilt_data = 0.25
-end
+% fraction_of_extra_tilt_data is now handled in BH_parseParameterFile
+fraction_of_extra_tilt_data = emc.fraction_of_extra_tilt_data;
 % set the search ranges - should change ctf_est to save the parameters used so
 % this can be loaded automatically.
 
@@ -66,11 +60,8 @@ WAVELENGTH = 10^-12*1226.39/sqrt(VOLTAGE + 0.97845*10^-6*VOLTAGE^2) ;
 FIXED_FIRSTZERO =  emc.pixel_size_si / 40*10^-10 ;
 
 % Size to padTile to should be even, large, and preferably a power of 2
-try
-  paddedSize = emc.('paddedSize');
-catch
-  paddedSize = 512;
-end
+% paddedSize is now handled in BH_parseParameterFile
+paddedSize = emc.paddedSize;
 
 % Tile size & overlap
 tileOverlap = emc.('ctf_tile_overlap');
