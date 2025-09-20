@@ -176,6 +176,9 @@ if nArgs > 1 && ~(emcHelp || emcProgramHelp)
       multiGPUs = 0;
     case 'getActiveTilts'
       multiGPUs = 0;
+    case 'plotFSC'
+      % nothing to parse
+      multiGPUs = 0;
     otherwise
       emc = emC_testParse(varargin{2});
   end
