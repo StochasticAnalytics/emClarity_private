@@ -96,11 +96,32 @@ classdef BH_subTomoMeta_io < handle
 
                     % Verify file integrity before moving
                     if obj.check_mat_file_integrity(temp_file)
-                        % Atomic move (rename)
-                        movefile(temp_file, mat_file);
-                        success = true;
-                        fprintf('  Saved legacy format to %s\n', mat_file);
-                        break;
+                        % Force filesystem sync before move
+                        if isunix()
+                            system('sync');
+                            pause(0.05); % Brief pause to ensure sync completion
+                        end
+
+                        % Atomic move (rename) - safer than copy for HDF5
+                        [move_success, move_msg] = movefile(temp_file, mat_file);
+                        if move_success
+                            % Verify the moved file is still intact
+                            if obj.check_mat_file_integrity(mat_file)
+                                success = true;
+                                fprintf('  Saved legacy format to %s\n', mat_file);
+                                break;
+                            else
+                                % Move succeeded but file corrupted - very rare
+                                warning('BH_subTomoMeta_io:PostMoveCorruption', ...
+                                        'File corrupted after move operation on attempt %d/%d', attempt, max_retries);
+                                if exist(mat_file, 'file')
+                                    delete(mat_file);
+                                end
+                            end
+                        else
+                            warning('BH_subTomoMeta_io:MoveFailed', ...
+                                    'Move operation failed on attempt %d/%d: %s', attempt, max_retries, move_msg);
+                        end
                     else
                         % Integrity check failed
                         if exist(temp_file, 'file')
