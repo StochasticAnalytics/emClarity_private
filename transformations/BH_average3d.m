@@ -1578,7 +1578,12 @@ end
 
 
 if strcmpi(STAGEofALIGNMENT, 'RawAlignment')
-  BH_fscGold_class(PARAMETER_FILE, num2str(CYCLE), STAGEofALIGNMENT);
+  % Pass minimal data to fscGold and get back modifications
+  [~, fsc_results, resolution_update] = BH_fscGold_class(PARAMETER_FILE, num2str(CYCLE), STAGEofALIGNMENT, subTomoMeta.(cycleNumber), subTomoMeta.currentResForDefocusError);
+
+  % Update in-memory subTomoMeta with results
+  subTomoMeta.(cycleNumber).('fitFSC') = fsc_results;
+  subTomoMeta.('currentResForDefocusError') = resolution_update;
 end
 
 
@@ -1600,8 +1605,7 @@ refWGT = cell(2,1);
 refWGT_SQRT = cell(2,1);
 
 if ~( flgEstSNR )
-  % Load using wrapper
-subTomoMeta = BH_loadSubTomoMeta(emc.('subTomoMeta'), emc.('metadata_format'));
+  % No need to reload - subTomoMeta already updated by fscGold above
   %%%%%%%%%%%%%55 Reweight now that the FSC is calculated
   
   for iGold = 1:2

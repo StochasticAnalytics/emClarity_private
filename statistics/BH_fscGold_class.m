@@ -1,4 +1,4 @@
-function [ refWGT ] = BH_fscGold_class( PARAMETER_FILE, CYCLE, STAGEofALIGNMENT,varargin)
+function [ refWGT, fsc_results, resolution_update ] = BH_fscGold_class( PARAMETER_FILE, CYCLE, STAGEofALIGNMENT, cycle_data, current_resolution, varargin)
 %Calculate the fsc and relative power distribution for the two input vol.
 %
 %
@@ -14,8 +14,8 @@ function [ refWGT ] = BH_fscGold_class( PARAMETER_FILE, CYCLE, STAGEofALIGNMENT,
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-if (nargin < 3 && nargin > 4)
-  error('args = PARAMETER_FILE, CYCLE, STAGEofALIGNMENT')
+if (nargin < 5)
+  error('args = PARAMETER_FILE, CYCLE, STAGEofALIGNMENT, cycle_data, current_resolution')
 end
 
 % FIXME
@@ -34,9 +34,9 @@ CYCLE = EMC_str2double(CYCLE);
 system('mkdir -p FSC');
 
 emc = BH_parseParameterFile(PARAMETER_FILE);
-% Load using wrapper
-subTomoMeta = BH_loadSubTomoMeta(emc.('subTomoMeta'), emc.('metadata_format'));
-masterTM = subTomoMeta;
+% Initialize return values
+fsc_results = struct();
+resolution_update = current_resolution;
 
 cycleNumber = sprintf('cycle%0.3u', CYCLE);
 prevCycleNumber = sprintf('cycle%0.3u',CYCLE-1);
@@ -175,13 +175,13 @@ if (flgAlignImages) && ~(flgJustFSC)
     end
     
     [ refIMG{iGold} ] = BH_unStackMontage4d(1:nReferences, ...
-      masterTM.(cycleNumber).(imageName{iGold}){1},...
-      masterTM.(cycleNumber).(imageName{iGold}){2},...
+      cycle_data.(imageName{iGold}){1},...
+      cycle_data.(imageName{iGold}){2},...
       sizeWindow);
     
     [ refWGT{iGold} ] = BH_unStackMontage4d(1:nReferences, ...
-      masterTM.(cycleNumber).(weightName{iGold}){1},...
-      masterTM.(cycleNumber).(weightName{iGold}){2},...
+      cycle_data.(weightName{iGold}){1},...
+      cycle_data.(weightName{iGold}){2},...
       sizeCalc);
     
     padLSQ = BH_multi_padVal(sizeWindow,sizeCalc);
@@ -236,8 +236,7 @@ particleVolume = zeros(nReferences,1);
 % else
 %   particleVolume = ones(nReferences,1);
 % end
-fprintf('%d\n',nargin);
-if nargin > 3
+if nargin > 5
   sLow = EMC_str2double(varargin{1});
   sTop = EMC_str2double(varargin{2});
 else
@@ -475,7 +474,7 @@ for iRef = 1:nReferences
     % Only need to calculate phase randomized masks if the fscShapeMask is
     % applied during the FSC calculation. If instead it is used to estimate
     % the particle volume (flgEstSolvent) then no mask is directly applied.
-    fscRandCutoffRes = 3*masterTM.currentResForDefocusError(1);
+    fscRandCutoffRes = 3*current_resolution(1);
     lowResShift = emc.pixel_size_angstroms*2 - 10;
     if lowResShift <= 0
       lowResShift = 0;
@@ -629,7 +628,7 @@ for iRef = 1:nReferences
     % Otherwise refSymmetry is set in the block where the permutations are
     % created.
     try
-      refSymmetry = masterTM.(cycleNumber).('SymmetryApplied').(STAGEofALIGNMENT);
+      refSymmetry = cycle_data.('SymmetryApplied').(STAGEofALIGNMENT);
     catch
       fprintf('\nCould not load the symmetry applied, just using 1\n');
       refSymmetry = ones(2,nReferences);
@@ -766,27 +765,27 @@ for iRef = 1:nReferences
   % function can run, but storing a cFit object in a struct or cell doesn't seem
   % to work?
   if ~(flgJustFSC)
-    masterTM.(cycleNumber).('fitFSC').(sprintf('%s%d',savePrefix,iRef)) = ...
+    fsc_results.(sprintf('%s%d',savePrefix,iRef)) = ...
       {shellsFreq,shellsFSC,{cRef,cRefAli,emc.mtf_value},osX,forceMaskAlign,forceMask,nCones,coneList,halfAngle,samplingRate};
     
     sprintf('Resample_%s%d',savePrefix,iRef)
     
     if (flgEstSNR)
-      masterTM.(cycleNumber).('fitFSC').(sprintf('fit%s%d',savePrefix,1))=...
+      fsc_results.(sprintf('fit%s%d',savePrefix,1))=...
         [bestAnglesTotal(1,1:9); ...
         bestAnglesTotal(1,10:12),0,0,0,0,0,0];
     else
-      masterTM.(cycleNumber).('fitFSC').(sprintf('Resample%s%d',savePrefix,iRef))=...
+      fsc_results.(sprintf('Resample%s%d',savePrefix,iRef))=...
         [bestAnglesTotal(iRef,1:9); ...
         bestAnglesTotal(iRef,10:12),0,0,0,0,0,0];
     end
     
-    masterTM.(cycleNumber).('fitFSC').(sprintf('Mask%s%d',savePrefix,iRef)) =  ...
+    fsc_results.(sprintf('Mask%s%d',savePrefix,iRef)) =  ...
       {maskType, sizeMask, ...
       maskRadius, maskCenter, ...
       emc.fsc_shape_mask, emc.shape_mask_lowpass, emc.shape_mask_threshold};
     
-    masterTM.('currentResForDefocusError') = osX(oneBitCut).^-1;
+    resolution_update = osX(oneBitCut).^-1;
   end
   
   
@@ -916,10 +915,9 @@ for iRef = 1:nReferences
 
 end
 
-subTomoMeta = masterTM;
-% Save using wrapper
-BH_saveSubTomoMeta(emc.('subTomoMeta'), subTomoMeta);
-clearvars -except refWGT
+% Return values are already set - no need to save to disk
+refWGT = [];  % Initialize empty since original function didn't return meaningful data
+clearvars -except refWGT fsc_results resolution_update
 end
 
 
