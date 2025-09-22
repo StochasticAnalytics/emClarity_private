@@ -30,3 +30,219 @@ Error in BH_parseParameterFile (line 7)
 Error in emClarity>emC_testParse (line 679)
 
 Error in emClarity (line 168)
+
+=== emClarity Commands ===
+
+For detailed help on any command, use: emClarity <command> help
+
+--- Project Setup & System ---
+  help              - Show this help message
+  check             - Check system dependencies and installation
+  init              - Initialize new project from template matching results
+  combineProjects   - Merge two or more projects together
+  benchmark         - Run system performance benchmark
+
+--- Tilt-Series Processing ---
+  autoAlign         - Align tilt-series using IMOD
+  ctf               - Estimate, correct, or refine CTF parameters
+  segment           - Define subregions to reconstruct
+  getActiveTilts    - Report number of active tilt-series
+
+--- Particle Picking ---
+  templateSearch    - Template matching/global particle search
+  cleanTemplateSearch - Remove search results based on neighbor constraints
+  removeNeighbors   - Clean results based on lattice constraints
+
+--- Sub-tomogram Averaging ---
+  avg               - Average aligned subtomograms
+  alignRaw          - Align subtomograms to reference(s)
+  alignRef          - Align multiple references to primary reference
+  alignCls          - Align references to class averages
+  calcWeights       - Calculate particle weights for given cycle
+  removeDuplicates  - Remove particles that migrated to same position
+  skip              - Skip alignment after averaging/removing classes
+
+--- Resolution & Analysis ---
+  fsc               - Calculate Fourier Shell Correlation
+  plotFSC           - Plot FSC curves from multiple cycles
+  tomoCPR           - Tomogram constrained projection refinement
+
+--- Classification & PCA ---
+  pca               - Principal component analysis for clustering
+  cluster           - Sort populations using various approaches
+
+--- Utilities ---
+  geometry          - Edit or analyze experimental metadata
+  mask              - Create masks for volumes
+  rescale           - Change magnification of volume
+  reconstruct       - Reconstruct volume from subtomograms
+  montage           - Unstack/rotate montage elements
+  experimental      - Access experimental features
+
+
+		***************************************
+
+run ending on 20-Sep-2025 08:33:27
+
+
+		***************************************
+
+
+=== emClarity Commands ===
+
+For detailed help on any command, use: emClarity <command> help
+
+--- Project Setup & System ---
+  help              - Show this help message
+  check             - Check system dependencies and installation
+  init              - Initialize new project from template matching results
+  combineProjects   - Merge two or more projects together
+  benchmark         - Run system performance benchmark
+
+--- Tilt-Series Processing ---
+  autoAlign         - Align tilt-series using IMOD
+  ctf               - Estimate, correct, or refine CTF parameters
+  segment           - Define subregions to reconstruct
+  getActiveTilts    - Report number of active tilt-series
+
+--- Particle Picking ---
+  templateSearch    - Template matching/global particle search
+  cleanTemplateSearch - Remove search results based on neighbor constraints
+  removeNeighbors   - Clean results based on lattice constraints
+
+--- Sub-tomogram Averaging ---
+  avg               - Average aligned subtomograms
+  alignRaw          - Align subtomograms to reference(s)
+  alignRef          - Align multiple references to primary reference
+  alignCls          - Align references to class averages
+  calcWeights       - Calculate particle weights for given cycle
+  removeDuplicates  - Remove particles that migrated to same position
+  skip              - Skip alignment after averaging/removing classes
+
+--- Resolution & Analysis ---
+  fsc               - Calculate Fourier Shell Correlation
+  plotFSC           - Plot FSC curves from multiple cycles
+  tomoCPR           - Tomogram constrained projection refinement
+
+--- Classification & PCA ---
+  pca               - Principal component analysis for clustering
+  cluster           - Sort populations using various approaches
+
+--- Utilities ---
+  geometry          - Edit or analyze experimental metadata
+  mask              - Create masks for volumes
+  rescale           - Change magnification of volume
+  reconstruct       - Reconstruct volume from subtomograms
+  montage           - Unstack/rotate montage elements
+  experimental      - Access experimental features
+
+
+		***************************************
+
+run ending on 20-Sep-2025 10:14:56
+
+
+		***************************************
+
+
+=== emClarity Commands ===
+
+For detailed help on any command, use: emClarity <command> help
+
+--- Project Setup & System ---
+  help                - Show this help message
+  check               - Check system dependencies and installation
+  init                - Initialize new project from template matching results
+  segment             - Define subregions to reconstruct
+
+--- Tilt-Series Processing ---
+  autoAlign           - Align tilt-series using IMOD
+  ctf                 - Estimate, correct, or refine CTF parameters
+  tomoCPR             - Tomogram constrained projection refinement
+  getActiveTilts      - Report number of active tilt-series
+
+--- Particle Picking ---
+  templateSearch      - Template matching/global particle search
+  cleanTemplateSearch - [experimental, likely broken] Remove based on neighbor constraints
+  removeNeighbors     - [experimental, likely broken] Clean based on lattice constraints
+
+--- Sub-tomogram Averaging ---
+  avg                 - Average aligned subtomograms
+  alignRaw            - Align subtomograms to reference(s)
+  skip                - Skip alignment after averaging/removing classes
+
+--- Resolution & Analysis ---
+  fsc                 - Calculate Fourier Shell Correlation
+  plotFSC             - Plot FSC curves from multiple cycles
+
+--- Classification & PCA ---
+  pca                 - Principal component analysis for clustering
+  cluster             - Sort populations using various approaches
+
+--- Utilities ---
+  geometry            - Edit or analyze experimental metadata
+  mask                - Create masks for volumes
+  rescale             - Change magnification of volume
+  reconstruct         - Reconstruct volume from subtomograms
+  montage             - Unstack/rotate montage elements
+  experimental        - Access experimental features
+
+
+		***************************************
+
+run ending on 20-Sep-2025 10:39:02
+
+
+		***************************************
+
+
+=== emClarity Commands ===
+
+For detailed help on any command, use: emClarity <command> help
+
+--- Project Setup & System ---
+  help                - Show this help message
+  check               - Check system dependencies and installation
+  init                - Initialize new project from template matching results
+  segment             - Define subregions to reconstruct
+
+--- Tilt-Series Processing ---
+  autoAlign           - Align tilt-series using IMOD
+  ctf                 - Estimate, correct, or refine CTF parameters
+  tomoCPR             - Tomogram constrained projection refinement
+  getActiveTilts      - Report number of active tilt-series
+
+--- Particle Picking ---
+  templateSearch      - Template matching/global particle search
+  cleanTemplateSearch - [experimental, likely broken] Remove based on neighbor constraints
+  removeNeighbors     - [experimental, likely broken] Clean based on lattice constraints
+
+--- Sub-tomogram Averaging ---
+  avg                 - Average aligned subtomograms
+  alignRaw            - Align subtomograms to reference(s)
+  skip                - Skip alignment after averaging/removing classes
+
+--- Resolution & Analysis ---
+  fsc                 - Calculate Fourier Shell Correlation
+  plotFSC             - Plot FSC curves from multiple cycles
+
+--- Classification & PCA ---
+  pca                 - Principal component analysis for clustering
+  cluster             - Sort populations using various approaches
+
+--- Utilities ---
+  geometry            - Edit or analyze experimental metadata
+  mask                - Create masks for volumes
+  rescale             - Change magnification of volume
+  reconstruct         - Reconstruct volume from subtomograms
+  montage             - Unstack/rotate montage elements
+  experimental        - Access experimental features
+
+
+		***************************************
+
+run ending on 20-Sep-2025 11:03:35
+
+
+		***************************************
+

@@ -40,9 +40,10 @@ function success = BH_safeCopyMatFile(source_file, dest_file)
             fprintf('  Created backup: %s\n', backup_file);
         end
 
-        % Save using atomic method
+        % Save using atomic method with v7 format to avoid corruption
         temp_save_file = sprintf('%s.tmp', dest_file);
-        save(temp_save_file, '-struct', 'temp_data', '-v7.3');
+        fprintf('  Using v7 format to avoid corruption\n');
+        save(temp_save_file, '-struct', 'temp_data', '-v7');
 
         % Force sync and verify
         if isunix()

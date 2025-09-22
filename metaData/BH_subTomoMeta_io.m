@@ -85,50 +85,28 @@ classdef BH_subTomoMeta_io < handle
                     % Use temporary file for atomic operation
                     temp_file = sprintf('%s.tmp', mat_file);
 
-                    % Save to temporary file
-                    subTomoMeta = data;
-                    save(temp_file, 'subTomoMeta', '-v7.3');
+                    % Check for variables that might exceed v7 format limits
+                    large_var_warning = obj.check_large_variables(data);
 
-                    % Force filesystem sync to ensure data is written
-                    if isunix()
-                        system('sync');
+                    if large_var_warning
+                        warning('BH_subTomoMeta_io:LargeVariables', ...
+                                'Detected very large variables. If save fails, data may exceed v7 format limits.');
                     end
 
-                    % Verify file integrity before moving
-                    if obj.check_mat_file_integrity(temp_file)
-                        % Force filesystem sync before move
-                        if isunix()
-                            system('sync');
-                            pause(0.05); % Brief pause to ensure sync completion
-                        end
+                    % Save to temporary file using v7 format to avoid corruption
+                    subTomoMeta = data;
+                    fprintf('  Using v7 format to avoid corruption\n');
+                    save(temp_file, 'subTomoMeta', '-v7');
 
-                        % Atomic move (rename) - safer than copy for HDF5
-                        [move_success, move_msg] = movefile(temp_file, mat_file);
-                        if move_success
-                            % Verify the moved file is still intact
-                            if obj.check_mat_file_integrity(mat_file)
-                                success = true;
-                                fprintf('  Saved legacy format to %s\n', mat_file);
-                                break;
-                            else
-                                % Move succeeded but file corrupted - very rare
-                                warning('BH_subTomoMeta_io:PostMoveCorruption', ...
-                                        'File corrupted after move operation on attempt %d/%d', attempt, max_retries);
-                                if exist(mat_file, 'file')
-                                    delete(mat_file);
-                                end
-                            end
-                        else
-                            warning('BH_subTomoMeta_io:MoveFailed', ...
-                                    'Move operation failed on attempt %d/%d: %s', attempt, max_retries, move_msg);
-                        end
+                    % Simple atomic move without integrity checks or sync
+                    [move_success, move_msg] = movefile(temp_file, mat_file);
+                    if move_success
+                        success = true;
+                        fprintf('  Saved legacy format to %s\n', mat_file);
+                        break;
                     else
-                        % Integrity check failed
-                        if exist(temp_file, 'file')
-                            delete(temp_file);
-                        end
-                        warning('BH_subTomoMeta_io:IntegrityCheckFailed', ...
-                                'Integrity check failed for attempt %d/%d', attempt, max_retries);
+                        warning('BH_subTomoMeta_io:MoveFailed', ...
+                                'Move operation failed on attempt %d/%d: %s', attempt, max_retries, move_msg);
                     end
 
                 catch ME
@@ -516,6 +494,65 @@ classdef BH_subTomoMeta_io < handle
             fid = fopen(filename, 'w');
             fprintf(fid, '%s', json_str);
             fclose(fid);
+        end
+
+        function has_large_vars = check_large_variables(obj, data_struct)
+            %check_large_variables Check for variables that might exceed v7 format limits
+            %   v7 format has 2GB limit per variable, not total file size
+
+            has_large_vars = false;
+
+            try
+                if ~isstruct(data_struct)
+                    % Check single variable
+                    assignin('base', 'temp_size_var', data_struct);
+                    info = evalin('base', 'whos(''temp_size_var'')');
+                    evalin('base', 'clear temp_size_var');
+
+                    if info.bytes > 1.5 * 1024^3  % > 1.5GB warning threshold
+                        fprintf('  Large variable detected: %.2f GB\n', info.bytes / 1024^3);
+                        has_large_vars = true;
+                    end
+                    return;
+                end
+
+                field_names = fieldnames(data_struct);
+
+                for i = 1:length(field_names)
+                    field_name = field_names{i};
+                    field_data = data_struct.(field_name);
+
+                    try
+                        % Get memory info for this field
+                        assignin('base', 'temp_size_var', field_data);
+                        info = evalin('base', 'whos(''temp_size_var'')');
+                        evalin('base', 'clear temp_size_var');
+
+                        field_gb = info.bytes / 1024^3;
+
+                        % Log fields > 100MB
+                        if info.bytes > 100*1024^2
+                            fprintf('  Field ''%s'': %.2f GB (%s)\n', ...
+                                    field_name, field_gb, info.class);
+                        end
+
+                        % Warn if approaching v7 2GB per-variable limit
+                        if info.bytes > 1.5 * 1024^3  % > 1.5GB
+                            fprintf('  WARNING: Field ''%s'' is %.2f GB (approaching 2GB v7 limit)\n', ...
+                                    field_name, field_gb);
+                            has_large_vars = true;
+                        end
+
+                    catch
+                        % If we can't check, assume it's not too large
+                        continue;
+                    end
+                end
+
+            catch ME
+                fprintf('  Error checking variable sizes: %s\n', ME.message);
+                has_large_vars = false; % Default to allowing save attempt
+            end
         end
     end
 end

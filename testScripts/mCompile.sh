@@ -1,20 +1,19 @@
 #!/bin/bash
 
+# emClarity compilation script
+# This script compiles emClarity and creates the distribution package
 
-# NOTE: You will also need to modify your emClarity/mexFiles/mexCompile.m
-#   Set the mexPath, and modify the two library linker lines to point at your install of CUDA
-#   TODO set up a little configure script to do this and check other deps described below.
-# NOTE: You also will need to download the binaries from the emC_dependencies folder on drive
+# Required: Set the path to emClarity dependencies
+# Download from the emC_dependencies folder on Google Drive
 export emC_DEPS="/sa_shared/software/emClarity_1.6.1.0/bin/deps"
-export EMC_SOURCE_ROOT=/sa_shared/git/emClarity_private  # Source directory for compilation (exported for mexCompile)
-EMC_COMPILED_ROOT=/sa_shared/software/ # This is just for convenience, when you build for yourself
-############ lines 4-5 in mexFiles/mexCompile
-#mexPATH = '/groups/grigorieff/home/himesb/work/emClarity/mexFiles/';
-#CUDA_LIB = '-L/groups/grigorieff/home/himesb/thirdParty/cuda-10.0/lib64'   ... % NOTE if you leave a space at the end of this string, MATLAB does not parse the option correctly (which wouldn't matter in a normal compile line!)
-############
-### line 7 in testScripts/emClarity.m
-#compiled_PATH='/groups/grigorieff/home/himesb/work/emClarity';
-###################
+
+# Source directory - automatically passed to mexCompile.m via environment variable
+export EMC_SOURCE_ROOT=/sa_shared/git/emClarity_private
+
+export MATLABPATH=$EMC_SOURCE_ROOT:$MATLABPATH
+
+# Where to install the compiled version
+EMC_COMPILED_ROOT=/sa_shared/software/
 
 # This is the version of matlab you will end up compiling with.
 MATLAB_FOR_COMPILING=matlab
@@ -22,8 +21,8 @@ MATLAB_FOR_COMPILING=matlab
 # This grabs the first bit of the commit hash, which then is printed in the logfile
 shortHead=$(git rev-parse --short HEAD)
 
-# The is the program you want to compile. Most BH_* can be compiled as standalones, but
-# you probably just want the wrapper to then emClarity.m
+# The program you want to compile. Most BH_* can be compiled as standalones, but
+# you probably just want the wrapper to the emClarity.m
 mFile=${1}
 
 post="_${shortHead}"
@@ -41,8 +40,8 @@ fi
 
 outName="$(basename ${mFile} .m)${post}"
 
-# For naming. If you are compiling your own version, use something descriptive in teh
-# bugs line. e.g. buggs=5testingFeature
+# For naming. If you are compiling your own version, use something descriptive in the
+# bugs line. e.g. bugs=5testingFeature
 major=1
 minor=8
 bugs=5
@@ -61,15 +60,8 @@ zip_location="${HOME}/tmp"
 
 
 
-#binaryOutName="LTS_fix_${shortHead}"
-#scriptOutName="LTS_fix_${shortHead}_v19a"
-
-# You may need to modify this line. 
-#     I have "matlab19a" on my path to point to the specific matlab install I want to use.
-#     Download the dependencies described in the "statically linked" section here https://github.com/bHimes/emClarity/wiki/Requirements
-imodStaticIncludes=""
-
-# Generally only enabled to speed up debugging of compilation steps unrelated to the cudaMex files which are otherwise always compiled first.
+# Skip MEX compilation flag - used to speed up debugging of non-CUDA compilation steps
+# Generally only enabled when debugging compilation steps unrelated to the cudaMex files
 skipMex=0
 if [[ $skipMex -eq 0 ]]; then
   mexCompile="mexCompile ;"
@@ -132,22 +124,37 @@ cat EMC_tmpDir.sh >> emClarity_${scriptOutName}
 
 {
 echo ''
-echo '# In order to prevent conflicts with external IMOD or cisTEM binaries, run an '
-echo '# your ineractive matlab session through this script.'
+echo '# Run an interactive MATLAB session with emClarity properly configured'
 echo 'if [[ ${1} == "int" || ${1} == "interactive" ]] ; then'
-echo '  echo "Running an interactive matlab session through emClarity"'
-echo '  matlabCommand=${2}'
-#echo '  resetImodDir=${IMOD_DIR}'
-#echo '  unset IMOD_DIR'
-#echo '  unset AUTODOC_DIR'
-#echo '  export IMOD_DIR=${emClarity_ROOT}/bin/deps'
-#echo '  export AUTODOC_DIR=${emClarity_ROOT}/bin/deps/autodoc'
+echo '  echo "Running an interactive MATLAB session through emClarity"'
+echo '  '
+echo '  # Use provided matlab command or default'
+echo '  if [[ -z "${2}" ]] ; then'
+echo '    matlabCommand="matlab -nosplash -nodisplay"'
+echo '  else'
+echo '    matlabCommand="${2}"'
+echo '  fi'
+echo '  '
+echo '  # Set MATLABPATH to prioritize emClarity source directory'
+echo '  # This ensures we use the correct emClarity even if user has saved paths'
+echo "  export EMCLARITY_SOURCE_DIR=${EMC_SOURCE_ROOT}"
+echo '  build_up_path=""'
+echo '  root_dirs=($(cd $EMCLARITY_SOURCE_DIR && ls -d */ | grep -v -e .git -e bin -e gui -e venv -e docs -e docs_overleaf -e logFile -e python))'
+echo '    for dir in "${root_dirs[@]}"; do'
+echo '        build_up_path="${EMCLARITY_SOURCE_DIR}/${dir%/}:$build_up_path"'
+echo '    done'
+echo '  export MATLABPATH=$build_up_path:$MATLABPATH'
+echo '  echo "Setting MATLABPATH to use: ${MATLABPATH}"'
+echo '  echo "Launching: ${matlabCommand}"'
+echo '  echo "Type emClarity or emClarity('"'"'help'"'"') to get started"'
+echo '  echo ""'
+echo '  '
+echo '  # Set other environment variables as needed'
 echo '  export IMOD_FORCE_OMP_THREADS=8'
+echo '  '
+echo '  # Launch MATLAB with the configured environment'
 echo '  ${matlabCommand}'
-echo '  # Return IMOD to its original state'
-#echo '  unset IMOD_DIR'
-#echo '  unset AUTODOC_DIR'
-#echo '  IMOD_DIR=${resetImodDir}'
+echo '  exit 0'
 echo 'fi'
 
 } >> emClarity_${scriptOutName}
@@ -167,11 +174,7 @@ echo '  argList="${argList} ${token}"'
 echo '  shift'
 echo 'done'
 echo ''
-#echo 'resetImodDir=${IMOD_DIR}'
-#echo 'unset IMOD_DIR'
-#echo 'export IMOD_DIR=${emClarity_ROOT}/bin/deps'
 echo "\${emClarity_ROOT}/bin/emClarity_${binaryOutName} \${argList}"
-#echo 'export IMOD_DIR=${resetImodDir}'
  
 
 } >> emClarity_${scriptOutName}
@@ -193,7 +196,6 @@ cat ../bin/${EMC_VERSION}/bin/deps/cisTEMDeps.txt | while read dep ; do
 done
 
 cp -rp ../docs ../bin/${EMC_VERSION}
-cp -rp ../lib ../bin/${EMC_VERSION}
 
 cp .bashrc ../bin/${EMC_VERSION}
 cd ../bin/${EMC_VERSION}/bin

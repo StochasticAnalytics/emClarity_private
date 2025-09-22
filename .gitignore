@@ -151,3 +151,7 @@ cython_debug/
 
 # Pre-commit
 .pre-commit-cache/
+
+# ignore log files in any subdirectory named logFile
+**/logFile/
+logFile/
