@@ -104,7 +104,8 @@ function success = save_legacy(identifier, subTomoMeta)
             end
 
             % Verify file integrity before moving
-            if check_mat_file_integrity_simple(temp_file)
+            [is_valid, error_msg] = check_mat_file_integrity_simple(temp_file);
+            if is_valid
                 % Atomic move (rename)
                 movefile(temp_file, mat_file);
                 success = true;
@@ -116,7 +117,7 @@ function success = save_legacy(identifier, subTomoMeta)
                     delete(temp_file);
                 end
                 warning('BH_saveSubTomoMeta:IntegrityCheckFailed', ...
-                        'Integrity check failed for attempt %d/%d', attempt, max_retries);
+                        'Integrity check failed for attempt %d/%d: %s', attempt, max_retries, error_msg);
             end
 
         catch ME
@@ -136,53 +137,68 @@ function success = save_legacy(identifier, subTomoMeta)
             end
         end
     end
+
+    % Final check - if we exit the loop without success, something went wrong
+    if ~success
+        error('BH_saveSubTomoMeta:SaveFailed', ...
+              'Failed to save %s after %d attempts', mat_file, max_retries);
+    end
 end
 
-function is_valid = check_mat_file_integrity_simple(filename)
+function [is_valid, error_msg] = check_mat_file_integrity_simple(filename)
     %check_mat_file_integrity_simple Simple integrity check for MAT files
-    %   Returns true if file can be loaded successfully, false otherwise
+    %   Returns [is_valid, error_msg] where is_valid is true if file can be loaded successfully
 
     is_valid = false;
+    error_msg = '';
 
     try
         % Basic file existence and size check
         if ~exist(filename, 'file')
+            error_msg = 'File does not exist';
             return;
         end
 
         file_info = dir(filename);
         if file_info.bytes == 0
+            error_msg = 'File is empty (0 bytes)';
             return;
         end
 
         % Try to get variable information without loading full data
         var_info = whos('-file', filename);
         if isempty(var_info)
+            error_msg = 'No variables found in file';
             return;
         end
 
         % Check that subTomoMeta variable exists
         var_names = {var_info.name};
         if ~ismember('subTomoMeta', var_names)
+            error_msg = sprintf('subTomoMeta variable not found (found: %s)', strjoin(var_names, ', '));
             return;
         end
 
         % Try to load the structure - this will catch HDF5 corruption
         temp_struct = load(filename, 'subTomoMeta');
         if ~isfield(temp_struct, 'subTomoMeta') || ~isstruct(temp_struct.subTomoMeta)
+            error_msg = 'subTomoMeta is not a valid structure';
             return;
         end
 
         % If we get here, file passed all checks
         is_valid = true;
+        error_msg = 'OK';
 
     catch ME
         % Any error during loading indicates corruption
         if contains(ME.message, 'HDF5') || contains(ME.message, 'inflate')
             % Specific corruption patterns
+            error_msg = sprintf('HDF5/compression error: %s', ME.message);
             is_valid = false;
         else
             % Other errors might still indicate corruption
+            error_msg = sprintf('Load error: %s', ME.message);
             is_valid = false;
         end
     end
