@@ -65,22 +65,74 @@ classdef BH_subTomoMeta_io < handle
         end
         
         function save_legacy(obj, data)
-            %save_legacy Save to legacy .mat file
-            
+            %save_legacy Save to legacy .mat file with atomic operation and integrity checks
+
             mat_file = sprintf('%s.mat', obj.base_path);
-            
+
             % Create backup if file exists
             if exist(mat_file, 'file')
                 backup_file = sprintf('%s_backup_%s.mat', obj.base_path, ...
                                       datestr(now, 'yyyymmdd_HHMMSS'));
                 copyfile(mat_file, backup_file);
             end
-            
-            % Save with v7.3 for large files
-            subTomoMeta = data;
-            save(mat_file, 'subTomoMeta', '-v7.3');
-            
-            fprintf('  Saved legacy format to %s\n', mat_file);
+
+            % Atomic save with integrity checking and retry logic
+            max_retries = 2;
+            success = false;
+
+            for attempt = 1:max_retries
+                try
+                    % Use temporary file for atomic operation
+                    temp_file = sprintf('%s.tmp', mat_file);
+
+                    % Save to temporary file
+                    subTomoMeta = data;
+                    save(temp_file, 'subTomoMeta', '-v7.3');
+
+                    % Force filesystem sync to ensure data is written
+                    if isunix()
+                        system('sync');
+                    end
+
+                    % Verify file integrity before moving
+                    if obj.check_mat_file_integrity(temp_file)
+                        % Atomic move (rename)
+                        movefile(temp_file, mat_file);
+                        success = true;
+                        fprintf('  Saved legacy format to %s\n', mat_file);
+                        break;
+                    else
+                        % Integrity check failed
+                        if exist(temp_file, 'file')
+                            delete(temp_file);
+                        end
+                        warning('BH_subTomoMeta_io:IntegrityCheckFailed', ...
+                                'Integrity check failed for attempt %d/%d', attempt, max_retries);
+                    end
+
+                catch ME
+                    % Clean up temp file on error
+                    if exist(temp_file, 'file')
+                        delete(temp_file);
+                    end
+
+                    if attempt == max_retries
+                        error('BH_subTomoMeta_io:SaveFailed', ...
+                              'Failed to save after %d attempts. Last error: %s', ...
+                              max_retries, ME.message);
+                    else
+                        warning('BH_subTomoMeta_io:SaveAttemptFailed', ...
+                                'Save attempt %d/%d failed: %s. Retrying...', ...
+                                attempt, max_retries, ME.message);
+                        pause(0.1); % Brief pause before retry
+                    end
+                end
+            end
+
+            if ~success
+                error('BH_subTomoMeta_io:SaveFailed', ...
+                      'Failed to save file after %d attempts', max_retries);
+            end
         end
         
         function save_partitioned(obj, data)
@@ -138,9 +190,76 @@ classdef BH_subTomoMeta_io < handle
     end
     
     methods (Access = private)
+        function is_valid = check_mat_file_integrity(obj, filename)
+            %check_mat_file_integrity Verify MAT file can be loaded without corruption
+            %   Returns true if file can be loaded successfully, false otherwise
+
+            is_valid = false;
+
+            try
+                % Basic file existence and size check
+                if ~exist(filename, 'file')
+                    return;
+                end
+
+                file_info = dir(filename);
+                if file_info.bytes == 0
+                    return;
+                end
+
+                % Try to get variable information without loading data
+                var_info = whos('-file', filename);
+                if isempty(var_info)
+                    return;
+                end
+
+                % Check that subTomoMeta variable exists
+                var_names = {var_info.name};
+                if ~ismember('subTomoMeta', var_names)
+                    return;
+                end
+
+                % Try to load just the structure metadata (not the full data)
+                % This will catch HDF5 corruption errors
+                temp_struct = load(filename, 'subTomoMeta');
+                if ~isfield(temp_struct, 'subTomoMeta')
+                    return;
+                end
+
+                % Basic structure validation
+                data = temp_struct.subTomoMeta;
+                if ~isstruct(data)
+                    return;
+                end
+
+                % Check for essential fields that should always exist
+                essential_fields = {'currentCycle', 'currentTomoCPR'};
+                for i = 1:length(essential_fields)
+                    if ~isfield(data, essential_fields{i})
+                        % Not necessarily an error for new projects, just continue
+                    end
+                end
+
+                % If we get here, file passed all checks
+                is_valid = true;
+
+            catch ME
+                % Any error during loading indicates corruption
+                if contains(ME.message, 'HDF5') || contains(ME.message, 'inflate')
+                    % Specific corruption patterns we've seen
+                    is_valid = false;
+                else
+                    % Other errors might still indicate corruption
+                    warning('BH_subTomoMeta_io:IntegrityCheckError', ...
+                            'Unexpected error during integrity check: %s', ME.message);
+                    is_valid = false;
+                end
+            end
+        end
+
         function format = detect_format(obj)
             %detect_format Auto-detect metadata format
-            
+
             % Check for partitioned format
             part_dir = sprintf('%s_star', obj.base_path);
             if exist(fullfile(part_dir, 'index.json'), 'file')
