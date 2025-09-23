@@ -62,7 +62,13 @@ function [tmpCache, flgCleanCache, CWD] = EMC_setup_tmp_cache(emc_fastScratchDis
             tmpCache = fullfile(tmpCache, 'to_cisTEM');
             system(sprintf('mkdir -p %s', tmpCache));
         otherwise
-            error('This function is not allowed to be called by %s',caller_name);
+            % For custom caller names that start with 'cisTEM_', treat them like cisTEM
+            if length(caller_name) >= 7 && strcmp(caller_name(1:7), 'cisTEM_')
+                tmpCache = fullfile(tmpCache, sprintf('to_%s', caller_name));
+                system(sprintf('mkdir -p %s', tmpCache));
+            else
+                error('This function is not allowed to be called by %s',caller_name);
+            end
     end
 
     % Finally check if the program asks for a trailing slash.

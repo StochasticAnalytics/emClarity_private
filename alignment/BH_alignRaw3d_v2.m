@@ -556,12 +556,8 @@ geometryResults   = cell(nParProcesses,1);
 
 
 
-try
-  EMC_parpool(nParProcesses+1)
-catch
-  delete(gcp('nocreate'))
-  EMC_parpool(nParProcesses+1)
-end
+% EMC_parpool now handles cleanup internally
+EMC_parpool(nParProcesses+1);
 
 size(ref_FT2)
 

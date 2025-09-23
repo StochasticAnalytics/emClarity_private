@@ -34,6 +34,13 @@ if (profile_does_not_exist)
   saveAsProfile(emc_parcluster, emc_rand_name);
 end
 
+% Clean up any existing parpool before creating new one
+% This consolidates cleanup logic that was scattered throughout the codebase
+current_pool = gcp('nocreate');
+if ~isempty(current_pool)
+    fprintf('Cleaning up existing parpool (%d workers)\n', current_pool.NumWorkers);
+    delete(current_pool);
+end
 
 [ pool ] = parpool(emc_rand_name, nWorkers);
 

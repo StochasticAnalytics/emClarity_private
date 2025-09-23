@@ -404,12 +404,8 @@ for iTiltSeries = tiltStart:nTiltSeries
 
   
   % re-initialize the parpool for each tilt series to free up mem.
-  if ~isempty(gcp('nocreate'))
-    delete(gcp('nocreate'))
-    EMC_parpool(nWorkers);
-  else
-    EMC_parpool(nWorkers);
-  end 
+  % EMC_parpool now handles cleanup internally
+  EMC_parpool(nWorkers); 
   
   fprintf('init with %d workers\n',nWorkers);
   
