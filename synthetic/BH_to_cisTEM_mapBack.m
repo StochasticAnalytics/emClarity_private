@@ -124,20 +124,11 @@ newstack_file_handle = fopen(newstack_file,'w');
 total_particles_in_stack = 0;
 total_records_in_star = 0;
 particles_skipped_windowing = 0;
-particles_processed_total = 0;
-particles_star_written = 0;
-particles_stack_added = 0;
-particles_failed_stack_add = 0;
 
 for iTiltSeries = tiltStart:nTiltSeries
   n_particles_added_to_stack = 0;
   iGpuDataCounterLocal = 1;  % Reset counter for each tilt series
   n_particles_this_tilt_series = 0;  % Track particles across ALL projections
-  tilt_series_name = tilt_series_filenames{iTiltSeries};
-
-  if iTiltSeries <= 3 || mod(iTiltSeries, 10) == 0
-    fprintf('DEBUG: Starting tilt series %d/%d: %s\\n', iTiltSeries, nTiltSeries, tilt_series_name);
-  end
 
 
   if (useFixedNotAliStack)
@@ -648,11 +639,7 @@ for iTiltSeries = tiltStart:nTiltSeries
   
   for iPrj = 1:nPrjs
     n_included_this_prj = 0;
-    n_particles_this_projection = 0;
     if (abs(TLT(iPrj,11)) > MAX_EXPOSURE)
-      if iTiltSeries <= 3
-        fprintf('DEBUG: Tilt series %s, projection %d skipped (exposure %f > %f)\\n', tilt_series_name, iPrj, abs(TLT(iPrj,11)), MAX_EXPOSURE);
-      end
       continue;
     end
     
@@ -668,12 +655,7 @@ for iTiltSeries = tiltStart:nTiltSeries
 
     
     for iFid = 1:size(wrkFid,1)
-      particles_processed_total = particles_processed_total + 1;
-
       if (wrkPar(iFid,1) == -9999)
-        if particles_processed_total <= 20
-          fprintf('DEBUG: Particle %d skipped - wrkPar == -9999\\n', particles_processed_total);
-        end
         continue;
       end
 
@@ -696,38 +678,11 @@ for iTiltSeries = tiltStart:nTiltSeries
       % sy = (pixelY - floor(pixelY+0.5));
      
       particle_was_skipped = false;
-      windowing_passed = (x_start > 0 && y_start > 0 && x_start + tileSize(1) - 1 < sTX && y_start + tileSize(2) - 1 < sTY);
-
-      if particles_processed_total <= 20 || mod(particles_processed_total, 5000) == 0
-        fprintf('DEBUG: Particle %d - windowing: %s (x=%d-%d, y=%d-%d, bounds=%dx%d)\\n', ...
-                particles_processed_total, char('PASS' * windowing_passed + 'FAIL' * ~windowing_passed), ...
-                x_start, x_start+tileSize(1)-1, y_start, y_start+tileSize(2)-1, sTX, sTY);
-      end
-
-      if windowing_passed
+      if  ( x_start > 0 && y_start > 0 && x_start + tileSize(1) - 1 < sTX && y_start + tileSize(2) - 1 < sTY )
         n_included_this_prj = n_included_this_prj + 1;
 
-        try
-          output_particle_stack(:,:,iGpuDataCounterLocal) = STACK(x_start:x_start+tileSize(1) - 1,y_start:y_start+tileSize(2) - 1,TLT(iPrj,1));
-          particle_successfully_added = true;
-          particles_stack_added = particles_stack_added + 1;
-          n_particles_this_tilt_series = n_particles_this_tilt_series + 1;  % Track for entire tilt series
-          n_particles_this_projection = n_particles_this_projection + 1;
-
-          if particles_processed_total <= 20
-            fprintf('DEBUG: Particle %d - successfully added to stack at index %d (tilt %s, proj %d)\\n', particles_processed_total, iGpuDataCounterLocal, tilt_series_name, iPrj);
-          end
-        catch ME
-          fprintf('DEBUG: Particle %d - FAILED to add to stack: %s\\n', particles_processed_total, ME.message);
-          particle_was_skipped = true;
-          particle_successfully_added = false;
-          particles_failed_stack_add = particles_failed_stack_add + 1;
-          particles_skipped_windowing = particles_skipped_windowing + 1;
-        end
-
-        if ~particle_successfully_added
-          continue; % Skip this particle completely
-        end
+        output_particle_stack(:,:,iGpuDataCounterLocal) = STACK(x_start:x_start+tileSize(1) - 1,y_start:y_start+tileSize(2) - 1,TLT(iPrj,1));
+        n_particles_this_tilt_series = n_particles_this_tilt_series + 1;  % Track for entire tilt series
       
         % The trasformation of the particle is e1,e2,e3,esym  into it's postion in the tomogram frame, then
         % the tomogram is tilted about the original Y axis and then the original Z
@@ -797,44 +752,20 @@ for iTiltSeries = tiltStart:nTiltSeries
           beamTiltX, beamTiltY, beamTiltShiftX, beamTiltShiftY, ...
           best2dClass, beamTiltGroup, particleGroup, preExposure, totalExposure);
 
-        particles_star_written = particles_star_written + 1;
-
-        if particles_processed_total <= 20
-          fprintf('DEBUG: Particle %d - wrote to star file (record %d)\\n', particles_processed_total, iDataCounter);
-        end
-
         iDataCounter = iDataCounter + 1;
         iGpuDataCounter = iGpuDataCounter + 1;  % Keep global counter for progress
         iGpuDataCounterLocal = iGpuDataCounterLocal + 1;  % Local counter for this tilt series
-        % Note: total_particles_in_stack will be incremented when actually written to file
-        if mod(iDataCounter, 5000) == 0
-          fprintf('Progress: %d particles processed, %d in stack, %d skipped\\n', ...
-                  iDataCounter, iGpuDataCounter-1, particles_skipped_windowing);
-        end
 
       else
         % Particle failed windowing check - not included in stack but we need to track this
         particle_was_skipped = true;
         particles_skipped_windowing = particles_skipped_windowing + 1;
-        if particles_processed_total <= 20
-          fprintf('DEBUG: Particle %d - WINDOWING FAILED, skipped completely\\n', particles_processed_total);
-        end
-
       end % if on windowing
     end % end of fiducial loop
 
-    if iTiltSeries <= 3
-      fprintf('DEBUG: Tilt series %s, projection %d: %d particles added\\n', tilt_series_name, iPrj, n_particles_this_projection);
-    end
   end % end of prj loop
   
   n_included_this_prj;
-
-  if iTiltSeries <= 3 || mod(iTiltSeries, 10) == 0
-    fprintf('DEBUG: Tilt series %s SUMMARY: %d particles total, will%s be saved\\n', ...
-            tilt_series_name, n_particles_this_tilt_series, ...
-            char(' ' * (n_particles_this_tilt_series > 0) + ' NOT' * (n_particles_this_tilt_series == 0)));
-  end
 
   if (n_particles_this_tilt_series > 0)
     % Trim the stack to account for windowing skips
@@ -847,16 +778,7 @@ for iTiltSeries = tiltStart:nTiltSeries
     fprintf(newstack_file_handle, '0-%d\n',n_particles_this_stack-1);
 
     total_particles_in_stack = total_particles_in_stack + n_particles_this_stack;
-
-    if iTiltSeries <= 3 || mod(iTiltSeries, 10) == 0
-      fprintf('DEBUG: Saved %d particles from tilt series %s to file %s\\n', n_particles_this_stack, tilt_series_name, tmp_stack_filename);
-    end
-
     iCell = iCell + 1;
-  else
-    if iTiltSeries <= 10  % Show first 10 empty tilt series
-      fprintf('DEBUG: DISCARDED tilt series %s - no particles saved (had %d in memory)\\n', tilt_series_name, n_particles_this_tilt_series);
-    end
   end
 
 end % end of the loop over tilt series
