@@ -787,21 +787,6 @@ fclose(newstack_file_handle);
 
 % Get the count of records written to star file
 total_records_in_star = iDataCounter - 1;
-fprintf('\\n=== COMPREHENSIVE DEBUG SUMMARY ===\\n');
-fprintf('particles_processed_total: %d\\n', particles_processed_total);
-fprintf('particles_star_written: %d\\n', particles_star_written);
-fprintf('particles_stack_added: %d\\n', particles_stack_added);
-fprintf('particles_failed_stack_add: %d\\n', particles_failed_stack_add);
-fprintf('particles_skipped_windowing: %d\\n', particles_skipped_windowing);
-fprintf('iDataCounter: %d\\n', iDataCounter);
-fprintf('total_records_in_star: %d\\n', total_records_in_star);
-fprintf('total_particles_in_stack: %d\\n', total_particles_in_stack);
-fprintf('\\nCONSISTENCY CHECKS:\\n');
-fprintf('particles_star_written should equal total_records_in_star: %d vs %d (%s)\\n', ...
-        particles_star_written, total_records_in_star, char('PASS' * (particles_star_written == total_records_in_star) + 'FAIL' * (particles_star_written ~= total_records_in_star)));
-fprintf('particles_stack_added should equal total_particles_in_stack: %d vs %d (%s)\\n', ...
-        particles_stack_added, total_particles_in_stack, char('PASS' * (particles_stack_added == total_particles_in_stack) + 'FAIL' * (particles_stack_added ~= total_particles_in_stack)));
-fprintf('=========================================\\n\\n');
 
 fclose(starFile);
 
