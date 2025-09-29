@@ -97,34 +97,36 @@ function success = save_legacy(identifier, subTomoMeta)
         fprintf('DEBUG: Attempt %d/%d\n', attempt, max_retries);
 
         try
-            % Use temporary file for atomic operation
-            temp_file = sprintf('%s.tmp', mat_file);
+            % Use temporary file for atomic operation with .mat extension
+            temp_file = sprintf('%s.tmp.mat', mat_file);
             fprintf('DEBUG: Using temp file: %s\n', temp_file);
 
             % Remove any existing temp file
             if exist(temp_file, 'file')
                 fprintf('DEBUG: Removing existing temp file\n');
                 delete(temp_file);
+                pause(0.1); % Brief pause to ensure deletion completes
             end
 
-            % Save to temporary file with v7.3 first
-            fprintf('DEBUG: Attempting save with -v7.3 format\n');
+            % Try -v7 format first for better compatibility
+            % (v7.3 can have issues with immediate loading)
+            fprintf('DEBUG: Attempting save with -v7 format\n');
             save_start_time = tic;
             try
-                save(temp_file, 'subTomoMeta', '-v7.3');
-                save_version = 'v7.3';
-                save_time = toc(save_start_time);
-                fprintf('DEBUG: Save completed in %.2f seconds using %s\n', save_time, save_version);
-            catch save_error
-                fprintf('DEBUG: v7.3 save failed: %s\n', save_error.message);
-                % Fall back to v7 if v7.3 fails
-                fprintf('DEBUG: Attempting fallback to -v7 format\n');
                 save(temp_file, 'subTomoMeta', '-v7');
                 save_version = 'v7';
                 save_time = toc(save_start_time);
+                fprintf('DEBUG: Save completed in %.2f seconds using %s\n', save_time, save_version);
+            catch save_error
+                fprintf('DEBUG: v7 save failed: %s\n', save_error.message);
+                % Fall back to v7.3 if v7 fails (e.g., file too large)
+                fprintf('DEBUG: Attempting fallback to -v7.3 format\n');
+                save(temp_file, 'subTomoMeta', '-v7.3');
+                save_version = 'v7.3';
+                save_time = toc(save_start_time);
                 fprintf('DEBUG: Fallback save completed in %.2f seconds using %s\n', save_time, save_version);
-                warning('BH_saveSubTomoMeta:FallbackFormat', ...
-                        'Using -v7 format instead of -v7.3');
+                warning('BH_saveSubTomoMeta:UsingV73Format', ...
+                        'Using -v7.3 format due to file size or complexity');
             end
 
             % Check temp file was created and has reasonable size
@@ -138,19 +140,40 @@ function success = save_legacy(identifier, subTomoMeta)
                 error('Temp file was not created');
             end
 
-            % Force filesystem sync to ensure data is written
-            if isunix()
-                fprintf('DEBUG: Forcing filesystem sync\n');
-                sync_start = tic;
-                system('sync');
-                sync_time = toc(sync_start);
-                fprintf('DEBUG: Sync completed in %.2f seconds\n', sync_time);
+            % For v7.3 files, add extra wait time and multiple sync attempts
+            if strcmp(save_version, 'v7.3')
+                fprintf('DEBUG: v7.3 format detected, adding extra sync time\n');
+                pause(0.5);  % Give HDF5 library time to fully flush
+
+                % Multiple sync attempts for HDF5 files
+                if isunix()
+                    for sync_attempt = 1:3
+                        fprintf('DEBUG: Forcing filesystem sync (attempt %d/3)\n', sync_attempt);
+                        sync_start = tic;
+                        system('sync');
+                        sync_time = toc(sync_start);
+                        fprintf('DEBUG: Sync %d completed in %.2f seconds\n', sync_attempt, sync_time);
+                        pause(0.1);
+                    end
+                end
+            else
+                % Single sync for v7 format
+                if isunix()
+                    fprintf('DEBUG: Forcing filesystem sync\n');
+                    sync_start = tic;
+                    system('sync');
+                    sync_time = toc(sync_start);
+                    fprintf('DEBUG: Sync completed in %.2f seconds\n', sync_time);
+                end
             end
+
+            % Add a brief pause to ensure file operations complete
+            pause(0.2);
 
             % Verify file integrity before moving
             fprintf('DEBUG: Starting integrity check on temp file\n');
             integrity_start = tic;
-            [is_valid, error_msg] = check_mat_file_integrity_simple(temp_file);
+            [is_valid, error_msg] = check_mat_file_integrity_robust(temp_file, save_version);
             integrity_time = toc(integrity_start);
             fprintf('DEBUG: Integrity check completed in %.2f seconds, result: %s\n', integrity_time, error_msg);
 
@@ -217,8 +240,8 @@ function success = save_legacy(identifier, subTomoMeta)
                 warning('BH_saveSubTomoMeta:SaveAttemptFailed', ...
                         'Save attempt %d/%d failed: %s. Retrying...', ...
                         attempt, max_retries, ME.message);
-                fprintf('DEBUG: Pausing 0.1 seconds before retry\n');
-                pause(0.1); % Brief pause before retry
+                fprintf('DEBUG: Pausing 0.5 seconds before retry\n');
+                pause(0.5); % Longer pause before retry
             end
         end
     end
@@ -233,14 +256,20 @@ function success = save_legacy(identifier, subTomoMeta)
     fprintf('DEBUG: Save operation completed successfully\n');
 end
 
-function [is_valid, error_msg] = check_mat_file_integrity_simple(filename)
-    %check_mat_file_integrity_simple Simple integrity check for MAT files
+function [is_valid, error_msg] = check_mat_file_integrity_robust(filename, format_version)
+    %check_mat_file_integrity_robust Robust integrity check for MAT files
     %   Returns [is_valid, error_msg] where is_valid is true if file can be loaded successfully
+    %   format_version: 'v7' or 'v7.3' to handle format-specific quirks
+
+    % Keep backward compatibility when format_version not provided
+    if nargin < 2
+        format_version = 'unknown';
+    end
 
     is_valid = false;
     error_msg = '';
 
-    fprintf('DEBUG: Integrity check starting for %s\n', filename);
+    fprintf('DEBUG: Integrity check starting for %s (format: %s)\n', filename, format_version);
 
     try
         % Basic file existence and size check
@@ -261,7 +290,26 @@ function [is_valid, error_msg] = check_mat_file_integrity_simple(filename)
         % Try to get variable information without loading full data
         fprintf('DEBUG: Getting variable information\n');
         var_info_start = tic;
-        var_info = whos('-file', filename);
+
+        % For v7.3 files, whos might not work immediately after save
+        max_whos_attempts = 3;
+        var_info = [];
+        for whos_attempt = 1:max_whos_attempts
+            try
+                var_info = whos('-file', filename);
+                if ~isempty(var_info)
+                    break;
+                end
+            catch whos_error
+                if whos_attempt < max_whos_attempts
+                    fprintf('DEBUG: whos attempt %d failed, retrying...\n', whos_attempt);
+                    pause(0.2);
+                else
+                    rethrow(whos_error);
+                end
+            end
+        end
+
         var_info_time = toc(var_info_start);
         fprintf('DEBUG: Variable info completed in %.2f seconds\n', var_info_time);
 
@@ -285,12 +333,43 @@ function [is_valid, error_msg] = check_mat_file_integrity_simple(filename)
         fprintf('DEBUG: subTomoMeta variable: size = [%s], class = %s, bytes = %d\n', ...
                 num2str(submeta_info.size), submeta_info.class, submeta_info.bytes);
 
-        % Try to load the structure - this will catch HDF5 corruption
-        fprintf('DEBUG: Attempting to load subTomoMeta structure\n');
-        load_start = tic;
-        temp_struct = load(filename, 'subTomoMeta');
-        load_time = toc(load_start);
-        fprintf('DEBUG: Load completed in %.2f seconds\n', load_time);
+        % For v7.3 format, try multiple load attempts with delays
+        if strcmp(format_version, 'v7.3')
+            fprintf('DEBUG: Using robust loading for v7.3 format\n');
+            max_load_attempts = 3;
+            load_successful = false;
+
+            for load_attempt = 1:max_load_attempts
+                fprintf('DEBUG: Load attempt %d/%d\n', load_attempt, max_load_attempts);
+                try
+                    load_start = tic;
+                    temp_struct = load(filename, '-mat', 'subTomoMeta');
+                    load_time = toc(load_start);
+                    fprintf('DEBUG: Load completed in %.2f seconds\n', load_time);
+                    load_successful = true;
+                    break;
+                catch load_error
+                    fprintf('DEBUG: Load attempt %d failed: %s\n', load_attempt, load_error.message);
+                    if load_attempt < max_load_attempts
+                        fprintf('DEBUG: Waiting before retry...\n');
+                        pause(0.5 * load_attempt); % Increasing delay
+                    else
+                        rethrow(load_error);
+                    end
+                end
+            end
+
+            if ~load_successful
+                error('Failed to load after multiple attempts');
+            end
+        else
+            % Standard load for v7 format - explicitly specify -mat flag
+            fprintf('DEBUG: Attempting to load subTomoMeta structure (with -mat flag)\n');
+            load_start = tic;
+            temp_struct = load(filename, '-mat', 'subTomoMeta');
+            load_time = toc(load_start);
+            fprintf('DEBUG: Load completed in %.2f seconds\n', load_time);
+        end
 
         if ~isfield(temp_struct, 'subTomoMeta')
             error_msg = 'subTomoMeta field not found in loaded structure';
@@ -341,4 +420,9 @@ function [is_valid, error_msg] = check_mat_file_integrity_simple(filename)
             fprintf('DEBUG: Detected general load error\n');
         end
     end
+end
+
+function [is_valid, error_msg] = check_mat_file_integrity_simple(filename)
+    %check_mat_file_integrity_simple Wrapper for backward compatibility
+    [is_valid, error_msg] = check_mat_file_integrity_robust(filename, 'unknown');
 end

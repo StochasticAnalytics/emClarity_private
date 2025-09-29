@@ -179,6 +179,9 @@ if nArgs > 1 && ~(emcHelp || emcProgramHelp)
     case 'plotFSC'
       % nothing to parse
       multiGPUs = 0;
+    case 'mask'
+      % mask command doesn't need parameter file
+      multiGPUs = 0;
     otherwise
       emc = emC_testParse(varargin{2});
   end
@@ -382,20 +385,20 @@ switch varargin{1}
     end
   case 'mask'
   if emcProgramHelp || ...
-    (~ismember(length(varargin),[5,8,9]))
+    (~ismember(length(varargin),[4,8,9]))
       fprintf(['\nFor geometric mask:\n', ...
         'fileNameOUT.mrc, pixelSize (Ang), Shape (sphere,cylinder,rectangle), Size/radius/center in pixels: [nX,nY,nZ], [rX,rY,rZ], [cX,cY,cZ], optional: "2d"',...
         '\n\nFor a shape based mask\n', ...
         'fileNameIN.mrc,fileNameOUT.mrc, pixelSize (Ang)\n']);
-      
-        
+
+
     else
       switch length(varargin)
-        case 5
-          maskVol = OPEN_IMG('single', varargin{3});
-          pixelSize = EMC_str2double(varargin{5});
-          maskVol = BH_mask3d(maskVol,EMC_str2double(varargin{5}),'','');
-          SAVE_IMG(MRCImage(gather(maskVol)),varargin{4},pixelSize);
+        case 4
+          maskVol = OPEN_IMG('single', varargin{2});
+          pixelSize = EMC_str2double(varargin{4});
+          maskVol = BH_mask3d(maskVol,EMC_str2double(varargin{4}),'','');
+          SAVE_IMG(MRCImage(gather(maskVol)),varargin{3},pixelSize);
         case 8
           pixelSize = EMC_str2double(varargin{4});
           maskVol = BH_mask3d(varargin{5},EMC_str2double(varargin{6}), ...
