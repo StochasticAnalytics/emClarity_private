@@ -25,7 +25,7 @@ stringValues = {'subTomoMeta'; ...
   'Ali_mType';'Cls_mType';'Cls_mType';'Raw_mType';'Fsc_mType'; ...
   'Pca_distMeasure';'Kms_mType';'flgPrecision';'Tmp_xcfScale';...
   'fastScratchDisk';'Tmp_eraseMaskType';'startingDirection';'Peak_mType';'symmetry'; ...
-  'gmm_covariance_type';'distance_metric';'alt_cache';'metadata_format'};
+  'symmetry_constrained_search';'gmm_covariance_type';'distance_metric';'alt_cache';'metadata_format'};
 for i = 1:size(p2,1)
   pNameVal = strsplit(p2{i,1},'=');
   if length(pNameVal) == 1
@@ -196,6 +196,22 @@ if isfield(emc, 'rerun_refinement_cisTEM')
   EMC_assert_boolean(emc.rerun_refinement_cisTEM)
 else
   emc.rerun_refinement_cisTEM = false;
+end
+
+if isfield(emc, 'cisTEM_invert_tilt_for_defocus_calc')
+  if ~ismember(emc.cisTEM_invert_tilt_for_defocus_calc, [0, 1])
+    error('cisTEM_invert_tilt_for_defocus_calc must be 0 or 1, got %g', emc.cisTEM_invert_tilt_for_defocus_calc);
+  end
+else
+  emc.cisTEM_invert_tilt_for_defocus_calc = 0;  % Default: do not invert tilt for defocus calculation
+end
+
+if isfield(emc, 'cisTEM_astigmatism_angle_convention_switch')
+  if ~ismember(emc.cisTEM_astigmatism_angle_convention_switch, [0, 90])
+    error('cisTEM_astigmatism_angle_convention_switch must be 0 or 90, got %g', emc.cisTEM_astigmatism_angle_convention_switch);
+  end
+else
+  emc.cisTEM_astigmatism_angle_convention_switch = 0;  % Default: no angle convention switch
 end
 
 if isfield(emc,'flgCutOutVolumes')
@@ -807,6 +823,18 @@ if isfield(emc, 'debug_print')
   EMC_assert_boolean(emc.debug_print);
 else
   emc.debug_print = false;
+end
+
+if isfield(emc, 'tmp_model_scale')
+  EMC_assert_numeric(emc.tmp_model_scale, 1, [-1, 1]);
+else
+  emc.tmp_model_scale = 1;
+end
+
+if isfield(emc, 'use_defocus_from_emc')
+  EMC_assert_boolean(emc.use_defocus_from_emc)
+else
+  emc.use_defocus_from_emc = false;
 end
 
 if isfield(emc, 'tmp_scan')

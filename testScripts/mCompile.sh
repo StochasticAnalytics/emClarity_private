@@ -138,7 +138,7 @@ echo '  '
 echo '  # Set MATLABPATH to prioritize emClarity source directory'
 echo '  # This ensures we use the correct emClarity even if user has saved paths'
 echo "  export EMCLARITY_SOURCE_DIR=${EMC_SOURCE_ROOT}"
-echo '  build_up_path="${EMCLARITY_SOURCE_DIR}:"'
+echo '  build_up_path="${EMCLARITY_SOURCE_DIR}:mexFiles/compiled:"'
 echo '  root_dirs=($(cd $EMCLARITY_SOURCE_DIR && ls -d */ | grep -v -e .git -e bin -e gui -e venv -e docs -e docs_overleaf -e logFile -e python -e @MRCImage))'
 echo '    for dir in "${root_dirs[@]}"; do'
 echo '        build_up_path="${EMCLARITY_SOURCE_DIR}/${dir%/}:$build_up_path"'

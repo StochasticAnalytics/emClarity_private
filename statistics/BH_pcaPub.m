@@ -102,8 +102,7 @@ startTime =  datetime("now");
 CYCLE = EMC_str2double(CYCLE);
 PREVIOUS_PCA = EMC_str2double(PREVIOUS_PCA);
 
-% pca_mask_threshold is now handled in BH_parseParameterFile
-pca_mask_threshold = emc.pca_mask_threshold;
+
 
 
 % Previous_pca has two functions, when true and > 0 use the decomposition
@@ -148,6 +147,10 @@ flgWMDs = 3;
 cycleNumber = sprintf('cycle%0.3u', CYCLE);
 
 emc = BH_parseParameterFile(PARAMETER_FILE);
+
+% pca_mask_threshold is now handled in BH_parseParameterFile
+pca_mask_threshold = emc.pca_mask_threshold;
+
 reconScaling = 1;
 %%% Put this in the param file later - the input values should be in angstrom
 %%% and are the relevant scale spaces for classification.

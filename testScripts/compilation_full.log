@@ -1,0 +1,869 @@
+[?1h=
+                                      < M A T L A B (R) >
+                            Copyright 1984-2023 The MathWorks, Inc.
+                       R2023a Update 2 (9.14.0.2254940) 64-bit (glnxa64)
+                                        April 17, 2023
+
+Warning: X does not support locale en_US.UTF-8
+ 
+For online documentation, see https://www.mathworks.com/support
+For product information, visit www.mathworks.com.
+ 
+
+
+Compile here
+
+Using mexPATH: /sa_shared/git/emClarity_private/mexFiles
+ans =
+  0x0 empty char array
+ans =
+  0x0 empty char array
+[?1h=  Columns 1 through 4
+    {'-L/usr/local/c...'}    {'-lmwlapack'}    {'-lcufft_static...'}    {'-lculibos'}
+  Columns 5 through 8
+    {'-lcudart_static'}    {'-ldl'}    {'-lrt'}    {'NVCCFLAGS=  --...'}
+[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=Building with 'nvcc'.
+[?1h=/sa_shared/git/emClarity_private/mexFiles/mexCTF.cu(26): warning #550-D: variable "occupancy" was set but never used
+    float* occupancy = 
+           ^
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+/sa_shared/git/emClarity_private/mexFiles/mexCTF.cu(27): warning #550-D: variable "exposure" was set but never used
+    float* exposure = 
+           ^
+/sa_shared/git/emClarity_private/mexFiles/mexCTF.cu(28): warning #550-D: variable "use_weights" was set but never used
+    bool use_weights = false;
+         ^
+/sa_shared/git/emClarity_private/mexFiles/mexCTF.cu(26): warning #550-D: variable "occupancy" was set but never used
+    float* occupancy = 
+           ^
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+/sa_shared/git/emClarity_private/mexFiles/mexCTF.cu(27): warning #550-D: variable "exposure" was set but never used
+    float* exposure = 
+           ^
+/sa_shared/git/emClarity_private/mexFiles/mexCTF.cu(28): warning #550-D: variable "use_weights" was set but never used
+    bool use_weights = false;
+         ^
+/sa_shared/git/emClarity_private/mexFiles/mexCTF.cu(26): warning #550-D: variable "occupancy" was set but never used
+    float* occupancy = 
+           ^
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+/sa_shared/git/emClarity_private/mexFiles/mexCTF.cu(27): warning #550-D: variable "exposure" was set but never used
+    float* exposure = 
+           ^
+/sa_shared/git/emClarity_private/mexFiles/mexCTF.cu(28): warning #550-D: variable "use_weights" was set but never used
+    bool use_weights = false;
+         ^
+/sa_shared/git/emClarity_private/mexFiles/mexCTF.cu(26): warning #550-D: variable "occupancy" was set but never used
+    float* occupancy = 
+           ^
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+/sa_shared/git/emClarity_private/mexFiles/mexCTF.cu(27): warning #550-D: variable "exposure" was set but never used
+    float* exposure = 
+           ^
+/sa_shared/git/emClarity_private/mexFiles/mexCTF.cu(28): warning #550-D: variable "use_weights" was set but never used
+    bool use_weights = false;
+         ^
+/sa_shared/git/emClarity_private/mexFiles/mexCTF.cu(26): warning #550-D: variable "occupancy" was set but never used
+    float* occupancy = 
+           ^
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+/sa_shared/git/emClarity_private/mexFiles/mexCTF.cu(27): warning #550-D: variable "exposure" was set but never used
+    float* exposure = 
+           ^
+/sa_shared/git/emClarity_private/mexFiles/mexCTF.cu(28): warning #550-D: variable "use_weights" was set but never used
+    bool use_weights = false;
+         ^
+
+[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=MEX completed successfully.
+[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=Building with 'nvcc'.
+[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=MEX completed successfully.
+[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=Building with 'nvcc'.
+[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=MEX completed successfully.
+[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=Building with 'nvcc'.
+[?1h=/sa_shared/git/emClarity_private/mexFiles/mexSF3D.cu(156): warning #2361-D: invalid narrowing conversion from "int" to "unsigned long"
+    mwSize output_size[3] = {dims.x, dims.y, dims.z};
+                             ^
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+/sa_shared/git/emClarity_private/mexFiles/mexSF3D.cu(156): warning #2361-D: invalid narrowing conversion from "int" to "unsigned long"
+    mwSize output_size[3] = {dims.x, dims.y, dims.z};
+                                     ^
+/sa_shared/git/emClarity_private/mexFiles/mexSF3D.cu(156): warning #2361-D: invalid narrowing conversion from "int" to "unsigned long"
+    mwSize output_size[3] = {dims.x, dims.y, dims.z};
+                                             ^
+/sa_shared/git/emClarity_private/mexFiles/mexSF3D.cu(156): warning #2361-D: invalid narrowing conversion from "int" to "unsigned long"
+    mwSize output_size[3] = {dims.x, dims.y, dims.z};
+                             ^
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+/sa_shared/git/emClarity_private/mexFiles/mexSF3D.cu(156): warning #2361-D: invalid narrowing conversion from "int" to "unsigned long"
+    mwSize output_size[3] = {dims.x, dims.y, dims.z};
+                                     ^
+/sa_shared/git/emClarity_private/mexFiles/mexSF3D.cu(156): warning #2361-D: invalid narrowing conversion from "int" to "unsigned long"
+    mwSize output_size[3] = {dims.x, dims.y, dims.z};
+                                             ^
+/sa_shared/git/emClarity_private/mexFiles/mexSF3D.cu(18): warning #177-D: variable "cosine_edge_norm" was declared but never referenced
+  const float cosine_edge_norm = 1.0f;
+              ^
+/sa_shared/git/emClarity_private/mexFiles/mexSF3D.cu(156): warning #2361-D: invalid narrowing conversion from "int" to "unsigned long"
+    mwSize output_size[3] = {dims.x, dims.y, dims.z};
+                             ^
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+/sa_shared/git/emClarity_private/mexFiles/mexSF3D.cu(156): warning #2361-D: invalid narrowing conversion from "int" to "unsigned long"
+    mwSize output_size[3] = {dims.x, dims.y, dims.z};
+                                     ^
+/sa_shared/git/emClarity_private/mexFiles/mexSF3D.cu(156): warning #2361-D: invalid narrowing conversion from "int" to "unsigned long"
+    mwSize output_size[3] = {dims.x, dims.y, dims.z};
+                                             ^
+/sa_shared/git/emClarity_private/mexFiles/mexSF3D.cu(18): warning #177-D: variable "cosine_edge_norm" was declared but never referenced
+  const float cosine_edge_norm = 1.0f;
+              ^
+/sa_shared/git/emClarity_private/mexFiles/mexSF3D.cu(156): warning #2361-D: invalid narrowing conversion from "int" to "unsigned long"
+    mwSize output_size[3] = {dims.x, dims.y, dims.z};
+                             ^
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+/sa_shared/git/emClarity_private/mexFiles/mexSF3D.cu(156): warning #2361-D: invalid narrowing conversion from "int" to "unsigned long"
+    mwSize output_size[3] = {dims.x, dims.y, dims.z};
+                                     ^
+/sa_shared/git/emClarity_private/mexFiles/mexSF3D.cu(156): warning #2361-D: invalid narrowing conversion from "int" to "unsigned long"
+    mwSize output_size[3] = {dims.x, dims.y, dims.z};
+                                             ^
+/sa_shared/git/emClarity_private/mexFiles/mexSF3D.cu(18): warning #177-D: variable "cosine_edge_norm" was declared but never referenced
+  const float cosine_edge_norm = 1.0f;
+              ^
+/sa_shared/git/emClarity_private/mexFiles/mexSF3D.cu(156): warning #2361-D: invalid narrowing conversion from "int" to "unsigned long"
+    mwSize output_size[3] = {dims.x, dims.y, dims.z};
+                             ^
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+/sa_shared/git/emClarity_private/mexFiles/mexSF3D.cu(156): warning #2361-D: invalid narrowing conversion from "int" to "unsigned long"
+    mwSize output_size[3] = {dims.x, dims.y, dims.z};
+                                     ^
+/sa_shared/git/emClarity_private/mexFiles/mexSF3D.cu(156): warning #2361-D: invalid narrowing conversion from "int" to "unsigned long"
+    mwSize output_size[3] = {dims.x, dims.y, dims.z};
+                                             ^
+/sa_shared/git/emClarity_private/mexFiles/mexSF3D.cu(18): warning #177-D: variable "cosine_edge_norm" was declared but never referenced
+  const float cosine_edge_norm = 1.0f;
+              ^
+/sa_shared/git/emClarity_private/mexFiles/mexSF3D.cu(156): warning #2361-D: invalid narrowing conversion from "int" to "unsigned long"
+    mwSize output_size[3] = {dims.x, dims.y, dims.z};
+                             ^
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+/sa_shared/git/emClarity_private/mexFiles/mexSF3D.cu(156): warning #2361-D: invalid narrowing conversion from "int" to "unsigned long"
+    mwSize output_size[3] = {dims.x, dims.y, dims.z};
+                                     ^
+/sa_shared/git/emClarity_private/mexFiles/mexSF3D.cu(156): warning #2361-D: invalid narrowing conversion from "int" to "unsigned long"
+    mwSize output_size[3] = {dims.x, dims.y, dims.z};
+                                             ^
+/sa_shared/git/emClarity_private/mexFiles/mexSF3D.cu(18): warning #177-D: variable "cosine_edge_norm" was declared but never referenced
+  const float cosine_edge_norm = 1.0f;
+              ^
+/sa_shared/git/emClarity_private/mexFiles/mexSF3D.cu: In function ‘void mexFunction(int, mxArray**, int, const mxArray**)’:
+/sa_shared/git/emClarity_private/mexFiles/mexSF3D.cu:156:31: warning: narrowing conversion of ‘dims.int3::x’ from ‘int’ to ‘mwSize’ {aka ‘long unsigned int’} [-Wnarrowing]
+  156 |   mwSize output_size[3] = {dims.x, dims.y, dims.z};
+      |                          ~~~~~^
+/sa_shared/git/emClarity_private/mexFiles/mexSF3D.cu:156:39: warning: narrowing conversion of ‘dims.int3::y’ from ‘int’ to ‘mwSize’ {aka ‘long unsigned int’} [-Wnarrowing]
+  156 |   mwSize output_size[3] = {dims.x, dims.y, dims.z};
+      |                                  ~~~~~^
+/sa_shared/git/emClarity_private/mexFiles/mexSF3D.cu:156:47: warning: narrowing conversion of ‘dims.int3::z’ from ‘int’ to ‘mwSize’ {aka ‘long unsigned int’} [-Wnarrowing]
+  156 |   mwSize output_size[3] = {dims.x, dims.y, dims.z};
+      |                                          ~~~~~^
+/sa_shared/git/emClarity_private/mexFiles/mexSF3D.cu:245:113: warning: ‘cudaError_t cudaMemcpyToArrayAsync_ptsz(cudaArray_t, size_t, size_t, const void*, size_t, cudaMemcpyKind, cudaStream_t)’ is deprecated [-Wdeprecated-declarations]
+  245 |     checkCudaErrors(cudaMemcpyToArrayAsync(cuArray, 0, 0, d_ctf_img, n_to_copy, cudaMemcpyDeviceToDevice, cudaStreamPerThread));
+      |                                                                                                                 ^
+/usr/local/cuda/include/cuda_runtime_api.h:8195:46: note: declared here
+ 8195 | extern __CUDA_DEPRECATED __host__ cudaError_t CUDARTAPI cudaMemcpyToArrayAsync(cudaArray_t dst, size_t wOffset, size_t hOffset, const void *src, size_t count, enum cudaMemcpyKind kind, cudaStream_t stream __dv(0));
+      |                                              ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/sa_shared/git/emClarity_private/mexFiles/mexSF3D.cu:245:113: warning: ‘cudaError_t cudaMemcpyToArrayAsync_ptsz(cudaArray_t, size_t, size_t, const void*, size_t, cudaMemcpyKind, cudaStream_t)’ is deprecated [-Wdeprecated-declarations]
+  245 |     checkCudaErrors(cudaMemcpyToArrayAsync(cuArray, 0, 0, d_ctf_img, n_to_copy, cudaMemcpyDeviceToDevice, cudaStreamPerThread));
+      |                                                                                                                 ^
+/usr/local/cuda/include/cuda_runtime_api.h:8195:46: note: declared here
+ 8195 | extern __CUDA_DEPRECATED __host__ cudaError_t CUDARTAPI cudaMemcpyToArrayAsync(cudaArray_t dst, size_t wOffset, size_t hOffset, const void *src, size_t count, enum cudaMemcpyKind kind, cudaStream_t stream __dv(0));
+      |                                              ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=MEX completed successfully.
+[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=Building with 'nvcc'.
+[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=[?1h=MEX completed successfully.
+[?1h=[Warning: File: /sa_shared/git/emClarity_private/metaData/BH_geometryInitialize.m Line: 270 Column:
+7
+The temporary variable 'tmpSearchGeom' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'tmpSearchGeom' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/computePartsList (line 2548)
+In matlab.depfun.internal/Completion/requirements (line 3088)
+In matlab.depfun.internal.requirements (line 218)
+In matlab.depfun.internal.mcc_call_requirements (line 59)] 
+[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 739 Column: 10
+The temporary variable 'volHeader' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'volHeader' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/computePartsList (line 2548)
+In matlab.depfun.internal/Completion/requirements (line 3088)
+In matlab.depfun.internal.requirements (line 218)
+In matlab.depfun.internal.mcc_call_requirements (line 59)] 
+[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 954 Column: 27
+The temporary variable 'estPeakCoord' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'estPeakCoord' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/computePartsList (line 2548)
+In matlab.depfun.internal/Completion/requirements (line 3088)
+In matlab.depfun.internal.requirements (line 218)
+In matlab.depfun.internal.mcc_call_requirements (line 59)] 
+[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 1033 Column: 31
+The temporary variable 'iRotMask' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'iRotMask' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/computePartsList (line 2548)
+In matlab.depfun.internal/Completion/requirements (line 3088)
+In matlab.depfun.internal.requirements (line 218)
+In matlab.depfun.internal.mcc_call_requirements (line 59)] 
+[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 1237 Column: 23
+The temporary variable 'rXYZ' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'rXYZ' is used before it is set, a runtime error will occur. For more information,
+see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/computePartsList (line 2548)
+In matlab.depfun.internal/Completion/requirements (line 3088)
+In matlab.depfun.internal.requirements (line 218)
+In matlab.depfun.internal.mcc_call_requirements (line 59)] 
+[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 1349 Column: 19
+The temporary variable 'bestRotPeak' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'bestRotPeak' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/computePartsList (line 2548)
+In matlab.depfun.internal/Completion/requirements (line 3088)
+In matlab.depfun.internal.requirements (line 218)
+In matlab.depfun.internal.mcc_call_requirements (line 59)] 
+[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 1531 Column: 11
+The temporary variable 'nonZeroInits' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'nonZeroInits' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/computePartsList (line 2548)
+In matlab.depfun.internal/Completion/requirements (line 3088)
+In matlab.depfun.internal.requirements (line 218)
+In matlab.depfun.internal.mcc_call_requirements (line 59)] 
+[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 1533 Column: 11
+The temporary variable 'sortCCC' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'sortCCC' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/computePartsList (line 2548)
+In matlab.depfun.internal/Completion/requirements (line 3088)
+In matlab.depfun.internal.requirements (line 218)
+In matlab.depfun.internal.mcc_call_requirements (line 59)] 
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 92 Column: 7
+The temporary variable 'mapBackPrfx' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'mapBackPrfx' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/computePartsList (line 2548)
+In matlab.depfun.internal/Completion/requirements (line 3088)
+In matlab.depfun.internal.requirements (line 218)
+In matlab.depfun.internal.mcc_call_requirements (line 59)] 
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 94 Column: 7
+The temporary variable 'mbEST' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'mbEST' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/computePartsList (line 2548)
+In matlab.depfun.internal/Completion/requirements (line 3088)
+In matlab.depfun.internal.requirements (line 218)
+In matlab.depfun.internal.mcc_call_requirements (line 59)] 
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 103 Column: 7
+The temporary variable 'PRJ_STACK' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'PRJ_STACK' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/computePartsList (line 2548)
+In matlab.depfun.internal/Completion/requirements (line 3088)
+In matlab.depfun.internal.requirements (line 218)
+In matlab.depfun.internal.mcc_call_requirements (line 59)] 
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 104 Column: 7
+The temporary variable 'PRJ_OUT' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'PRJ_OUT' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/computePartsList (line 2548)
+In matlab.depfun.internal/Completion/requirements (line 3088)
+In matlab.depfun.internal.requirements (line 218)
+In matlab.depfun.internal.mcc_call_requirements (line 59)] 
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 105 Column: 7
+The temporary variable 'PRJ_OLD' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'PRJ_OLD' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/computePartsList (line 2548)
+In matlab.depfun.internal/Completion/requirements (line 3088)
+In matlab.depfun.internal.requirements (line 218)
+In matlab.depfun.internal.mcc_call_requirements (line 59)] 
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 106 Column: 7
+The temporary variable 'outputDirectory' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'outputDirectory' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/computePartsList (line 2548)
+In matlab.depfun.internal/Completion/requirements (line 3088)
+In matlab.depfun.internal.requirements (line 218)
+In matlab.depfun.internal.mcc_call_requirements (line 59)] 
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 241 Column: 7
+The temporary variable 'mbTLT' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'mbTLT' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/computePartsList (line 2548)
+In matlab.depfun.internal/Completion/requirements (line 3088)
+In matlab.depfun.internal.requirements (line 218)
+In matlab.depfun.internal.mcc_call_requirements (line 59)] 
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 242 Column: 7
+The temporary variable 'defShifts' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'defShifts' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/computePartsList (line 2548)
+In matlab.depfun.internal/Completion/requirements (line 3088)
+In matlab.depfun.internal.requirements (line 218)
+In matlab.depfun.internal.mcc_call_requirements (line 59)] 
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 307 Column: 7
+The temporary variable 'tmp_xf' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'tmp_xf' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/computePartsList (line 2548)
+In matlab.depfun.internal/Completion/requirements (line 3088)
+In matlab.depfun.internal.requirements (line 218)
+In matlab.depfun.internal.mcc_call_requirements (line 59)] 
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 313 Column: 7
+The temporary variable 'tmp_combined_xf' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'tmp_combined_xf' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/computePartsList (line 2548)
+In matlab.depfun.internal/Completion/requirements (line 3088)
+In matlab.depfun.internal.requirements (line 218)
+In matlab.depfun.internal.mcc_call_requirements (line 59)] 
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 351 Column: 7
+The temporary variable 'updateScale' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'updateScale' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/computePartsList (line 2548)
+In matlab.depfun.internal/Completion/requirements (line 3088)
+In matlab.depfun.internal.requirements (line 218)
+In matlab.depfun.internal.mcc_call_requirements (line 59)] 
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 366 Column: 9
+The temporary variable 'dXYZ' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'dXYZ' is used before it is set, a runtime error will occur. For more information,
+see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/computePartsList (line 2548)
+In matlab.depfun.internal/Completion/requirements (line 3088)
+In matlab.depfun.internal.requirements (line 218)
+In matlab.depfun.internal.mcc_call_requirements (line 59)] 
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 414 Column: 7
+The temporary variable 'STACK' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'STACK' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/computePartsList (line 2548)
+In matlab.depfun.internal/Completion/requirements (line 3088)
+In matlab.depfun.internal.requirements (line 218)
+In matlab.depfun.internal.mcc_call_requirements (line 59)] 
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Correct3d.m Line: 360 Column: 9
+The temporary variable 'tomoList' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'tomoList' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/computePartsList (line 2548)
+In matlab.depfun.internal/Completion/requirements (line 3088)
+In matlab.depfun.internal.requirements (line 218)
+In matlab.depfun.internal.mcc_call_requirements (line 59)] 
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Correct3d.m Line: 530 Column: 13
+The temporary variable 'TA' will be cleared at the beginning of each iteration of the parfor-loop.
+If 'TA' is used before it is set, a runtime error will occur. For more information, see Parallel
+for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/computePartsList (line 2548)
+In matlab.depfun.internal/Completion/requirements (line 3088)
+In matlab.depfun.internal.requirements (line 218)
+In matlab.depfun.internal.mcc_call_requirements (line 59)] 
+[Warning: File: /sa_shared/git/emClarity_private/synthetic/BH_synthetic_mapBack.m Line: 1283
+Column: 9
+The temporary variable 'dataPrj' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'dataPrj' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/computePartsList (line 2548)
+In matlab.depfun.internal/Completion/requirements (line 3088)
+In matlab.depfun.internal.requirements (line 218)
+In matlab.depfun.internal.mcc_call_requirements (line 59)] 
+[Warning: File: /sa_shared/git/emClarity_private/synthetic/BH_synthetic_mapBack.m Line: 1301
+Column: 9
+The temporary variable 'refPrj' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'refPrj' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/computePartsList (line 2548)
+In matlab.depfun.internal/Completion/requirements (line 3088)
+In matlab.depfun.internal.requirements (line 218)
+In matlab.depfun.internal.mcc_call_requirements (line 59)] 
+[Warning: File: /sa_shared/git/emClarity_private/synthetic/BH_synthetic_mapBack.m Line: 1319
+Column: 9
+The temporary variable 'samplingMask' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'samplingMask' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/computePartsList (line 2548)
+In matlab.depfun.internal/Completion/requirements (line 3088)
+In matlab.depfun.internal.requirements (line 218)
+In matlab.depfun.internal.mcc_call_requirements (line 59)] 
+[Warning: File: /sa_shared/git/emClarity_private/synthetic/BH_synthetic_mapBack.m Line: 1421
+Column: 7
+The temporary variable 'cccPRJ' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'cccPRJ' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/computePartsList (line 2548)
+In matlab.depfun.internal/Completion/requirements (line 3088)
+In matlab.depfun.internal.requirements (line 218)
+In matlab.depfun.internal.mcc_call_requirements (line 59)] 
+[Warning: File: /sa_shared/git/emClarity_private/metaData/BH_geometryInitialize.m Line: 270 Column:
+7
+The temporary variable 'tmpSearchGeom' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'tmpSearchGeom' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/calltree (line 2992)
+In matlab.depfun.internal.Manifest (line 31)
+In matlab.depfun.internal.genmanifest (line 11)] 
+[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 739 Column: 10
+The temporary variable 'volHeader' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'volHeader' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/calltree (line 2992)
+In matlab.depfun.internal.Manifest (line 31)
+In matlab.depfun.internal.genmanifest (line 11)] 
+[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 954 Column: 27
+The temporary variable 'estPeakCoord' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'estPeakCoord' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/calltree (line 2992)
+In matlab.depfun.internal.Manifest (line 31)
+In matlab.depfun.internal.genmanifest (line 11)] 
+[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 1033 Column: 31
+The temporary variable 'iRotMask' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'iRotMask' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/calltree (line 2992)
+In matlab.depfun.internal.Manifest (line 31)
+In matlab.depfun.internal.genmanifest (line 11)] 
+[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 1237 Column: 23
+The temporary variable 'rXYZ' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'rXYZ' is used before it is set, a runtime error will occur. For more information,
+see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/calltree (line 2992)
+In matlab.depfun.internal.Manifest (line 31)
+In matlab.depfun.internal.genmanifest (line 11)] 
+[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 1349 Column: 19
+The temporary variable 'bestRotPeak' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'bestRotPeak' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/calltree (line 2992)
+In matlab.depfun.internal.Manifest (line 31)
+In matlab.depfun.internal.genmanifest (line 11)] 
+[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 1531 Column: 11
+The temporary variable 'nonZeroInits' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'nonZeroInits' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/calltree (line 2992)
+In matlab.depfun.internal.Manifest (line 31)
+In matlab.depfun.internal.genmanifest (line 11)] 
+[Warning: File: /sa_shared/git/emClarity_private/alignment/BH_alignRaw3d_v2.m Line: 1533 Column: 11
+The temporary variable 'sortCCC' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'sortCCC' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/calltree (line 2992)
+In matlab.depfun.internal.Manifest (line 31)
+In matlab.depfun.internal.genmanifest (line 11)] 
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 92 Column: 7
+The temporary variable 'mapBackPrfx' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'mapBackPrfx' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/calltree (line 2992)
+In matlab.depfun.internal.Manifest (line 31)
+In matlab.depfun.internal.genmanifest (line 11)] 
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 94 Column: 7
+The temporary variable 'mbEST' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'mbEST' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/calltree (line 2992)
+In matlab.depfun.internal.Manifest (line 31)
+In matlab.depfun.internal.genmanifest (line 11)] 
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 103 Column: 7
+The temporary variable 'PRJ_STACK' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'PRJ_STACK' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/calltree (line 2992)
+In matlab.depfun.internal.Manifest (line 31)
+In matlab.depfun.internal.genmanifest (line 11)] 
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 104 Column: 7
+The temporary variable 'PRJ_OUT' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'PRJ_OUT' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/calltree (line 2992)
+In matlab.depfun.internal.Manifest (line 31)
+In matlab.depfun.internal.genmanifest (line 11)] 
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 105 Column: 7
+The temporary variable 'PRJ_OLD' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'PRJ_OLD' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/calltree (line 2992)
+In matlab.depfun.internal.Manifest (line 31)
+In matlab.depfun.internal.genmanifest (line 11)] 
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 106 Column: 7
+The temporary variable 'outputDirectory' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'outputDirectory' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/calltree (line 2992)
+In matlab.depfun.internal.Manifest (line 31)
+In matlab.depfun.internal.genmanifest (line 11)] 
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 241 Column: 7
+The temporary variable 'mbTLT' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'mbTLT' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/calltree (line 2992)
+In matlab.depfun.internal.Manifest (line 31)
+In matlab.depfun.internal.genmanifest (line 11)] 
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 242 Column: 7
+The temporary variable 'defShifts' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'defShifts' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/calltree (line 2992)
+In matlab.depfun.internal.Manifest (line 31)
+In matlab.depfun.internal.genmanifest (line 11)] 
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 307 Column: 7
+The temporary variable 'tmp_xf' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'tmp_xf' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/calltree (line 2992)
+In matlab.depfun.internal.Manifest (line 31)
+In matlab.depfun.internal.genmanifest (line 11)] 
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 313 Column: 7
+The temporary variable 'tmp_combined_xf' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'tmp_combined_xf' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/calltree (line 2992)
+In matlab.depfun.internal.Manifest (line 31)
+In matlab.depfun.internal.genmanifest (line 11)] 
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 351 Column: 7
+The temporary variable 'updateScale' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'updateScale' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/calltree (line 2992)
+In matlab.depfun.internal.Manifest (line 31)
+In matlab.depfun.internal.genmanifest (line 11)] 
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 366 Column: 9
+The temporary variable 'dXYZ' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'dXYZ' is used before it is set, a runtime error will occur. For more information,
+see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/calltree (line 2992)
+In matlab.depfun.internal.Manifest (line 31)
+In matlab.depfun.internal.genmanifest (line 11)] 
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Updatefft.m Line: 414 Column: 7
+The temporary variable 'STACK' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'STACK' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/calltree (line 2992)
+In matlab.depfun.internal.Manifest (line 31)
+In matlab.depfun.internal.genmanifest (line 11)] 
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Correct3d.m Line: 360 Column: 9
+The temporary variable 'tomoList' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'tomoList' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/calltree (line 2992)
+In matlab.depfun.internal.Manifest (line 31)
+In matlab.depfun.internal.genmanifest (line 11)] 
+[Warning: File: /sa_shared/git/emClarity_private/ctf/BH_ctf_Correct3d.m Line: 530 Column: 13
+The temporary variable 'TA' will be cleared at the beginning of each iteration of the parfor-loop.
+If 'TA' is used before it is set, a runtime error will occur. For more information, see Parallel
+for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/calltree (line 2992)
+In matlab.depfun.internal.Manifest (line 31)
+In matlab.depfun.internal.genmanifest (line 11)] 
+[Warning: File: /sa_shared/git/emClarity_private/synthetic/BH_synthetic_mapBack.m Line: 1283
+Column: 9
+The temporary variable 'dataPrj' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'dataPrj' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/calltree (line 2992)
+In matlab.depfun.internal.Manifest (line 31)
+In matlab.depfun.internal.genmanifest (line 11)] 
+[Warning: File: /sa_shared/git/emClarity_private/synthetic/BH_synthetic_mapBack.m Line: 1301
+Column: 9
+The temporary variable 'refPrj' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'refPrj' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/calltree (line 2992)
+In matlab.depfun.internal.Manifest (line 31)
+In matlab.depfun.internal.genmanifest (line 11)] 
+[Warning: File: /sa_shared/git/emClarity_private/synthetic/BH_synthetic_mapBack.m Line: 1319
+Column: 9
+The temporary variable 'samplingMask' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'samplingMask' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/calltree (line 2992)
+In matlab.depfun.internal.Manifest (line 31)
+In matlab.depfun.internal.genmanifest (line 11)] 
+[Warning: File: /sa_shared/git/emClarity_private/synthetic/BH_synthetic_mapBack.m Line: 1421
+Column: 7
+The temporary variable 'cccPRJ' will be cleared at the beginning of each iteration of the
+parfor-loop. If 'cccPRJ' is used before it is set, a runtime error will occur. For more
+information, see Parallel for Loops in MATLAB, "Uninitialized Temporaries".] 
+[> In matlab.depfun.internal/MwFileInspector/resolveSymbols (line 268)
+In matlab.depfun.internal/MwFileInspector/evaluateSymbols (line 392)
+In matlab.depfun.internal/MwFileInspector/analyzeSymbol (line 40)
+In matlab.depfun.internal/Completion/findDependentFiles (line 1602)
+In matlab.depfun.internal/Completion/computeDependencies (line 290)
+In matlab.depfun.internal/Completion/calltree (line 2992)
+In matlab.depfun.internal.Manifest (line 31)
+In matlab.depfun.internal.genmanifest (line 11)] 
+[?1l>

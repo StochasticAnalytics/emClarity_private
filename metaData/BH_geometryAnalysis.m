@@ -39,6 +39,16 @@ function  BH_geometryAnalysis( PARAMETER_FILE, CYCLE, ...
 %       otherwise. Only affects the current in-memory geometry and subsequent
 %       save of subTomoMeta.
 %
+%   AssignAndMergeAll
+%     - VECTOR_OP: string like '1,2:6,9' specifying which branch files to merge.
+%     - Reads all specified branch files (<base>_branch_<idx>.mat) and merges
+%       non-ignored particles from each branch into a single geometry.
+%     - Particles retain their branch number as class ID.
+%     - Saves result to <base>_merged.mat (does not modify current subTomoMeta).
+%     - Base name is determined by stripping '_branch_<num>' suffix if present.
+%     - Validates that base name does not contain 'branch' elsewhere.
+%     - Works with all alignment stages: TiltAlignment, RawAlignment, and Cluster.
+%
 % Notes
 %   - Column conventions used here: class column=26, subtomo index column=4.
 %   - Many operations are stage-specific; errors are thrown if misused.
@@ -65,6 +75,13 @@ elseif (strcmpi(VECTOR_OP, 'listTomos'))
 elseif strcmpi(OPERATION, 'TrimOldCycles')
   % For TrimOldCycles, VECTOR_OP should be a scalar (target cycle)
   VECTOR_OP = EMC_str2double(VECTOR_OP);
+
+elseif strcmpi(OPERATION, 'AssignAndMergeAll')
+  % For AssignAndMergeAll, VECTOR_OP is a string like '1,2:6,9' - keep as-is
+  % (will be parsed later by emc_parse_branch_list)
+
+elseif strcmpi(OPERATION, 'AssignAndMergeToBranch')
+  % For AssignAndMergeToBranch, VECTOR_OP is not used - keep as-is
 
 else
   try
@@ -204,6 +221,7 @@ outputPrefix = sprintf('%s_%s', cycleNumber, emc.('subTomoMeta'));
         skip_backup = strcmpi(OPERATION, 'AssignClassToBranch') || ...
                       strcmpi(OPERATION, 'AssignClassFromBranch') || ...
                       strcmpi(OPERATION, 'AssignAndMergeToBranch') || ...
+                      strcmpi(OPERATION, 'AssignAndMergeAll') || ...
                       strcmpi(OPERATION, 'RemoveClasses');
 
         %geometry = subTomoMeta.(cycleNumber).ClusterResults.(cluster_key);
@@ -639,7 +657,185 @@ switch OPERATION
     % Store the modified geometry in Post_ field instead of overwriting
     % geometry_copy already contains the complete geometry structure with all tomogram fields
     subTomoMeta.(cycleNumber).Post_AssignAndMergeToBranch = geometry_copy;
-  
+
+  case 'AssignAndMergeAll'
+  % Merge all specified branch files into a single merged output file.
+  % Contract:
+  % - Input VECTOR_OP: string like '1,2:6,9' specifying which branch files to merge.
+  % - Current subTomoMeta can be trunk or branch; we strip '_branch_X' to get base name.
+  % - Output: <base>_merged.mat with particles from all branches (class=branch_number).
+  % - Does NOT modify current subTomoMeta in memory.
+  % Failure modes: missing branch files, base name contains 'branch', file I/O errors.
+
+    % Parse VECTOR_OP to get list of branch indices
+    branch_list = emc_parse_branch_list(VECTOR_OP);
+    fprintf('AssignAndMergeAll: parsed branch list: %s\n', mat2str(branch_list));
+
+    % Determine base metadata name by stripping any '_branch_<num>' suffix
+    meta_name = emc.('subTomoMeta');
+    base_name = regexprep(meta_name, '_branch_\d+$', '');
+
+    % Validate that base name does NOT contain 'branch' elsewhere
+    if contains(base_name, 'branch')
+      error('AssignAndMergeAll: base metadata name "%s" contains "branch" - this is not allowed', base_name);
+    end
+
+    fprintf('AssignAndMergeAll: base metadata name: %s\n', base_name);
+
+    % Check all required branch files exist
+    missing_files = {};
+    for b_idx = branch_list
+      branch_file = sprintf('%s_branch_%d.mat', base_name, b_idx);
+      if ~exist(branch_file, 'file')
+        missing_files{end+1} = branch_file; %#ok<AGROW>
+      end
+    end
+
+    if ~isempty(missing_files)
+      error('AssignAndMergeAll: missing branch files:\n%s', strjoin(missing_files, '\n'));
+    end
+
+    fprintf('AssignAndMergeAll: all %d branch files exist\n', length(branch_list));
+
+    % Load first branch file as template
+    first_branch_file = sprintf('%s_branch_%d.mat', base_name, branch_list(1));
+    fprintf('AssignAndMergeAll: loading template from %s\n', first_branch_file);
+    first_branch_meta = BH_loadSubTomoMeta(first_branch_file, emc.('metadata_format'));
+
+    % Create working copy
+    merged_meta = first_branch_meta;
+
+    % Get the appropriate geometry for this cycle and stage
+    switch STAGEofALIGNMENT
+      case 'TiltAlignment'
+        merged_geometry = merged_meta.tiltGeometry;
+      case 'RawAlignment'
+        merged_geometry = merged_meta.(cycleNumber).RawAlign;
+      case 'Cluster'
+        if strcmpi(fieldPrefix, 'Cls')
+          merged_geometry = merged_meta.(cycleNumber).('ClusterClsGeom');
+        elseif strcmpi(fieldPrefix, 'Ref')
+          merged_geometry = merged_meta.(cycleNumber).('ClusterRefGeom');
+        else
+          error('AssignAndMergeAll: unexpected fieldPrefix "%s" for Cluster stage', fieldPrefix);
+        end
+      otherwise
+        error('AssignAndMergeAll: unsupported STAGEofALIGNMENT "%s"', STAGEofALIGNMENT);
+    end
+
+    merged_tomoList = fieldnames(merged_geometry);
+
+    % Initialize all particles to -9999 (ignored)
+    fprintf('AssignAndMergeAll: initializing all particles to class=-9999\n');
+    for iTomo = 1:length(merged_tomoList)
+      tName = merged_tomoList{iTomo};
+      position_list = merged_geometry.(tName);
+      position_list(:, COL_CLASS) = -9999;
+      merged_geometry.(tName) = position_list;
+    end
+
+    % Loop through all branch files and merge particles
+    total_particles_per_branch = zeros(length(branch_list), 1);
+
+    for b_i = 1:length(branch_list)
+      b_idx = branch_list(b_i);
+      branch_file = sprintf('%s_branch_%d.mat', base_name, b_idx);
+      fprintf('AssignAndMergeAll: processing branch %d from %s\n', b_idx, branch_file);
+
+      % Load branch metadata
+      branch_meta = BH_loadSubTomoMeta(branch_file, emc.('metadata_format'));
+
+      % Get geometry from this branch based on stage
+      switch STAGEofALIGNMENT
+        case 'TiltAlignment'
+          branch_geometry = branch_meta.tiltGeometry;
+        case 'RawAlignment'
+          branch_geometry = branch_meta.(cycleNumber).RawAlign;
+        case 'Cluster'
+          if strcmpi(fieldPrefix, 'Cls')
+            branch_geometry = branch_meta.(cycleNumber).('ClusterClsGeom');
+          elseif strcmpi(fieldPrefix, 'Ref')
+            branch_geometry = branch_meta.(cycleNumber).('ClusterRefGeom');
+          end
+      end
+
+      branch_tomoList = fieldnames(branch_geometry);
+      branch_particle_count = 0;
+
+      % Process each tomogram
+      for iTomo = 1:length(branch_tomoList)
+        tName = branch_tomoList{iTomo};
+
+        % Get particle list from branch
+        branch_position_list = branch_geometry.(tName);
+
+        % Find non-ignored particles (col 26 != -9999)
+        non_ignored_mask = (branch_position_list(:, COL_CLASS) ~= -9999);
+
+        if ~any(non_ignored_mask)
+          continue;  % No particles to merge from this tomogram
+        end
+
+        % Get corresponding particles in merged geometry
+        merged_position_list = merged_geometry.(tName);
+
+        % Get subtomo indices for the non-ignored particles
+        branch_subtomo_ids = branch_position_list(non_ignored_mask, COL_SUBTOMO_IDX);
+
+        % Find matching rows in merged geometry by subtomo ID
+        for id_i = 1:length(branch_subtomo_ids)
+          subtomo_id = branch_subtomo_ids(id_i);
+          match_idx = find(merged_position_list(:, COL_SUBTOMO_IDX) == subtomo_id, 1);
+
+          if ~isempty(match_idx)
+            % Set class to branch number
+            merged_position_list(match_idx, COL_CLASS) = b_idx;
+            branch_particle_count = branch_particle_count + 1;
+          end
+        end
+
+        % Update merged geometry
+        merged_geometry.(tName) = merged_position_list;
+      end
+
+      total_particles_per_branch(b_i) = branch_particle_count;
+      fprintf('AssignAndMergeAll: branch %d contributed %d particles\n', b_idx, branch_particle_count);
+    end
+
+    % Store merged geometry back into the metadata based on stage
+    switch STAGEofALIGNMENT
+      case 'TiltAlignment'
+        merged_meta.tiltGeometry = merged_geometry;
+      case 'RawAlignment'
+        merged_meta.(cycleNumber).RawAlign = merged_geometry;
+      case 'Cluster'
+        if strcmpi(fieldPrefix, 'Cls')
+          merged_meta.(cycleNumber).('ClusterClsGeom') = merged_geometry;
+        elseif strcmpi(fieldPrefix, 'Ref')
+          merged_meta.(cycleNumber).('ClusterRefGeom') = merged_geometry;
+        end
+    end
+
+    % Save to <base>_merged.mat
+    output_file = sprintf('%s_merged', base_name);
+    fprintf('AssignAndMergeAll: saving merged metadata to %s.mat\n', output_file);
+    subTomoMeta = merged_meta; %#ok<NASGU>
+    save(output_file, 'subTomoMeta', '-v7.3');
+
+    % Report final statistics
+    total_particles = sum(total_particles_per_branch);
+    fprintf('\n=== AssignAndMergeAll Summary ===\n');
+    fprintf('Base name: %s\n', base_name);
+    fprintf('Branches merged: %s\n', mat2str(branch_list));
+    fprintf('Output file: %s.mat\n', output_file);
+    fprintf('Stage: %s\n', STAGEofALIGNMENT);
+    fprintf('Particles per branch:\n');
+    for b_i = 1:length(branch_list)
+      fprintf('  Branch %d: %d particles\n', branch_list(b_i), total_particles_per_branch(b_i));
+    end
+    fprintf('Total particles included: %d\n', total_particles);
+    fprintf('================================\n\n');
+
   case 'ShiftAll'
     % No option to shift eve/odd separately.
     for iTomo = 1:nTomograms
@@ -895,7 +1091,7 @@ switch OPERATION
     fprintf(fID,'%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t\n%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t\n',percentiles');
     fclose(fID);
   otherwise
-  error('OPERATION must be WriteCsv, RemoveClasses, AssignToBranch, AssignToTrunk, AssignAndMerge, ShiftAll, RemoveFraction, RemoveIgnoredParticles, TrimOldCycles, not %s', OPERATION)
+  error('OPERATION must be WriteCsv, RemoveClasses, AssignToBranch, AssignToTrunk, AssignAndMerge, AssignAndMergeAll, ShiftAll, RemoveFraction, RemoveIgnoredParticles, TrimOldCycles, not %s', OPERATION)
 end 
 
 % Redundant for WriteCsv, otherwise update the new geometry, which was backed up
@@ -1136,6 +1332,71 @@ function branch_geometries = emc_assign_branch_geometries(geometry, tomo_list, t
   fprintf('=== DEBUG emc_assign_branch_geometries END ===\n\n'); % revert
 end
 
+function branch_list = emc_parse_branch_list(vector_op_string)
+% emc_parse_branch_list
+% Parse a branch list specification string with ranges and individual values.
+%
+% Inputs
+%   vector_op_string - string like '1,2:6,9' or '1, 2:6, 9'
+%
+% Output
+%   branch_list - vector of unique branch indices, e.g., [1 2 3 4 5 6 9]
+%
+% Examples:
+%   '1,2:6,9' -> [1 2 3 4 5 6 9]
+%   '3:5' -> [3 4 5]
+%   '1,3,5' -> [1 3 5]
+
+  if ~ischar(vector_op_string) && ~isstring(vector_op_string)
+    error('emc_parse_branch_list: input must be a string, got %s', class(vector_op_string));
+  end
+
+  % Remove whitespace
+  vector_op_string = strrep(vector_op_string, ' ', '');
+
+  % Split by commas
+  parts = strsplit(vector_op_string, ',');
+
+  branch_list = [];
+  for i = 1:length(parts)
+    part = parts{i};
+    if isempty(part)
+      continue;
+    end
+
+    % Check if this part contains a range (colon)
+    if contains(part, ':')
+      range_parts = strsplit(part, ':');
+      if length(range_parts) ~= 2
+        error('emc_parse_branch_list: invalid range specification "%s"', part);
+      end
+      start_val = str2double(range_parts{1});
+      end_val = str2double(range_parts{2});
+      if isnan(start_val) || isnan(end_val)
+        error('emc_parse_branch_list: non-numeric range values in "%s"', part);
+      end
+      if start_val > end_val
+        error('emc_parse_branch_list: range start > end in "%s"', part);
+      end
+      branch_list = [branch_list, start_val:end_val]; %#ok<AGROW>
+    else
+      % Single value
+      val = str2double(part);
+      if isnan(val)
+        error('emc_parse_branch_list: non-numeric value "%s"', part);
+      end
+      branch_list = [branch_list, val]; %#ok<AGROW>
+    end
+  end
+
+  % Remove duplicates and sort
+  branch_list = unique(branch_list);
+
+  % Validate: all must be positive integers
+  if any(branch_list < 1) || any(mod(branch_list, 1) ~= 0)
+    error('emc_parse_branch_list: all branch indices must be positive integers, got %s', mat2str(branch_list));
+  end
+end
 
 
 

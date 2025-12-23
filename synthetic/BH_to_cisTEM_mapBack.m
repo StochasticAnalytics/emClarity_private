@@ -15,9 +15,21 @@ function [ ] = BH_to_cisTEM_mapBack(PARAMETER_FILE, CYCLE, output_prefix, ~, MAX
 %   symmetry      - Symmetry (unused, kept for compatibility)
 %   MAX_EXPOSURE  - Maximum exposure to include
 %   classIDX      - Class index to extract (-1 or 0 for all)
-
+ % normally zero, just testing here.
 
 emc = BH_parseParameterFile(PARAMETER_FILE);
+
+% Read cisTEM experimental parameters from parameter file
+invert_tilt_for_defocus_calc = emc.('cisTEM_invert_tilt_for_defocus_calc');
+astigmatism_angle_convention_switch = emc.('cisTEM_astigmatism_angle_convention_switch');
+
+
+
+fprintf('DEBUG: Using cisTEM parameters for (%s):\n', output_prefix);
+fprintf('  invert_tilt_for_defocus_calc = %d\n', invert_tilt_for_defocus_calc);
+fprintf('  astigmatism_angle_convention_switch = %d\n', astigmatism_angle_convention_switch);
+fprintf('  tmp_model_scale is %d\n', emc.tmp_model_scale)
+fprintf("  use defocus from emc instead of tilt (%d)\n", emc.use_defocus_from_emc);
 classIDX = EMC_str2double(classIDX);
 MAX_EXPOSURE = EMC_str2double(MAX_EXPOSURE);
 if isnan(MAX_EXPOSURE)
@@ -42,10 +54,6 @@ cycleNumber = sprintf('cycle%0.3u', CYCLE);
 % MOL_MASS = emc.('particleMass');  % Unused, removed
 
 
-
-% Used to calc defocus values using tilt instead of manually. Convention
-% diff.
-% flgInvertTiltAngles = 0;  % Unused, removed
 
 
 % These stacks can get very unwieldy to we won't use the ramdisk even if it is asked for,
@@ -126,6 +134,7 @@ total_records_in_star = 0;
 particles_skipped_windowing = 0;
 
 for iTiltSeries = tiltStart:nTiltSeries
+
   n_particles_added_to_stack = 0;
   iGpuDataCounterLocal = 1;  % Reset counter for each tilt series
   n_particles_this_tilt_series = 0;  % Track particles across ALL projections
@@ -393,6 +402,9 @@ for iTiltSeries = tiltStart:nTiltSeries
       continue;
     end
 
+    fprintf('emc.tmp_model_scale is %d\n', emc.tmp_model_scale);
+
+
     modelRot = BH_defineMatrix([0,90,0],'Bah','fwdVector');
 
     for iSubTomo = 1:nSubTomos
@@ -424,16 +436,17 @@ for iTiltSeries = tiltStart:nTiltSeries
           prjCoords = rTilt*subtomo_origin_wrt_specimen_origin';
           
           % I think this is for comparison with the values obtained from projecting using IMOD: FIXME
-          fprintf(defOUT,'%d %d %6.6e\n', fidIDX, iPrj, abs(TLT(iPrj_index_in_TLT,15)) - prjCoords(3).*pixel_size.*10^-10);
+          fprintf(defOUT,'%d %d %6.6e\n', fidIDX, iPrj-1, 10^9.*(abs(TLT(iPrj_index_in_TLT,15)) - emc.tmp_model_scale.*prjCoords(3).*pixel_size.*10^-10));
           
           % Defocus value adjusted for Z coordinate in the tomogram. nm
           d1 = (abs(TLT(iPrj_index_in_TLT,15)) - subtomo_origin_wrt_specimen_origin(3).*pixel_size.*10^-10) * 10^9;
-          d2 = TLT(iPrj_index_in_TLT,12)*10^9; % half astigmatism value
+          d2 = TLT(iPrj_index_in_TLT,12)*10^9; % half astigmatism value in nm
           
           fprintf(coordSTART,'%d %d %d %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %d\n', ...
                                 fidIDX, tomoIdx, positionList(iSubTomo,4), d1, d2, 180./pi.*TLT(iPrj_index_in_TLT,13), reshape(subtomo_rot_matrix,1,9), preExposure(iPrj_index_in_TLT), postExposure(iPrj_index_in_TLT), positionList(iSubTomo,7));
         else
           fprintf(coordSTART,'%d %d %d %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %3.3f %d\n',-9999, -9999,-9999,1.0,1.0,1.0,1,1,1,1,1,1,1,1,1,0,0,1);
+          fprintf(defOUT,'%d %d %6.6e\n',-1,-1,-1);
         end
         % nFidsTotalDataSet = nFidsTotalDataSet + 1;
       end % loop over tilt projections
@@ -508,8 +521,8 @@ for iTiltSeries = tiltStart:nTiltSeries
     'EOF'],tilt_filepath, mbOUT{1:2}, maxZ, ...
     mbOUT{1:2},...
     mbOUT{1:2},...
-    pixel_size./10, ... % Ang --> nm
-    0, ... % do not invert the tilt angles
+    pixel_size./10 * emc.tmp_model_scale, ... % Ang --> nm
+    invert_tilt_for_defocus_calc, ... % do not invert the tilt angles
     mbOUT{1:2},...
     mbOUT{1:2},...
     mbOUT{1:2},...
@@ -558,6 +571,11 @@ for iTiltSeries = tiltStart:nTiltSeries
   % unused
   parList = load(sprintf('%s/%s.coord_start',mbOUT{1:2}));
   defList = load(sprintf('%s/%s.defAngTilt',mbOUT{1:2}));
+
+  defListEMC = '';
+  if (emc.use_defocus_from_emc)
+    defListEMC = load(sprintf('%s/%s.defAng',mbOUT{1:2}));
+  end
 
   %   Need to shift again from the model coordinate system
   % Columns are 
@@ -648,10 +666,17 @@ for iTiltSeries = tiltStart:nTiltSeries
     % explicitly checked to correspond. Should this be done?
     
     % fid list is produced by projection of the 3dmodel using tilt with
+    % FIXME: you could put a sanity check that the tilt angle is close (it will not be identical though)
     wrkPrjIDX = ( fidList(:,5) == TLT(iPrj,1) - 1 );
     wrkFid = fidList(wrkPrjIDX,:);
     wrkPar = parList(wrkPrjIDX,:);
+    % Note: for some reason these have the tilt prj idx indexed from 1, but since we use the same bool to index into all three arrays it is okay.
     wrkDefAngTilt = defList(wrkPrjIDX,[7,6,5]); % Confirming with David but this should include the local adjustments to tilt/in-plane angle
+
+    if (emc.use_defocus_from_emc)
+      % Swap out the values for the defocus 
+      wrkDefAngTilt(:,1) = defListEMC(wrkPrjIDX, 3);
+    end
 
     
     for iFid = 1:size(wrkFid,1)
@@ -742,7 +767,7 @@ for iTiltSeries = tiltStart:nTiltSeries
 
         df1 = (wrkDefAngTilt(iFid,1) + wrkPar(iFid,5)) * 10;
         df2 = (wrkDefAngTilt(iFid,1) - wrkPar(iFid,5)) * 10;
-        dfA = wrkPar(iFid,6);
+        dfA = wrkPar(iFid,6) + astigmatism_angle_convention_switch; % Adjust for 90 deg difference in definition
         
         fprintf(starFile, '%8u %7.2f %7.2f %7.2f %9.2f %9.2f %8.1f %8.1f %7.2f %7.2f %5i %7.2f %9i %10.4f %7.2f %8.5f %7.2f %7.2f %7.4f %7.3f %7.3f %7.3f %7.3f %5i %5i %8u %7.2f %7.2f\n', ...
           iDataCounter,-e1,-e2,-e3,xShift,yShift, ...

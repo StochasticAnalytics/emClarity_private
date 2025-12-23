@@ -341,9 +341,7 @@ else
 end
 
 
-
 [ volMask ] = gather(EMC_maskShape(maskType, sizeWindow, maskRadius, 'gpu', {'shift', maskCenter}));
-  
 
 
 
@@ -504,18 +502,19 @@ if (emc.use_new_grid_search)
 
   % symmetry_constrained_search is now handled in BH_parseParameterFile
   symmetry_constrained_search = emc.symmetry_constrained_search;
-  if (symmetry_constrained_search)
+  if (~strcmpi(symmetry_constrained_search, 'none'))
     fprintf('Using symmetry constrained search\n');
   end
-  
-  if (symmetry_constrained_search)
+
+  if (~strcmpi(symmetry_constrained_search, 'none'))
     % symmetry expansion on in-plane search only
-    if (gridSearch.symmetry_symbol(1) ~= 'C')
+    if (symmetry_constrained_search(1) ~= 'C')
       error('symmetry constrained search only implemented for Cn symmetry');
     else
-      symmetry_number = EMC_str2double(gridSearch.symmetry_symbol(2:end));
+      symmetry_number = EMC_str2double(symmetry_constrained_search(2:end))
+      orig_search = inPlaneSearch;
       for iSym = 1:symmetry_number-1
-        inPlaneSearch = [inPlaneSearch,inPlaneSearch + iSym.*(360/symmetry_number)];
+        inPlaneSearch = [inPlaneSearch,orig_search + iSym.*(360/symmetry_number)];
       end
     end
   end
