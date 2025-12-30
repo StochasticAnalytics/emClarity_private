@@ -1,43 +1,60 @@
-function [tomo_path, csv_path] = EMC_syntheticTomogram(template_path, tomo_size, ...
-                                                        exclusion_factor, output_path, output_prefix, varargin)
+function [outputs] = EMC_syntheticTomogram(template_inputs, tomo_size, ...
+                                            exclusion_factor, output_path, output_prefix, varargin)
 %EMC_syntheticTomogram Generate synthetic tomogram with randomly placed particles
 %
-%   [tomo_path, csv_path] = EMC_syntheticTomogram(template_path, tomo_size, ...
-%                                                  exclusion_factor, output_path, output_prefix)
+%   outputs = EMC_syntheticTomogram(template_inputs, tomo_size, ...
+%                                   exclusion_factor, output_path, output_prefix)
 %
-%   Generates a synthetic 3D tomogram by placing randomly rotated copies of a
-%   particle template at random positions. Outputs the tomogram and a CSV file
-%   with particle parameters matching emClarity's template search format.
+%   Generates a synthetic 3D tomogram by placing randomly rotated copies of
+%   particle template(s) at random positions using collision detection.
+%   Supports multiple templates with round-robin placement.
 %
 %   Input:
-%       template_path    - Path to MRC file containing 3D particle template
+%       template_inputs  - Flexible input format:
+%                          - Single MRC path (string) - backward compatible
+%                          - Cell array of MRC paths - multiple templates
+%                          - Cell array of {mrc_path, pdb_path} pairs
 %       tomo_size        - [nX, nY, nZ] tomogram dimensions (must be even)
 %       exclusion_factor - Multiplier for particle radius (>= 1.0, controls density)
 %       output_path      - Directory for output files (must exist)
 %       output_prefix    - Output file prefix (must not already exist)
 %
 %   Optional parameters (name-value pairs):
-%       'max_particles'  - Maximum number of particles to place (default: inf)
-%       'max_attempts'   - Maximum placement attempts (default: 100000)
-%       'gpu_id'         - GPU device ID (default: 1)
+%       'max_particles'       - Maximum number of particles (default: inf)
+%       'max_attempts'        - Maximum placement attempts (default: 100000)
+%       'gpu_id'              - GPU device ID (default: 1)
+%       'collision_mode'      - 'shape' (default, accurate) or 'sphere' (faster)
+%       'build_tomogram'      - Generate tomogram MRC (default: true)
+%       'save_projection'     - Save 2D projection sum (default: false)
+%       'output_starfile'     - Generate cisTEM starfile (default: false)
+%       'add_water_background'- Fill empty voxels with water density (default: false)
+%                               Water = avg_protein_density * (0.94/1.35)
 %
 %   Output:
-%       tomo_path - Path to output synthetic tomogram MRC file
-%       csv_path  - Path to output CSV file with particle parameters
+%       outputs - Struct with fields:
+%           .tomo_path     - Path to tomogram (empty if build_tomogram=false)
+%           .csv_path      - Path to emClarity CSV
+%           .star_path     - Path to starfile (empty if output_starfile=false)
+%           .proj_path     - Path to projection (empty if save_projection=false)
+%           .tomosize_path - Path to tomosize file
 %
-%   The CSV file uses emClarity's 31-field format:
-%       score, samplingRate, filler, id, 6 flags, posX, posY, posZ (Angstroms),
-%       phi, theta, psi-phi (degrees), rotation matrix (9 elements), final flag
+%   The CSV file uses emClarity's 31-field format matching template search output.
+%   The starfile uses cisTEM-compatible 29-column format with defocus-encoded Z.
 %
-%   Example:
-%       [tomo, csv] = EMC_syntheticTomogram('particle.mrc', [512,512,256], 1.5, ...
-%                                            '/output/', 'synthetic_001');
+%   Example (single template):
+%       outputs = EMC_syntheticTomogram('particle.mrc', [512,512,256], 1.5, ...
+%                                        '/output/', 'synthetic_001');
+%
+%   Example (multiple templates with starfile):
+%       pairs = {{'template1.mrc', 'model1.pdb'}, {'template2.mrc', 'model2.pdb'}};
+%       outputs = EMC_syntheticTomogram(pairs, [512,512,256], 1.5, '/output/', 'test', ...
+%                                        'output_starfile', true, 'add_water_background', true);
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %% Parse inputs
 p = inputParser;
-addRequired(p, 'template_path', @ischar);
+addRequired(p, 'template_inputs');
 addRequired(p, 'tomo_size', @(x) isnumeric(x) && numel(x) == 3);
 addRequired(p, 'exclusion_factor', @(x) isnumeric(x) && x >= 1.0);
 addRequired(p, 'output_path', @ischar);
@@ -45,127 +62,152 @@ addRequired(p, 'output_prefix', @ischar);
 addParameter(p, 'max_particles', inf, @isnumeric);
 addParameter(p, 'max_attempts', 100000, @isnumeric);
 addParameter(p, 'gpu_id', 1, @isnumeric);
+addParameter(p, 'collision_mode', 'shape', @(x) ismember(x, {'shape', 'sphere'}));
+addParameter(p, 'build_tomogram', true, @islogical);
+addParameter(p, 'save_projection', false, @islogical);
+addParameter(p, 'output_starfile', false, @islogical);
+addParameter(p, 'add_water_background', false, @islogical);
 
-parse(p, template_path, tomo_size, exclusion_factor, output_path, output_prefix, varargin{:});
+parse(p, template_inputs, tomo_size, exclusion_factor, output_path, output_prefix, varargin{:});
 
 max_particles = p.Results.max_particles;
 max_attempts = p.Results.max_attempts;
 gpu_id = p.Results.gpu_id;
+collision_mode = p.Results.collision_mode;
+build_tomogram = p.Results.build_tomogram;
+save_projection = p.Results.save_projection;
+output_starfile = p.Results.output_starfile;
+add_water_background = p.Results.add_water_background;
 
-%% Validate inputs
-% Check tomo_size is even
+%% Validate tomo_size
 tomo_size = tomo_size(:)';  % Ensure row vector
 if any(mod(tomo_size, 2) ~= 0)
     error('EMC:syntheticTomogram', 'tomo_size must have even dimensions in all axes');
 end
 
-% Check template exists
-if ~isfile(template_path)
-    error('EMC:syntheticTomogram', 'Template file does not exist: %s', template_path);
-end
-
-% Check output directory exists
+%% Check output directory exists
 if ~isfolder(output_path)
     error('EMC:syntheticTomogram', 'Output directory does not exist: %s', output_path);
 end
 
-% Check output files do not already exist
-tomo_path = fullfile(output_path, sprintf('%s.mrc', output_prefix));
-csv_path = fullfile(output_path, sprintf('%s.csv', output_prefix));
+%% Setup output paths
+outputs = struct();
+outputs.tomo_path = fullfile(output_path, sprintf('%s.mrc', output_prefix));
+outputs.csv_path = fullfile(output_path, sprintf('%s.csv', output_prefix));
+outputs.star_path = fullfile(output_path, sprintf('%s.star', output_prefix));
+outputs.proj_path = fullfile(output_path, sprintf('%s_projection.mrc', output_prefix));
+outputs.tomosize_path = fullfile(output_path, sprintf('%s.tomosize', output_prefix));
 
-if isfile(tomo_path)
-    error('EMC:syntheticTomogram', 'Output file already exists: %s', tomo_path);
+% Check output files do not already exist
+if build_tomogram && isfile(outputs.tomo_path)
+    error('EMC:syntheticTomogram', 'Output file already exists: %s', outputs.tomo_path);
 end
-if isfile(csv_path)
-    error('EMC:syntheticTomogram', 'Output file already exists: %s', csv_path);
+if isfile(outputs.csv_path)
+    error('EMC:syntheticTomogram', 'Output file already exists: %s', outputs.csv_path);
+end
+if output_starfile && isfile(outputs.star_path)
+    error('EMC:syntheticTomogram', 'Output file already exists: %s', outputs.star_path);
 end
 
 %% Initialize GPU
 gpuDevice(gpu_id);
 fprintf('Using GPU device %d\n', gpu_id);
 
-%% Load template and get pixel size from header
-fprintf('Loading template from %s\n', template_path);
+%% Normalize template inputs and load templates
+templates = normalize_template_inputs(template_inputs, exclusion_factor, collision_mode);
+n_templates = numel(templates);
 
-% Get pixel size from header
-mrc_image = MRCImage(template_path, 0);
-header = getHeader(mrc_image);
-pixel_size = header.cellDimensionX / header.nX;
-fprintf('Pixel size: %.3f Angstroms\n', pixel_size);
-
-% Load template volume
-template = OPEN_IMG('single', template_path);
-template_size = size(template);
-fprintf('Template size: [%d, %d, %d]\n', template_size(1), template_size(2), template_size(3));
-
-% Pad to even if needed
-pad_needed = mod(template_size, 2);
-if any(pad_needed)
-    fprintf('Padding template to even dimensions\n');
-    template = BH_padZeros3d(template, [0,0,0], pad_needed, 'cpu', 'single');
-    template_size = size(template);
+fprintf('Loaded %d template(s)\n', n_templates);
+for i = 1:n_templates
+    fprintf('  Template %d: %s\n', i, templates(i).mrc_path);
+    fprintf('    Size: [%d, %d, %d], Pixel size: %.3f Ang\n', ...
+            templates(i).size(1), templates(i).size(2), templates(i).size(3), templates(i).pixel_size);
+    fprintf('    Particle radius: %.1f px, Exclusion radius: %.1f px\n', ...
+            templates(i).particle_radius, templates(i).exclusion_radius);
 end
 
-%% Create binary template for shape-based collision detection
-fprintf('Creating binary template using EMC_maskReference\n');
+% Use first template's pixel size as reference
+pixel_size = templates(1).pixel_size;
+fprintf('Reference pixel size: %.3f Angstroms\n', pixel_size);
 
-% Use EMC_maskReference to create shape-based mask
-binary_template = EMC_maskReference(template, pixel_size, {'lowpass', 14; 'threshold', 2.4});
-binary_template = binary_template > 0.5;  % Convert to logical
-fprintf('Binary template: %d voxels occupied (%.1f%% of volume)\n', ...
-        sum(binary_template(:)), 100 * sum(binary_template(:)) / numel(binary_template));
+%% Determine if we need to build the tomogram volume
+need_tomogram = build_tomogram || save_projection || add_water_background;
 
-% Dilate binary template by exclusion_factor for collision detection
-% This effectively adds a buffer zone around the particle
-if exclusion_factor > 1.0
-    se_radius = round((exclusion_factor - 1.0) * max(template_size) / 2);
-    if se_radius > 0
-        se = strel('sphere', se_radius);
-        binary_template = imdilate(binary_template, se);
-        fprintf('Dilated binary template by %d pixels (exclusion_factor=%.2f): %d voxels\n', ...
-                se_radius, exclusion_factor, sum(binary_template(:)));
+%% Calculate water density if needed
+if add_water_background
+    % Average protein density across all templates (weighted equally)
+    avg_protein_density = mean([templates.avg_protein_density]);
+    % Water/protein density ratio: 0.94 g/cm^3 / 1.35 g/cm^3
+    water_protein_ratio = 0.94 / 1.35;
+    water_density = avg_protein_density * water_protein_ratio;
+    fprintf('Water background: avg protein density = %.4f, water density = %.4f (ratio: %.4f)\n', ...
+            avg_protein_density, water_density, water_protein_ratio);
+else
+    water_density = 0;
+end
+
+%% Initialize GPU interpolators for templates
+if need_tomogram
+    for i = 1:n_templates
+        [templates(i).interp, ~] = interpolator(gpuArray(single(templates(i).volume)), ...
+                                                 [0,0,0], [0,0,0], 'Bah', 'forward', 'C1', false);
+        % Shape mask interpolator for masking rotated particles
+        [templates(i).shape_mask_interp, ~] = interpolator(gpuArray(single(templates(i).shape_mask)), ...
+                                                            [0,0,0], [0,0,0], 'Bah', 'forward', 'C1', false);
     end
 end
 
-% Bin the binary template for occupancy map
-occupancy_bin = 3;
-binary_template_binned = bin_volume(binary_template, occupancy_bin) > 0;
-fprintf('Binned binary template: [%d, %d, %d] -> [%d, %d, %d]\n', ...
-        template_size(1), template_size(2), template_size(3), ...
-        size(binary_template_binned, 1), size(binary_template_binned, 2), size(binary_template_binned, 3));
-
-%% Initialize interpolators on GPU
-fprintf('Initializing GPU interpolators\n');
-[template_interp, ~] = interpolator(gpuArray(single(template)), ...
-                                     [0,0,0], [0,0,0], 'Bah', 'forward', 'C1', false);
-% Interpolator for binned binary template (for collision detection)
-[binary_binned_interp, ~] = interpolator(gpuArray(single(binary_template_binned)), ...
-                                          [0,0,0], [0,0,0], 'Bah', 'forward', 'C1', false);
+%% Initialize binary mask interpolators for shape-based collision
+if strcmp(collision_mode, 'shape')
+    for i = 1:n_templates
+        [templates(i).binary_interp, ~] = interpolator(gpuArray(single(templates(i).binary_mask_binned)), ...
+                                                        [0,0,0], [0,0,0], 'Bah', 'forward', 'C1', false);
+    end
+end
 
 %% Initialize output volumes
-fprintf('Initializing tomogram [%d, %d, %d] on CPU\n', tomo_size(1), tomo_size(2), tomo_size(3));
-tomogram = zeros(tomo_size, 'single');
+if need_tomogram
+    if add_water_background
+        fprintf('Initializing tomogram [%d, %d, %d] with water density %.4f\n', ...
+                tomo_size(1), tomo_size(2), tomo_size(3), water_density);
+        tomogram = ones(tomo_size, 'single') * water_density;
+    else
+        fprintf('Initializing tomogram [%d, %d, %d] on CPU\n', tomo_size(1), tomo_size(2), tomo_size(3));
+        tomogram = zeros(tomo_size, 'single');
+    end
+else
+    fprintf('Skipping tomogram generation (build_tomogram=false)\n');
+    tomogram = [];
+    outputs.tomo_path = '';
+end
 
-% Binned occupancy map (occupancy_bin already set above)
+if ~save_projection
+    outputs.proj_path = '';
+end
+if ~output_starfile
+    outputs.star_path = '';
+end
+
+%% Initialize occupancy map
+occupancy_bin = 3;
 occupancy_size = ceil(tomo_size / occupancy_bin);
-binned_template_size = size(binary_template_binned);
-
-% X-chunking: keep full occupancy on CPU, load chunks to GPU
 n_x_chunks = 4;
 chunk_size_x = ceil(tomo_size(1) / n_x_chunks);
+max_exclusion_radius = max([templates.exclusion_radius]);
+
 fprintf('Initializing occupancy map on CPU [%d, %d, %d] (binned %dx, %d X-chunks)\n', ...
         occupancy_size(1), occupancy_size(2), occupancy_size(3), occupancy_bin, n_x_chunks);
 occupancy_cpu = false(occupancy_size);
 
-%% Calculate valid placement bounds
-half_template = ceil(template_size / 2);
+%% Calculate valid placement bounds (using largest template)
+max_template_size = max(cat(1, templates.size), [], 1);
+half_template = ceil(max_template_size / 2);
 min_bound = half_template + 1;
 max_bound = tomo_size - half_template;
 
 fprintf('Valid placement bounds: [%d-%d, %d-%d, %d-%d]\n', ...
         min_bound(1), max_bound(1), min_bound(2), max_bound(2), min_bound(3), max_bound(3));
 
-% Check if placement is possible
 if any(min_bound > max_bound)
     error('EMC:syntheticTomogram', 'Template is too large for the specified tomogram size');
 end
@@ -177,18 +219,32 @@ particles.pos_ang = [];
 particles.angles = [];
 particles.shifts = [];
 particles.rotmat = [];
+particles.template_idx = [];
+particles.pdb_path = {};
 
-%% Main placement loop - process in X-bands to reduce GPU memory
-fprintf('Starting particle placement in %d X-bands...\n', n_x_chunks);
+%% Main placement loop - process in X-bands
+fprintf('Starting particle placement in %d X-bands (collision_mode: %s)...\n', n_x_chunks, collision_mode);
+
 particle_count = 0;
 attempts = 0;
 consecutive_failures = 0;
 max_consecutive_failures = 300;
 last_report_time = 0;
-report_interval = 5;  % Report every 5 seconds
+report_interval = 5;
 
-% Calculate overlap needed for binary mask checks (in binned coords)
-overlap_occ = ceil(max(binned_template_size) / 2);
+current_template_idx = 1;  % Round-robin starting point
+origin = ceil((tomo_size + 1) / 2);
+
+% Calculate overlap needed for collision checks (in binned coords)
+if strcmp(collision_mode, 'shape')
+    max_binned_mask_size = 0;
+    for i = 1:n_templates
+        max_binned_mask_size = max(max_binned_mask_size, max(size(templates(i).binary_mask_binned)));
+    end
+    overlap_occ = ceil(max_binned_mask_size / 2);
+else
+    overlap_occ = ceil(max_exclusion_radius / occupancy_bin);
+end
 
 tic;
 for iChunk = 1:n_x_chunks
@@ -212,13 +268,11 @@ for iChunk = 1:n_x_chunks
 
     % Reset consecutive failures for new chunk
     consecutive_failures = 0;
-    chunk_attempts = 0;
 
     while particle_count < max_particles && attempts < max_attempts
         attempts = attempts + 1;
-        chunk_attempts = chunk_attempts + 1;
 
-        % Progress reporting every few seconds
+        % Progress reporting
         elapsed = toc;
         if elapsed - last_report_time >= report_interval
             if particle_count > 0
@@ -237,21 +291,30 @@ for iChunk = 1:n_x_chunks
                randi([chunk_min_bound(2), chunk_max_bound(2)]), ...
                randi([chunk_min_bound(3), chunk_max_bound(3)])];
 
-        % Generate random rotation (matching BH_defineMatrix method)
+        % Generate random rotation
         [phi, theta, psi_minus_phi, rotmat] = generate_random_rotation();
         angles = [phi, theta, psi_minus_phi];
 
-        % Generate random subpixel shifts [-1, 1] (scaled for binned coords)
+        % Generate random subpixel shifts
         shifts = 2 * rand(1, 3) - 1;
-        shifts_binned = shifts / occupancy_bin;
 
-        % Rotate binned binary template on GPU (for collision detection)
-        rotated_binary_binned_gpu = binary_binned_interp.interp3d(angles, shifts_binned, 'Bah', 'forward', 'C1');
-        rotated_binary_binned = gather(rotated_binary_binned_gpu) > 0.5;  % Threshold to binary
+        % Collision check (mode-dependent)
+        if strcmp(collision_mode, 'shape')
+            % Rotate binned binary template and check overlap
+            shifts_binned = shifts / occupancy_bin;
+            rotated_binary_gpu = templates(current_template_idx).binary_interp.interp3d(angles, shifts_binned, 'Bah', 'forward', 'C1');
+            rotated_binary = gather(rotated_binary_gpu) > 0.5;
 
-        % Check for collision using binary mask shape
-        if ~check_collision_binary(pos, rotated_binary_binned, occupancy_chunk, ...
-                                   occupancy_bin, x_min_occ, occupancy_size)
+            is_valid = check_collision_binary(pos, rotated_binary, occupancy_chunk, ...
+                                               occupancy_bin, x_min_occ, occupancy_size);
+        else
+            % Sphere-based collision check
+            is_valid = check_collision_sphere(pos(1), pos(2), pos(3), occupancy_chunk, ...
+                                               templates(current_template_idx).exclusion_radius, ...
+                                               occupancy_bin, x_min_occ);
+        end
+
+        if ~is_valid
             consecutive_failures = consecutive_failures + 1;
             if consecutive_failures >= max_consecutive_failures
                 fprintf('    X-band %d saturated after %d consecutive failed attempts\n', ...
@@ -264,21 +327,34 @@ for iChunk = 1:n_x_chunks
         consecutive_failures = 0;
         particle_count = particle_count + 1;
 
-        % Rotate template on GPU with subpixel shifts
-        rotated_gpu = template_interp.interp3d(angles, shifts, 'Bah', 'forward', 'C1');
+        % Insert particle into tomogram if needed
+        if need_tomogram
+            % Rotate particle volume
+            rotated_gpu = templates(current_template_idx).interp.interp3d(angles, shifts, 'Bah', 'forward', 'C1');
 
-        % Copy back to CPU
-        rotated = gather(rotated_gpu);
+            % Rotate shape mask and threshold to get clean binary mask
+            rotated_mask_gpu = templates(current_template_idx).shape_mask_interp.interp3d(angles, shifts, 'Bah', 'forward', 'C1');
+            rotated_mask = gather(rotated_mask_gpu) > 0.5;
 
-        % Insert into tomogram (CPU)
-        tomogram = insert_particle(tomogram, rotated, pos, template_size);
+            % Apply mask: zero outside protein, subtract water inside protein
+            rotated = gather(rotated_gpu);
+            rotated(~rotated_mask) = 0;  % Zero outside protein boundary
+            rotated(rotated_mask) = rotated(rotated_mask) - water_density;  % Subtract water inside
 
-        % Update occupancy with binary mask shape (both GPU chunk and CPU full array)
-        [occupancy_chunk, occupancy_cpu] = update_occupancy_binary(pos, rotated_binary_binned, ...
-            occupancy_chunk, occupancy_cpu, occupancy_bin, x_min_occ, occupancy_size);
+            tomogram = insert_particle(tomogram, rotated, pos, templates(current_template_idx).size);
+        end
+
+        % Update occupancy (both GPU chunk and CPU full array)
+        if strcmp(collision_mode, 'shape')
+            [occupancy_chunk, occupancy_cpu] = update_occupancy_binary(pos, rotated_binary, ...
+                occupancy_chunk, occupancy_cpu, occupancy_bin, x_min_occ, occupancy_size);
+        else
+            [occupancy_chunk, occupancy_cpu] = update_occupancy_sphere(pos(1), pos(2), pos(3), ...
+                occupancy_chunk, occupancy_cpu, templates(current_template_idx).exclusion_radius, ...
+                occupancy_bin, x_min_occ);
+        end
 
         % Store particle data
-        origin = ceil((tomo_size + 1) / 2);
         pos_ang = (pos - origin) * pixel_size;  % Position in Angstroms
 
         particles.pos = [particles.pos; pos];
@@ -286,15 +362,25 @@ for iChunk = 1:n_x_chunks
         particles.angles = [particles.angles; angles];
         particles.shifts = [particles.shifts; shifts];
         particles.rotmat = cat(3, particles.rotmat, rotmat);
+        particles.template_idx = [particles.template_idx; current_template_idx];
+        particles.pdb_path = [particles.pdb_path; {templates(current_template_idx).pdb_path}];
 
-        % Report on first particle and every 10 thereafter
+        % Report progress
         if particle_count == 1 || mod(particle_count, 10) == 0
             elapsed = toc;
             rate = particle_count / elapsed;
-            fprintf('    Placed particle %d at [%d, %d, %d] (%.1f particles/sec)\n', ...
-                    particle_count, pos(1), pos(2), pos(3), rate);
+            if n_templates > 1
+                fprintf('    Placed particle %d (template %d) at [%d, %d, %d] (%.1f particles/sec)\n', ...
+                        particle_count, current_template_idx, pos(1), pos(2), pos(3), rate);
+            else
+                fprintf('    Placed particle %d at [%d, %d, %d] (%.1f particles/sec)\n', ...
+                        particle_count, pos(1), pos(2), pos(3), rate);
+            end
             last_report_time = elapsed;
         end
+
+        % Advance to next template (round-robin)
+        current_template_idx = mod(current_template_idx, n_templates) + 1;
     end
 
     % Check if we've reached limits
@@ -312,39 +398,191 @@ elapsed = toc;
 fprintf('Placement complete: %d particles in %.1f seconds\n', particle_count, elapsed);
 
 %% Save outputs
-fprintf('Saving tomogram to %s\n', tomo_path);
-SAVE_IMG(tomogram, tomo_path, pixel_size);
+% Always save CSV
+fprintf('Saving CSV to %s\n', outputs.csv_path);
+write_csv(outputs.csv_path, particles, 1);
 
-fprintf('Saving CSV to %s\n', csv_path);
-write_csv(csv_path, particles, 1);
+% Always save tomosize
+fprintf('Saving tomosize to %s\n', outputs.tomosize_path);
+write_tomosize(outputs.tomosize_path, tomo_size, pixel_size);
 
-% Save tomogram size/pixel info for reference (in case tomogram is deleted)
-[tomo_dir, tomo_name, ~] = fileparts(tomo_path);
-tomosize_path = fullfile(tomo_dir, sprintf('%s.tomosize', tomo_name));  % <tomogram_name>.tomosize
-fprintf('Saving tomosize to %s\n', tomosize_path);
-fid = fopen(tomosize_path, 'w');
-fprintf(fid, '%d\n', tomo_size(1));
-fprintf(fid, '%d\n', tomo_size(2));
-fprintf(fid, '%d\n', tomo_size(3));
-fprintf(fid, '%.6f\n', pixel_size);
-fclose(fid);
+% Optional: tomogram
+if build_tomogram
+    fprintf('Saving tomogram to %s\n', outputs.tomo_path);
+    SAVE_IMG(tomogram, outputs.tomo_path, pixel_size);
+end
 
-% Cleanup
-template_interp.delete();
-binary_binned_interp.delete();
+% Optional: projection
+if save_projection
+    fprintf('Saving projection to %s\n', outputs.proj_path);
+    projection = sum(tomogram, 3);
+    SAVE_IMG(projection, outputs.proj_path, pixel_size);
+end
 
+% Optional: starfile
+if output_starfile
+    fprintf('Saving starfile to %s\n', outputs.star_path);
+    defocus_values = calculate_defocus_from_z(particles, pixel_size);
+    write_starfile(outputs.star_path, particles, defocus_values, pixel_size);
+end
+
+%% Cleanup GPU interpolators
+if need_tomogram
+    for i = 1:n_templates
+        templates(i).interp.delete();
+        templates(i).shape_mask_interp.delete();
+    end
+end
+if strcmp(collision_mode, 'shape')
+    for i = 1:n_templates
+        templates(i).binary_interp.delete();
+    end
+end
+
+%% Print summary
 fprintf('Done. Output files:\n');
-fprintf('  Tomogram: %s\n', tomo_path);
-fprintf('  CSV: %s\n', csv_path);
-fprintf('  Tomosize: %s\n', tomosize_path);
+if build_tomogram
+    fprintf('  Tomogram: %s\n', outputs.tomo_path);
+end
+fprintf('  CSV: %s\n', outputs.csv_path);
+if output_starfile
+    fprintf('  Starfile: %s\n', outputs.star_path);
+end
+if save_projection
+    fprintf('  Projection: %s\n', outputs.proj_path);
+end
+fprintf('  Tomosize: %s\n', outputs.tomosize_path);
 
 end
 
-%% Helper functions
+%% ========================================================================
+%% Helper Functions
+%% ========================================================================
+
+function templates = normalize_template_inputs(template_inputs, exclusion_factor, collision_mode)
+%NORMALIZE_TEMPLATE_INPUTS Convert various input formats to struct array
+%
+%   Handles:
+%     - Single MRC path (string)
+%     - Cell array of MRC paths
+%     - Cell array of {mrc_path, pdb_path} pairs
+
+    if ischar(template_inputs)
+        % Single MRC path
+        mrc_paths = {template_inputs};
+        pdb_paths = {''};
+    elseif iscell(template_inputs)
+        if isempty(template_inputs)
+            error('EMC:syntheticTomogram', 'template_inputs cannot be empty');
+        end
+
+        % Check if it's cell of pairs or cell of strings
+        if iscell(template_inputs{1}) && numel(template_inputs{1}) == 2
+            % Cell array of {mrc, pdb} pairs
+            n = numel(template_inputs);
+            mrc_paths = cell(1, n);
+            pdb_paths = cell(1, n);
+            for i = 1:n
+                mrc_paths{i} = template_inputs{i}{1};
+                pdb_paths{i} = template_inputs{i}{2};
+            end
+        else
+            % Cell array of MRC paths (assume strings)
+            mrc_paths = template_inputs(:)';
+            pdb_paths = repmat({''}, 1, numel(mrc_paths));
+        end
+    else
+        error('EMC:syntheticTomogram', 'template_inputs must be a string or cell array');
+    end
+
+    n_templates = numel(mrc_paths);
+    templates = struct('mrc_path', cell(1, n_templates), ...
+                       'pdb_path', cell(1, n_templates), ...
+                       'volume', cell(1, n_templates), ...
+                       'size', cell(1, n_templates), ...
+                       'pixel_size', cell(1, n_templates), ...
+                       'particle_radius', cell(1, n_templates), ...
+                       'exclusion_radius', cell(1, n_templates), ...
+                       'avg_protein_density', cell(1, n_templates), ... % For water calculation
+                       'shape_mask', cell(1, n_templates), ...          % Undilated mask for volume masking
+                       'binary_mask', cell(1, n_templates), ...         % Dilated mask for collision (full-res)
+                       'binary_mask_binned', cell(1, n_templates), ...  % Dilated mask for collision (binned)
+                       'interp', cell(1, n_templates), ...
+                       'shape_mask_interp', cell(1, n_templates), ...   % For rotating shape mask
+                       'binary_interp', cell(1, n_templates));
+
+    occupancy_bin = 3;
+
+    for i = 1:n_templates
+        templates(i).mrc_path = mrc_paths{i};
+        templates(i).pdb_path = pdb_paths{i};
+
+        % Validate files exist
+        if ~isfile(mrc_paths{i})
+            error('EMC:syntheticTomogram', 'Template file does not exist: %s', mrc_paths{i});
+        end
+        if ~isempty(pdb_paths{i}) && ~isfile(pdb_paths{i})
+            error('EMC:syntheticTomogram', 'PDB file does not exist: %s', pdb_paths{i});
+        end
+
+        % Get pixel size from header
+        mrc_image = MRCImage(mrc_paths{i}, 0);
+        header = getHeader(mrc_image);
+        templates(i).pixel_size = header.cellDimensionX / header.nX;
+
+        % Load template volume
+        templates(i).volume = OPEN_IMG('single', mrc_paths{i});
+        templates(i).size = size(templates(i).volume);
+
+        % Pad to even if needed
+        pad_needed = mod(templates(i).size, 2);
+        if any(pad_needed)
+            templates(i).volume = BH_padZeros3d(templates(i).volume, [0,0,0], pad_needed, 'cpu', 'single');
+            templates(i).size = size(templates(i).volume);
+        end
+
+        % Create shape mask using EMC_maskReference (always needed for volume masking)
+        templates(i).shape_mask = EMC_maskReference(templates(i).volume, templates(i).pixel_size, ...
+                                                      {'lowpass', 14; 'threshold', 2.4});
+        templates(i).shape_mask = templates(i).shape_mask > 0.5;
+
+        % Detect particle radius from shape mask
+        center = ceil((templates(i).size + 1) / 2);
+        [X, Y, Z] = ndgrid(1:templates(i).size(1), 1:templates(i).size(2), 1:templates(i).size(3));
+        dist_from_center = sqrt((X - center(1)).^2 + (Y - center(2)).^2 + (Z - center(3)).^2);
+        templates(i).particle_radius = max(dist_from_center(templates(i).shape_mask));
+        templates(i).exclusion_radius = exclusion_factor * templates(i).particle_radius;
+
+        % Calculate average protein density (for water background calculation)
+        templates(i).avg_protein_density = mean(templates(i).volume(templates(i).shape_mask));
+
+        % Create binary mask for collision detection
+        if strcmp(collision_mode, 'shape')
+            % Dilate shape mask by exclusion_factor for collision detection
+            if exclusion_factor > 1.0
+                se_radius = round((exclusion_factor - 1.0) * max(templates(i).size) / 2);
+                if se_radius > 0
+                    se = strel('sphere', se_radius);
+                    templates(i).binary_mask = imdilate(templates(i).shape_mask, se);
+                else
+                    templates(i).binary_mask = templates(i).shape_mask;
+                end
+            else
+                templates(i).binary_mask = templates(i).shape_mask;
+            end
+
+            % Bin the binary mask for occupancy checking
+            templates(i).binary_mask_binned = bin_volume(templates(i).binary_mask, occupancy_bin) > 0;
+        else
+            % Sphere mode: no binary mask needed for collision
+            templates(i).binary_mask = [];
+            templates(i).binary_mask_binned = [];
+        end
+    end
+end
 
 function [phi, theta, psi_minus_phi, R] = generate_random_rotation()
 %GENERATE_RANDOM_ROTATION Generate uniform random rotation matching BH_defineMatrix
-%   Matches the random rotation generation in BH_defineMatrix.m lines 55-66
 
     % Generate random point on unit sphere
     randXYZ = rand(1, 3) - 0.5;
@@ -363,43 +601,68 @@ function [phi, theta, psi_minus_phi, R] = generate_random_rotation()
     psi = angles_deg(3);
     psi_minus_phi = psi - phi;
 
-    % Get rotation matrix for CSV output (using 'inv' direction as in template search)
+    % Get rotation matrix (using 'inv' direction as in template search)
     R = BH_defineMatrix([phi, theta, psi_minus_phi], 'Bah', 'inv');
 end
 
-function is_valid = check_collision(cx, cy, cz, occupancy, radius, bin_factor)
-%CHECK_COLLISION Check if position conflicts with existing particles (GPU, binned)
+function is_valid = check_collision_binary(pos, binary_mask, occupancy_chunk, ...
+                                           bin_factor, x_offset_occ, occupancy_size)
+%CHECK_COLLISION_BINARY Check if rotated binary mask overlaps with occupancy
 
-    % Scale coordinates and radius to binned space
-    cx_bin = round(cx / bin_factor);
-    cy_bin = round(cy / bin_factor);
-    cz_bin = round(cz / bin_factor);
-    radius_bin = radius / bin_factor;
+    mask_size = size(binary_mask);
+    half_mask = floor(mask_size / 2);
 
-    r = ceil(radius_bin);
-    radius_sq = radius_bin^2;
+    % Convert position to binned coordinates
+    pos_binned = round(pos / bin_factor);
 
-    % Get bounding box for exclusion sphere in binned coordinates
-    x_range = max(1, cx_bin-r):min(size(occupancy, 1), cx_bin+r);
-    y_range = max(1, cy_bin-r):min(size(occupancy, 2), cy_bin+r);
-    z_range = max(1, cz_bin-r):min(size(occupancy, 3), cz_bin+r);
+    % Calculate bounding box in binned occupancy coords
+    x1 = pos_binned(1) - half_mask(1);
+    x2 = x1 + mask_size(1) - 1;
+    y1 = pos_binned(2) - half_mask(2);
+    y2 = y1 + mask_size(2) - 1;
+    z1 = pos_binned(3) - half_mask(3);
+    z2 = z1 + mask_size(3) - 1;
 
-    % Extract local region (stays on GPU if occupancy is gpuArray)
-    local = occupancy(x_range, y_range, z_range);
+    % Clamp to occupancy bounds
+    x1_clamped = max(1, x1);
+    x2_clamped = min(occupancy_size(1), x2);
+    y1_clamped = max(1, y1);
+    y2_clamped = min(occupancy_size(2), y2);
+    z1_clamped = max(1, z1);
+    z2_clamped = min(occupancy_size(3), z2);
 
-    % Create sphere mask on GPU
-    [dx, dy, dz] = ndgrid(gpuArray(single(x_range - cx_bin)), ...
-                          gpuArray(single(y_range - cy_bin)), ...
-                          gpuArray(single(z_range - cz_bin)));
-    sphere_mask = (dx.^2 + dy.^2 + dz.^2) <= radius_sq;
+    % Convert to chunk-local X coordinates
+    x1_local = x1_clamped - x_offset_occ + 1;
+    x2_local = x2_clamped - x_offset_occ + 1;
 
-    % Check if any occupied voxels within sphere (gather single boolean)
-    is_valid = ~gather(any(local(sphere_mask)));
+    % Check if region overlaps with chunk
+    if x2_local < 1 || x1_local > size(occupancy_chunk, 1)
+        is_valid = true;  % Outside chunk, can't check here
+        return;
+    end
+
+    % Clamp to chunk bounds
+    x1_local = max(1, x1_local);
+    x2_local = min(size(occupancy_chunk, 1), x2_local);
+
+    % Extract corresponding region from binary mask
+    mask_x1 = x1_clamped - x1 + 1;
+    mask_x2 = x2_clamped - x1 + 1;
+    mask_y1 = y1_clamped - y1 + 1;
+    mask_y2 = y2_clamped - y1 + 1;
+    mask_z1 = z1_clamped - z1 + 1;
+    mask_z2 = z2_clamped - z1 + 1;
+
+    % Get the overlapping regions
+    mask_region = binary_mask(mask_x1:mask_x2, mask_y1:mask_y2, mask_z1:mask_z2);
+    occ_region = occupancy_chunk(x1_local:x2_local, y1_clamped:y2_clamped, z1_clamped:z2_clamped);
+
+    % Check for any overlap
+    is_valid = ~gather(any(mask_region(:) & occ_region(:)));
 end
 
-function is_valid = check_collision_chunked(cx, cy, cz, occupancy_chunk, radius, bin_factor, x_offset_occ)
-%CHECK_COLLISION_CHUNKED Check collision against GPU occupancy chunk with X offset
-%   x_offset_occ is the starting index of the chunk in the full occupancy array (binned coords)
+function is_valid = check_collision_sphere(cx, cy, cz, occupancy_chunk, radius, bin_factor, x_offset_occ)
+%CHECK_COLLISION_SPHERE Check collision using spherical exclusion zone
 
     % Scale coordinates and radius to binned space
     cx_bin = round(cx / bin_factor);
@@ -418,9 +681,9 @@ function is_valid = check_collision_chunked(cx, cy, cz, occupancy_chunk, radius,
     y_range = max(1, cy_bin-r):min(size(occupancy_chunk, 2), cy_bin+r);
     z_range = max(1, cz_bin-r):min(size(occupancy_chunk, 3), cz_bin+r);
 
-    % Check if range is valid (sphere might be partially outside chunk)
+    % Check if range is valid
     if isempty(x_range) || isempty(y_range) || isempty(z_range)
-        is_valid = true;  % Can't check, assume valid (will be checked by next chunk)
+        is_valid = true;
         return;
     end
 
@@ -437,39 +700,69 @@ function is_valid = check_collision_chunked(cx, cy, cz, occupancy_chunk, radius,
     is_valid = ~gather(any(local(sphere_mask)));
 end
 
-function occupancy = update_occupancy(cx, cy, cz, occupancy, radius, bin_factor)
-%UPDATE_OCCUPANCY Mark spherical region as occupied (GPU, binned)
+function [occupancy_chunk, occupancy_cpu] = update_occupancy_binary(pos, binary_mask, ...
+    occupancy_chunk, occupancy_cpu, bin_factor, x_offset_occ, occupancy_size)
+%UPDATE_OCCUPANCY_BINARY Insert rotated binary mask into occupancy maps
 
-    % Scale coordinates and radius to binned space
-    cx_bin = round(cx / bin_factor);
-    cy_bin = round(cy / bin_factor);
-    cz_bin = round(cz / bin_factor);
-    radius_bin = radius / bin_factor;
+    mask_size = size(binary_mask);
+    half_mask = floor(mask_size / 2);
 
-    r = ceil(radius_bin);
-    radius_sq = radius_bin^2;
+    % Convert position to binned coordinates
+    pos_binned = round(pos / bin_factor);
 
-    % Get bounding box for exclusion sphere in binned coordinates
-    x_range = max(1, cx_bin-r):min(size(occupancy, 1), cx_bin+r);
-    y_range = max(1, cy_bin-r):min(size(occupancy, 2), cy_bin+r);
-    z_range = max(1, cz_bin-r):min(size(occupancy, 3), cz_bin+r);
+    % Calculate bounding box in binned occupancy coords
+    x1 = pos_binned(1) - half_mask(1);
+    x2 = x1 + mask_size(1) - 1;
+    y1 = pos_binned(2) - half_mask(2);
+    y2 = y1 + mask_size(2) - 1;
+    z1 = pos_binned(3) - half_mask(3);
+    z2 = z1 + mask_size(3) - 1;
 
-    % Create sphere mask on GPU
-    [dx, dy, dz] = ndgrid(gpuArray(single(x_range - cx_bin)), ...
-                          gpuArray(single(y_range - cy_bin)), ...
-                          gpuArray(single(z_range - cz_bin)));
-    sphere_mask = (dx.^2 + dy.^2 + dz.^2) <= radius_sq;
+    % Clamp to occupancy bounds
+    x1_clamped = max(1, x1);
+    x2_clamped = min(occupancy_size(1), x2);
+    y1_clamped = max(1, y1);
+    y2_clamped = min(occupancy_size(2), y2);
+    z1_clamped = max(1, z1);
+    z2_clamped = min(occupancy_size(3), z2);
 
-    % Mark as occupied (stays on GPU)
-    local = occupancy(x_range, y_range, z_range);
-    local(sphere_mask) = true;
-    occupancy(x_range, y_range, z_range) = local;
+    % Extract corresponding region from binary mask
+    mask_x1 = x1_clamped - x1 + 1;
+    mask_x2 = x2_clamped - x1 + 1;
+    mask_y1 = y1_clamped - y1 + 1;
+    mask_y2 = y2_clamped - y1 + 1;
+    mask_z1 = z1_clamped - z1 + 1;
+    mask_z2 = z2_clamped - z1 + 1;
+
+    mask_region = binary_mask(mask_x1:mask_x2, mask_y1:mask_y2, mask_z1:mask_z2);
+
+    % Update CPU full array
+    cpu_region = occupancy_cpu(x1_clamped:x2_clamped, y1_clamped:y2_clamped, z1_clamped:z2_clamped);
+    cpu_region = cpu_region | mask_region;
+    occupancy_cpu(x1_clamped:x2_clamped, y1_clamped:y2_clamped, z1_clamped:z2_clamped) = cpu_region;
+
+    % Update GPU chunk (only if region overlaps with chunk)
+    x1_local = x1_clamped - x_offset_occ + 1;
+    x2_local = x2_clamped - x_offset_occ + 1;
+
+    if x2_local >= 1 && x1_local <= size(occupancy_chunk, 1)
+        x1_local = max(1, x1_local);
+        x2_local = min(size(occupancy_chunk, 1), x2_local);
+
+        % Adjust mask region for chunk
+        chunk_mask_x1 = x1_local - (x1_clamped - x_offset_occ + 1) + mask_x1;
+        chunk_mask_x2 = chunk_mask_x1 + (x2_local - x1_local);
+
+        chunk_mask = binary_mask(chunk_mask_x1:chunk_mask_x2, mask_y1:mask_y2, mask_z1:mask_z2);
+        gpu_region = occupancy_chunk(x1_local:x2_local, y1_clamped:y2_clamped, z1_clamped:z2_clamped);
+        gpu_region = gpu_region | gpuArray(chunk_mask);
+        occupancy_chunk(x1_local:x2_local, y1_clamped:y2_clamped, z1_clamped:z2_clamped) = gpu_region;
+    end
 end
 
-function [occupancy_chunk, occupancy_cpu] = update_occupancy_chunked(cx, cy, cz, ...
+function [occupancy_chunk, occupancy_cpu] = update_occupancy_sphere(cx, cy, cz, ...
     occupancy_chunk, occupancy_cpu, radius, bin_factor, x_offset_occ)
-%UPDATE_OCCUPANCY_CHUNKED Mark spherical region as occupied in both GPU chunk and CPU full array
-%   x_offset_occ is the starting index of the chunk in the full occupancy array (binned coords)
+%UPDATE_OCCUPANCY_SPHERE Mark spherical region as occupied in both arrays
 
     % Scale coordinates and radius to binned space
     cx_bin = round(cx / bin_factor);
@@ -535,9 +828,25 @@ function tomogram = insert_particle(tomogram, rotated, pos, template_size)
     tomogram(x1:x2, y1:y2, z1:z2) = tomogram(x1:x2, y1:y2, z1:z2) + rotated;
 end
 
+function binned = bin_volume(vol, bin_factor)
+%BIN_VOLUME Bin a 3D volume by averaging
+
+    sz = size(vol);
+    new_sz = ceil(sz / bin_factor);
+
+    % Pad to make divisible
+    pad_sz = new_sz * bin_factor - sz;
+    if any(pad_sz > 0)
+        vol = padarray(vol, pad_sz, 0, 'post');
+    end
+
+    % Reshape and average
+    vol = reshape(vol, bin_factor, new_sz(1), bin_factor, new_sz(2), bin_factor, new_sz(3));
+    binned = squeeze(mean(mean(mean(vol, 1), 3), 5));
+end
+
 function write_csv(csv_path, particles, sampling_rate)
 %WRITE_CSV Write particle parameters in emClarity 31-field format
-%   Matches format from BH_templateSearch3d_2.m lines 992-995
 
     fid = fopen(csv_path, 'w');
 
@@ -546,8 +855,6 @@ function write_csv(csv_path, particles, sampling_rate)
     for i = 1:n_particles
         r = reshape(particles.rotmat(:,:,i), 1, 9);
 
-        % Format: score, samplingRate, filler, id, 6 flags, posXYZ (Ang),
-        %         phi/theta/psi (deg), rotation matrix (9), final flag
         fprintf(fid, ['%1.2f %d %d %d %d %d %d %d %d %d ' ...
                       '%f %f %f %d %d %d ' ...
                       '%f %f %f %f %f %f %f %f %f %d '], ...
@@ -573,141 +880,138 @@ function write_csv(csv_path, particles, sampling_rate)
     fprintf('Wrote %d particles to CSV\n', n_particles);
 end
 
-function is_valid = check_collision_binary(pos, binary_mask, occupancy_chunk, ...
-                                           bin_factor, x_offset_occ, occupancy_size)
-%CHECK_COLLISION_BINARY Check if rotated binary mask overlaps with occupancy
-%   pos - particle position in full resolution coords
-%   binary_mask - rotated binned binary template
-%   occupancy_chunk - GPU chunk of occupancy map
-%   bin_factor - binning factor
-%   x_offset_occ - X offset of chunk in binned coords
-%   occupancy_size - full occupancy size
+function write_tomosize(tomosize_path, tomo_size, pixel_size)
+%WRITE_TOMOSIZE Write tomogram size and pixel size to file
 
-    mask_size = size(binary_mask);
-    half_mask = floor(mask_size / 2);
-
-    % Convert position to binned coordinates
-    pos_binned = round(pos / bin_factor);
-
-    % Calculate bounding box in binned occupancy coords
-    x1 = pos_binned(1) - half_mask(1);
-    x2 = x1 + mask_size(1) - 1;
-    y1 = pos_binned(2) - half_mask(2);
-    y2 = y1 + mask_size(2) - 1;
-    z1 = pos_binned(3) - half_mask(3);
-    z2 = z1 + mask_size(3) - 1;
-
-    % Clamp to occupancy bounds
-    x1_clamped = max(1, x1);
-    x2_clamped = min(occupancy_size(1), x2);
-    y1_clamped = max(1, y1);
-    y2_clamped = min(occupancy_size(2), y2);
-    z1_clamped = max(1, z1);
-    z2_clamped = min(occupancy_size(3), z2);
-
-    % Convert to chunk-local X coordinates
-    x1_local = x1_clamped - x_offset_occ + 1;
-    x2_local = x2_clamped - x_offset_occ + 1;
-
-    % Check if region overlaps with chunk
-    if x2_local < 1 || x1_local > size(occupancy_chunk, 1)
-        is_valid = true;  % Outside chunk, can't check here
-        return;
-    end
-
-    % Clamp to chunk bounds
-    x1_local = max(1, x1_local);
-    x2_local = min(size(occupancy_chunk, 1), x2_local);
-
-    % Extract corresponding region from binary mask
-    mask_x1 = x1_clamped - x1 + 1;
-    mask_x2 = x2_clamped - x1 + 1;
-    mask_y1 = y1_clamped - y1 + 1;
-    mask_y2 = y2_clamped - y1 + 1;
-    mask_z1 = z1_clamped - z1 + 1;
-    mask_z2 = z2_clamped - z1 + 1;
-
-    % Get the overlapping regions
-    mask_region = binary_mask(mask_x1:mask_x2, mask_y1:mask_y2, mask_z1:mask_z2);
-    occ_region = occupancy_chunk(x1_local:x2_local, y1_clamped:y2_clamped, z1_clamped:z2_clamped);
-
-    % Check for any overlap
-    is_valid = ~gather(any(mask_region(:) & occ_region(:)));
+    fid = fopen(tomosize_path, 'w');
+    fprintf(fid, '%d\n', tomo_size(1));
+    fprintf(fid, '%d\n', tomo_size(2));
+    fprintf(fid, '%d\n', tomo_size(3));
+    fprintf(fid, '%.6f\n', pixel_size);
+    fclose(fid);
 end
 
-function [occupancy_chunk, occupancy_cpu] = update_occupancy_binary(pos, binary_mask, ...
-    occupancy_chunk, occupancy_cpu, bin_factor, x_offset_occ, occupancy_size)
-%UPDATE_OCCUPANCY_BINARY Insert rotated binary mask into occupancy maps
-%   Updates both GPU chunk and CPU full array
+function defocus_values = calculate_defocus_from_z(particles, pixel_size)
+%CALCULATE_DEFOCUS_FROM_Z Encode Z positions as defocus values
 
-    mask_size = size(binary_mask);
-    half_mask = floor(mask_size / 2);
+    n_particles = size(particles.pos_ang, 1);
 
-    % Convert position to binned coordinates
-    pos_binned = round(pos / bin_factor);
+    % Get Z offsets relative to first particle
+    z_offsets = particles.pos_ang(:, 3) - particles.pos_ang(1, 3);
 
-    % Calculate bounding box in binned occupancy coords
-    x1 = pos_binned(1) - half_mask(1);
-    x2 = x1 + mask_size(1) - 1;
-    y1 = pos_binned(2) - half_mask(2);
-    y2 = y1 + mask_size(2) - 1;
-    z1 = pos_binned(3) - half_mask(3);
-    z2 = z1 + mask_size(3) - 1;
+    % Nominal defocus (2 microns = 20000 Angstroms)
+    nominal_defocus = 20000;
+    defocus_values = nominal_defocus - z_offsets;
 
-    % Clamp to occupancy bounds
-    x1_clamped = max(1, x1);
-    x2_clamped = min(occupancy_size(1), x2);
-    y1_clamped = max(1, y1);
-    y2_clamped = min(occupancy_size(2), y2);
-    z1_clamped = max(1, z1);
-    z2_clamped = min(occupancy_size(3), z2);
-
-    % Extract corresponding region from binary mask
-    mask_x1 = x1_clamped - x1 + 1;
-    mask_x2 = x2_clamped - x1 + 1;
-    mask_y1 = y1_clamped - y1 + 1;
-    mask_y2 = y2_clamped - y1 + 1;
-    mask_z1 = z1_clamped - z1 + 1;
-    mask_z2 = z2_clamped - z1 + 1;
-
-    mask_region = binary_mask(mask_x1:mask_x2, mask_y1:mask_y2, mask_z1:mask_z2);
-
-    % Update CPU full array
-    cpu_region = occupancy_cpu(x1_clamped:x2_clamped, y1_clamped:y2_clamped, z1_clamped:z2_clamped);
-    cpu_region = cpu_region | mask_region;
-    occupancy_cpu(x1_clamped:x2_clamped, y1_clamped:y2_clamped, z1_clamped:z2_clamped) = cpu_region;
-
-    % Update GPU chunk (only if region overlaps with chunk)
-    x1_local = x1_clamped - x_offset_occ + 1;
-    x2_local = x2_clamped - x_offset_occ + 1;
-
-    if x2_local >= 1 && x1_local <= size(occupancy_chunk, 1)
-        x1_local = max(1, x1_local);
-        x2_local = min(size(occupancy_chunk, 1), x2_local);
-
-        % Adjust mask region for chunk
-        chunk_mask_x1 = x1_local - (x1_clamped - x_offset_occ + 1) + mask_x1;
-        chunk_mask_x2 = chunk_mask_x1 + (x2_local - x1_local);
-
-        chunk_mask = binary_mask(chunk_mask_x1:chunk_mask_x2, mask_y1:mask_y2, mask_z1:mask_z2);
-        gpu_region = occupancy_chunk(x1_local:x2_local, y1_clamped:y2_clamped, z1_clamped:z2_clamped);
-        gpu_region = gpu_region | gpuArray(chunk_mask);
-        occupancy_chunk(x1_local:x2_local, y1_clamped:y2_clamped, z1_clamped:z2_clamped) = gpu_region;
-    end
+    % Adjust so first particle's defocus equals the average
+    offset_adj = mean(defocus_values) - defocus_values(1);
+    defocus_values = defocus_values + offset_adj;
 end
 
-function binned = bin_volume(vol, bin_factor)
-%BIN_VOLUME Bin a 3D volume by averaging
-    sz = size(vol);
-    new_sz = ceil(sz / bin_factor);
+function write_starfile(star_path, particles, defocus_values, pixel_size)
+%WRITE_STARFILE Write cisTEM-compatible starfile with 29 columns
 
-    % Pad to make divisible
-    pad_sz = new_sz * bin_factor - sz;
-    if any(pad_sz > 0)
-        vol = padarray(vol, pad_sz, 0, 'post');
+    fid = fopen(star_path, 'w');
+
+    % Write header
+    fprintf(fid, [ ...
+      '# Written by emClarity Version 2.0.0-alpha on %s\n\n' ...
+      'data_\n\n' ...
+      'loop_\n\n' ...
+      '_cisTEMPositionInStack #1\n' ...
+      '_cisTEMAnglePsi #2\n' ...
+      '_cisTEMAngleTheta #3\n' ...
+      '_cisTEMAnglePhi #4\n' ...
+      '_cisTEMXShift #5\n' ...
+      '_cisTEMYShift #6\n' ...
+      '_cisTEMDefocus1 #7\n' ...
+      '_cisTEMDefocus2 #8\n' ...
+      '_cisTEMDefocusAngle #9\n' ...
+      '_cisTEMPhaseShift #10\n' ...
+      '_cisTEMOccupancy #11\n' ...
+      '_cisTEMLogP #12\n' ...
+      '_cisTEMSigma #13\n' ...
+      '_cisTEMScore #14\n' ...
+      '_cisTEMScoreChange #15\n' ...
+      '_cisTEMPixelSize #16\n' ...
+      '_cisTEMMicroscopeVoltagekV #17\n' ...
+      '_cisTEMMicroscopeCsMM #18\n' ...
+      '_cisTEMAmplitudeContrast #19\n' ...
+      '_cisTEMBeamTiltX #20\n' ...
+      '_cisTEMBeamTiltY #21\n' ...
+      '_cisTEMImageShiftX #22\n' ...
+      '_cisTEMImageShiftY #23\n' ...
+      '_cisTEMBest2DClass #24\n' ...
+      '_cisTEMBeamTiltGroup #25\n' ...
+      '_cisTEMParticleGroup #26\n' ...
+      '_cisTEMPreExposure #27\n' ...
+      '_cisTEMTotalExposure #28\n' ...
+      '_cisTEMReference3DFilename #29\n' ...
+      ], datetime);
+
+    n_particles = size(particles.pos_ang, 1);
+
+    % Default optical parameters
+    micVoltage = 1;
+    micCS = 1;
+    ampContrast = 0;
+    phaseShift = 0;
+    occupancy = 100;
+    logp = -1000;
+    sigma = 10;
+    score = 10;
+    scoreChange = 0;
+    beamTiltX = 0;
+    beamTiltY = 0;
+    beamTiltShiftX = 0;
+    beamTiltShiftY = 0;
+    beamTiltGroup = 1;
+    particleGroup = 1;
+    preExposure = 0;
+    totalExposure = 0;
+
+    for i = 1:n_particles
+        % Get rotation matrix and convert to ZYZ Euler angles
+        R = particles.rotmat(:, :, i);
+        eul = rotm2eul(R, 'ZYZ');
+
+        % Convert to degrees and NEGATE for cisTEM convention
+        e1 = -180 / pi * eul(1);
+        e2 = -180 / pi * eul(2);
+        e3 = -180 / pi * eul(3);
+
+        % Position in Angstroms
+        xShift = particles.pos_ang(i, 1);
+        yShift = particles.pos_ang(i, 2);
+
+        % Defocus (same for df1 and df2, no astigmatism)
+        df1 = defocus_values(i);
+        df2 = defocus_values(i);
+        dfA = 0;
+
+        % Best 2D class based on template index
+        best2dClass = particles.template_idx(i);
+
+        % PDB path in single quotes (required by cisTEM)
+        pdb_path = particles.pdb_path{i};
+        if isempty(pdb_path)
+            pdb_path_quoted = '''none''';
+        else
+            pdb_path_quoted = sprintf('''%s''', pdb_path);
+        end
+
+        % Write data line
+        fprintf(fid, '%8u %7.2f %7.2f %7.2f %9.2f %9.2f %8.1f %8.1f %7.2f %7.2f %5i %7.2f %9i %10.4f %7.2f %8.5f %7.2f %7.2f %7.4f %7.3f %7.3f %7.3f %7.3f %5i %5i %8u %7.2f %7.2f %s\n', ...
+            i, e1, e2, e3, xShift, yShift, ...
+            df1, df2, dfA, ...
+            phaseShift, occupancy, logp, sigma, score, scoreChange, ...
+            pixel_size, micVoltage, micCS, ampContrast, ...
+            beamTiltX, beamTiltY, beamTiltShiftX, beamTiltShiftY, ...
+            best2dClass, beamTiltGroup, particleGroup, preExposure, totalExposure, ...
+            pdb_path_quoted);
     end
 
-    % Reshape and average
-    vol = reshape(vol, bin_factor, new_sz(1), bin_factor, new_sz(2), bin_factor, new_sz(3));
-    binned = squeeze(mean(mean(mean(vol, 1), 3), 5));
+    fclose(fid);
+
+    fprintf('Wrote %d particles to starfile\n', n_particles);
 end

@@ -118,8 +118,8 @@ tilt_angles = TLT(:, 4);
 fprintf('  Tilt range: %.1f to %.1f degrees\n', min(tilt_angles), max(tilt_angles));
 
 % Shifts from TLT columns 2-3 (pixels)
-shift_x = TLT(:, 2);
-shift_y = TLT(:, 3);
+shift_x = TLT(:, 2) - 0.5; % REVERT
+shift_y = TLT(:, 3) - 0.5; % REVERT
 
 % Calculate padding needed for Y-shift interpolation (P pixels on each side)
 % Y-component of rotated shift = shift_y (unchanged by Y-axis rotation)
@@ -149,6 +149,7 @@ else
     tilt_indices = 1:n_tilts;
 end
 
+
 %% Setup output
 projection_size = [tomo_size(1), tomo_size(2)];  % XY dimensions of tomogram
 output_stack = zeros([projection_size, n_tilts], 'single');
@@ -175,7 +176,56 @@ tic;
 
 first_tilt_process = true;
 slice_batch_size = 0;
-n_batches = 0; 
+n_batches = 0;
+
+%% Generate per-tilt in-plane rotation angles
+% Base rotation of -4 degrees with uniform random deviation of ±1 degree
+% Results in values between -5 and -3 degrees
+in_plane_base = -4.0;  % degrees
+in_plane_deviation = 1.0;  % ±1 degree uniform random
+in_plane_rotations = 0.*(in_plane_base + (2 * rand(n_tilts, 1) - 1) * in_plane_deviation); %revert
+fprintf('  In-plane rotation: base=%.1f deg, deviation=±%.1f deg\n', in_plane_base, in_plane_deviation);
+fprintf('  Range: [%.2f, %.2f] degrees\n', min(in_plane_rotations), max(in_plane_rotations));
+
+%% Pre-calculate maximum Y padding needed across all tilts
+% This allows us to pad the tomogram ONCE instead of per-chunk in the inner loop
+max_y_rotation_padding = 0;
+max_gX = max(abs(1 - tomo_origin(1)), abs(tomo_size(1) - tomo_origin(1)));
+
+for iTilt_prepass = 1:n_tilts
+    tilt_angle_prepass = tilt_angles(iTilt_prepass);
+    in_plane_rotation_prepass = in_plane_rotations(iTilt_prepass);
+    euler_angles_prepass = flip([0, tilt_angle_prepass, in_plane_rotation_prepass]);
+    rTilt_coordinate_prepass = BH_defineMatrix(euler_angles_prepass, 'SPIDER', 'fwdVector');
+    rTilt_sample_prepass = BH_defineMatrix(euler_angles_prepass, 'SPIDER', 'fwd');
+
+    % Calculate z extent for this tilt
+    corners_prepass = [1 - tomo_origin(1), tomo_size(1) - tomo_origin(1); ...
+                       1 - tomo_origin(3), tomo_size(3) - tomo_origin(3)];
+    z_rotated_prepass = [];
+    for cx = corners_prepass(1,:)
+        for cz = corners_prepass(2,:)
+            coord_mic = rTilt_coordinate_prepass * [cx; 0; cz];
+            z_rotated_prepass = [z_rotated_prepass, coord_mic(3)];
+        end
+    end
+    z_min_prepass = min(z_rotated_prepass);
+    z_max_prepass = max(z_rotated_prepass);
+    max_gZ_prepass = max(abs(z_min_prepass), abs(z_max_prepass));
+
+    y_rotation_padding_prepass = ceil(max_gX * abs(rTilt_sample_prepass(2,1)) + ...
+                                      max_gZ_prepass * abs(rTilt_sample_prepass(2,3))) + 1;
+    max_y_rotation_padding = max(max_y_rotation_padding, y_rotation_padding_prepass);
+end
+
+max_total_y_padding = shift_y_padding + max_y_rotation_padding;
+fprintf('  Maximum Y padding across all tilts: %d pixels\n', max_total_y_padding);
+
+%% Pad tomogram in Y dimension once (avoids repeated padarray calls in inner loop)
+tomogram = padarray(tomogram, [0, max_total_y_padding, 0], 'replicate', 'both');
+tomo_y_offset = max_total_y_padding;
+fprintf('  Tomogram padded in Y: new size [%d, %d, %d], offset=%d\n', ...
+        size(tomogram,1), size(tomogram,2), size(tomogram,3), tomo_y_offset);
 
 n_to_process = length(tilt_indices);
 for iProc = 1:n_to_process
@@ -187,7 +237,7 @@ for iProc = 1:n_to_process
     % For tilt with in-plane rotation: [0, tilt_angle, in_plane_angle]
     % 'fwdVector': active transform on vectors - use for transforming coordinates directly
     % 'fwd': active transform on specimen - use for interpolation/sampling
-    in_plane_rotation = 4.0;  % degrees, fixed for testing
+    in_plane_rotation = in_plane_rotations(iTilt);  % per-tilt value from pre-generated array
     euler_angles = flip([0, tilt_angle, in_plane_rotation]);
     rTilt_coordinate = BH_defineMatrix(euler_angles, 'SPIDER', 'fwdVector');
     rTilt_sample = BH_defineMatrix(euler_angles, 'SPIDER', 'fwd');
@@ -304,45 +354,48 @@ for iProc = 1:n_to_process
 
     % Pre-create coordinate grids for each Y-chunk (reuse across all slabs/batches)
     % Grids are sized for output (chunk_ny), but tomo_chunk will be larger (chunk_ny + 2P)
+    % Tomogram is pre-padded by tomo_y_offset, so adjust Y indices accordingly
     chunk_grids = cell(n_y_chunks, 1);
     chunk_grids_last = cell(n_y_chunks, 1);
+
+    % For in-plane rotation, gY must be relative to projection center, not chunk center
+    proj_origin_y = emc_get_origin_index([1, projection_size(2), 1]);
+
     for iChunk = 1:n_y_chunks
         y_start = (iChunk - 1) * chunk_size_y + 1;
         y_end = min(iChunk * chunk_size_y, projection_size(2));
         chunk_ny = y_end - y_start + 1;
 
         % Calculate Y range to load (with P-pixel margins for shift interpolation)
-        y_load_start = y_start - P;
-        y_load_end = y_end + P;
-
-        % Calculate padding needed for out-of-bounds regions
-        pad_before_y = max(0, 1 - y_load_start);
-        pad_after_y = max(0, y_load_end - tomo_size(2));
-
-        % Clamp to valid tomogram range
-        y_load_start_clamped = max(1, y_load_start);
-        y_load_end_clamped = min(tomo_size(2), y_load_end);
+        % Add tomo_y_offset since tomogram is pre-padded (no clamping/padding needed)
+        y_load_start = y_start - P + tomo_y_offset;
+        y_load_end = y_end + P + tomo_y_offset;
 
         % Origin adjusted for padded tomo_chunk: P + base_origin
         base_origin_y = emc_get_origin_index([1, chunk_ny, 1]);
         origin_y_padded = P + base_origin_y(2);
 
+        % Offset to make gY relative to projection center (for in-plane rotation)
+        % chunk gY is centered at chunk center; we need it relative to projection center
+        chunk_center_y = (y_start + y_end) / 2;
+        gY_rotation_offset = chunk_center_y - proj_origin_y(2);
+
         % Standard grids (sized for output chunk_ny, NOT the padded load size)
         [gX, gY, gZ] = EMC_coordGrids('cartesian', [projection_size(1), chunk_ny, slab_nz], 'gpu', {});
         chunk_grids{iChunk} = struct('gX', gX, 'gY', gY, 'gZ', gZ, ...
             'origin_y', origin_y_padded, ...
+            'gY_rotation_offset', gY_rotation_offset, ...
             'y_start', y_start, 'y_end', y_end, ...
-            'y_load_start', y_load_start_clamped, 'y_load_end', y_load_end_clamped, ...
-            'pad_before_y', pad_before_y, 'pad_after_y', pad_after_y);
+            'y_load_start', y_load_start, 'y_load_end', y_load_end);
 
         % Last slab grids (if different thickness)
         if last_slab_nz ~= slab_nz
             [gX, gY, gZ] = EMC_coordGrids('cartesian', [projection_size(1), chunk_ny, last_slab_nz], 'gpu', {});
             chunk_grids_last{iChunk} = struct('gX', gX, 'gY', gY, 'gZ', gZ, ...
                 'origin_y', origin_y_padded, ...
+                'gY_rotation_offset', gY_rotation_offset, ...
                 'y_start', y_start, 'y_end', y_end, ...
-                'y_load_start', y_load_start_clamped, 'y_load_end', y_load_end_clamped, ...
-                'pad_before_y', pad_before_y, 'pad_after_y', pad_after_y);
+                'y_load_start', y_load_start, 'y_load_end', y_load_end);
         end
     end
 
@@ -369,49 +422,43 @@ for iProc = 1:n_to_process
             y_start = chunk_grids{iChunk}.y_start;
             y_end = chunk_grids{iChunk}.y_end;
             origin_y = chunk_grids{iChunk}.origin_y;
+            gY_offset = chunk_grids{iChunk}.gY_rotation_offset;
 
-            % Load shifted Y-chunk of tomogram (integer shift pre-applied)
+            % Load Y-chunk of tomogram (already pre-padded, no additional padding needed)
             y_load_start = chunk_grids{iChunk}.y_load_start;
             y_load_end = chunk_grids{iChunk}.y_load_end;
-            pad_before = chunk_grids{iChunk}.pad_before_y;
-            pad_after = chunk_grids{iChunk}.pad_after_y;
+            tomo_chunk = gpuArray(tomogram(:, y_load_start:y_load_end, :));
 
-            tomo_chunk = tomogram(:, y_load_start:y_load_end, :);
-
-            % Apply padding for out-of-bounds regions (replicate edge values)
-            if pad_before > 0
-                tomo_chunk = padarray(tomo_chunk, [0, pad_before, 0], 'replicate', 'pre');
-            end
-            if pad_after > 0
-                tomo_chunk = padarray(tomo_chunk, [0, pad_after, 0], 'replicate', 'post');
-            end
-
-            tomo_chunk = gpuArray(tomo_chunk);
+            % Adjust origin_y to compensate for gY offset in rotation terms
+            % Using (gY + gY_offset) for rotation adds gY_offset*R(2,2) to Y sample position
+            % We subtract this to keep Y sampling in the correct chunk position
+            origin_y_adjusted = origin_y - gY_offset * rTilt_sample(2,2);
 
             % Process all slabs in this batch for this Y-chunk
-            % origin_y already includes P offset; use full this_shift_y (not decomposed)
+            % For in-plane rotation, use (gY + gY_offset) so rotation is about projection center
             for iLocal = 1:n_slabs_this_batch
                 iSlab = slab_start + iLocal - 1;
                 z_offset = z_slab_centers(iSlab);
 
                 % Sample slab and project - use last slab grids if different thickness
                 % Full 3x3 rotation for all coordinates (supports in-plane rotation)
+                % gY + gY_offset makes gY relative to projection center for proper rotation
                 if iSlab == n_slabs && last_slab_nz ~= slab_nz
                     gX = chunk_grids_last{iChunk}.gX;
-                    gY = chunk_grids_last{iChunk}.gY;
+                    gY = chunk_grids_last{iChunk}.gY + gY_offset;
                     gZ = chunk_grids_last{iChunk}.gZ + z_offset;
                     batch_slices{iLocal}(:, y_start:y_end) = sum(interpn(tomo_chunk, ...
                         gX * rTilt_sample(1,1) + gY * rTilt_sample(1,2) + gZ * rTilt_sample(1,3) + tomo_origin(1) + shifts_rot(1), ...
-                        gX * rTilt_sample(2,1) + gY * rTilt_sample(2,2) + gZ * rTilt_sample(2,3) + origin_y + shifts_rot(2), ...
+                        gX * rTilt_sample(2,1) + gY * rTilt_sample(2,2) + gZ * rTilt_sample(2,3) + origin_y_adjusted + shifts_rot(2), ...
                         gX * rTilt_sample(3,1) + gY * rTilt_sample(3,2) + gZ * rTilt_sample(3,3) + tomo_origin(3) + shifts_rot(3), ...
                         'linear', 0), 3);
                 else
                     gX = chunk_grids{iChunk}.gX;
-                    gY = chunk_grids{iChunk}.gY;
+                    gY = chunk_grids{iChunk}.gY + gY_offset;
                     gZ = chunk_grids{iChunk}.gZ + z_offset;
                     batch_slices{iLocal}(:, y_start:y_end) = sum(interpn(tomo_chunk, ...
                         gX * rTilt_sample(1,1) + gY * rTilt_sample(1,2) + gZ * rTilt_sample(1,3) + tomo_origin(1) + shifts_rot(1), ...
-                        gX * rTilt_sample(2,1) + gY * rTilt_sample(2,2) + gZ * rTilt_sample(2,3) + origin_y + shifts_rot(2), ...
+                        gX * rTilt_sample(2,1) + gY * rTilt_sample(2,2) + gZ * rTilt_sample(2,3) + origin_y_adjusted + shifts_rot(2), ...
                         gX * rTilt_sample(3,1) + gY * rTilt_sample(3,2) + gZ * rTilt_sample(3,3) + tomo_origin(3) + shifts_rot(3), ...
                         'linear', 0), 3);
                 end
@@ -481,11 +528,11 @@ for iProc = 1:n_to_process
 %    clear dU dV shift_phase
 
     % Apply Poisson noise if dose_scale > 0 (data already on GPU)
-    if dose_scale > 0
-        fprintf('    Adding Poisson noise: exposure_per_proj=%.2f, dose_this_projection=%.2f, dose_scale=%.2f\n', ...
-                exposure_per_proj(iTilt), dose_this_projection, dose_scale);
-        projection = poissrnd(projection);
-    end
+%    if dose_scale > 0
+%        fprintf('    Adding Poisson noise: exposure_per_proj=%.2f, dose_this_projection=%.2f, dose_scale=%.2f\n', ...
+%                exposure_per_proj(iTilt), dose_this_projection, dose_scale);
+%        projection = poissrnd(projection);
+%    end
 
     % Store result using projection index from TLT column 1
     output_stack(:,:,prj_index) = gather(projection);
@@ -504,23 +551,22 @@ elapsed = toc;
 fprintf('Projection complete: %d tilts in %.1f seconds (%.2f sec/tilt)\n', ...
         n_to_process, elapsed, elapsed/n_to_process);
 
-%% Update TLT file with in-plane rotation matrix (columns 7-10)
+%% Update TLT file with per-tilt in-plane rotation matrices (columns 7-10)
 % Store the 2D rotation matrix for IMOD .xf format:
-%   A11 A12 A21 A22 = [cos(φ), -sin(φ), sin(φ), cos(φ)]
+%   A11 A12 A21 A22 = [cos(φ), sin(φ), -sin(φ), cos(φ)] (inverse rotation)
 % This matches the convention used in BH_to_cisTEM_mapBack.m
-in_plane_for_tlt = 4.0;  % degrees, matching projection generation
-cos_phi = cosd(in_plane_for_tlt);
-sin_phi = sind(in_plane_for_tlt);
-
 % Store inverse rotation since we applied rotation to the sampling grid
 % Forward rotation of grid by φ = inverse rotation of image by φ
+cos_phi = cosd(in_plane_rotations);
+sin_phi = sind(in_plane_rotations);
+
 TLT(:, 7) = cos_phi;   % A11
 TLT(:, 8) = sin_phi;   % A12 (inverted: +sin instead of -sin)
 TLT(:, 9) = -sin_phi;  % A21 (inverted: -sin instead of +sin)
 TLT(:, 10) = cos_phi;  % A22
 
-fprintf('Updating TLT file with in-plane rotation: %.1f degrees\n', in_plane_for_tlt);
-fprintf('  Inverse rotation matrix (for .xf): [%.4f, %.4f; %.4f, %.4f]\n', cos_phi, sin_phi, -sin_phi, cos_phi);
+fprintf('Updating TLT file with per-tilt in-plane rotations\n');
+fprintf('  Range: [%.2f, %.2f] degrees\n', min(in_plane_rotations), max(in_plane_rotations));
 
 % Write updated TLT file
 fid = fopen(tiltfile_path, 'w');
@@ -539,8 +585,35 @@ end
 fclose(fid);
 fprintf('  Updated %s\n', tiltfile_path);
 
-%% Save output stack
+%% Save output stack as integer (uint8 if possible, otherwise uint16)
+% Poisson-sampled counts are positive integers
+max_val = max(output_stack(:));
+min_val = min(output_stack(:));
 fprintf('Saving projection stack to %s\n', stack_path);
+fprintf('  Value range: [%.1f, %.1f]\n', min_val, max_val);
+
+if min_val < 0
+    warning('EMC:generate_projections', ...
+            'Min value %.1f is negative, clipping to 0', min_val);
+    output_stack = max(output_stack, 0);
+end
+
+with_poisson = false
+if with_poisson
+    if max_val <= 255
+        % Fits in uint8 (MRC mode 0)
+        fprintf('  Saving as uint8 (8-bit)\n');
+        output_stack = uint8(output_stack);
+    elseif max_val <= 65535
+        % Fits in uint16 (MRC mode 6)
+        fprintf('  Saving as uint16 (16-bit)\n');
+        output_stack = uint16(output_stack);
+    else
+        warning('EMC:generate_projections', ...
+                'Max value %.1f exceeds uint16 range (65535), clipping', max_val);
+        output_stack = uint16(min(output_stack, 65535));
+    end
+end
 SAVE_IMG(output_stack, stack_path, pixel_size);
 
 

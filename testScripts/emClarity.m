@@ -182,6 +182,9 @@ if nArgs > 1 && ~(emcHelp || emcProgramHelp)
     case 'mask'
       % mask command doesn't need parameter file
       multiGPUs = 0;
+    case 'simulate'
+      % simulate commands are standalone (no parameter file)
+      multiGPUs = 0;
     otherwise
       emc = emC_testParse(varargin{2});
   end
@@ -247,7 +250,9 @@ switch varargin{1}
       '  rescale             - Change magnification of volume\n',...
       '  reconstruct         - Reconstruct volume from subtomograms\n',...
       '  montage             - Unstack/rotate montage elements\n',...
-      '  experimental        - Access experimental features\n\n']);
+      '  experimental        - Access experimental features\n\n',...
+      '--- Simulation ---\n',...
+      '  simulate            - Generate synthetic data (tomograms, tilt files, projections)\n\n']);
     
     % Currently disabled options. Multi-reference alignment
     % % %                       '\nalignRef - align one or more references against a primary ref\n',...
@@ -633,6 +638,129 @@ switch varargin{1}
           
         otherwise
           error('ctf operations are estimate,refine,update, or 3d.');
+      end
+    end
+  case 'simulate'
+    if emcProgramHelp
+      fprintf(['\nUsage: emClarity simulate <subcommand> [arguments]\n\n',...
+        'Generate synthetic cryo-EM data for testing and validation.\n\n',...
+        'Subcommands:\n\n',...
+        'tomogram    - Generate synthetic 3D tomogram with placed particles\n',...
+        '  Usage: emClarity simulate tomogram <template_input> <tomo_size_xyz> <exclusion_factor> <output_path> <output_prefix> [options]\n',...
+        '    template_input  - Either:\n',...
+        '                      - Path to single MRC file\n',...
+        '                      - Path to text file listing MRC/PDB pairs (alternating lines):\n',...
+        '                        Line 1: template1.mrc\n',...
+        '                        Line 2: model1.pdb\n',...
+        '                        Line 3: template2.mrc\n',...
+        '                        Line 4: model2.cif\n',...
+        '    tomo_size_xyz   - Tomogram dimensions as "nX,nY,nZ"\n',...
+        '    exclusion_factor - Particle exclusion radius multiplier (>=1.0)\n',...
+        '    output_path     - Output directory (must exist)\n',...
+        '    output_prefix   - Output file prefix\n',...
+        '    Options: max_particles, gpu_id, collision_mode, add_water_background, output_starfile\n\n',...
+        'tlt_file    - Generate synthetic tilt geometry file\n',...
+        '  Usage: emClarity simulate tlt_file <tomogram_path> <defocus_angstrom> [options]\n',...
+        '    tomogram_path    - Path to tomogram MRC file\n',...
+        '    defocus_angstrom - Mean defocus in Angstroms (positive = underfocus)\n',...
+        '    Options: tilt_range, tilt_step, dose_per_image, defocus_std_angstrom, Cs_mm, voltage_kev\n\n',...
+        'projections - Generate tilt series from tomogram\n',...
+        '  Usage: emClarity simulate projections <tomogram_path> <tiltfile_path> <slab_thickness_angstrom> [options]\n',...
+        '    tomogram_path          - Path to synthetic tomogram\n',...
+        '    tiltfile_path          - Path to _ctf.tlt file\n',...
+        '    slab_thickness_angstrom - Slab thickness for wave propagation\n',...
+        '    Options: gpu_id, dose_scale, st_suffix, cleanup_tomos\n\n',...
+        'project     - Set up complete emClarity project from synthetic data\n',...
+        '  Usage: emClarity simulate project <project_path> <synthetic_data_path> <particle_radius> <particle_mass> [options]\n',...
+        '    project_path        - Full path to new project directory\n',...
+        '    synthetic_data_path - Path containing synthetic data files\n',...
+        '    particle_radius     - Particle radius in Angstroms\n',...
+        '    particle_mass       - Particle mass in Megadaltons\n',...
+        '    Options: dose_scale, gpu, st_suffix, nGPUs, nCpuCores, symmetry\n\n',...
+        'Examples:\n',...
+        '  emClarity simulate tomogram /data/template.mrc 512,512,256 1.5 /output synthetic_001\n',...
+        '  emClarity simulate tomogram /data/templates.txt 512,512,256 1.5 /output synthetic_001\n',...
+        '  emClarity simulate tlt_file /output/synthetic_001.mrc 15000\n',...
+        '  emClarity simulate projections /output/synthetic_001.mrc /output/synthetic_001_ctf.tlt 5\n',...
+        '  emClarity simulate project /projects/synthetic /output 80 50 symmetry C12\n']);
+    else
+      if length(varargin) < 2
+        error('simulate requires a subcommand: tomogram, tlt_file, projections, or project');
+      end
+
+      switch varargin{2}
+        case 'tomogram'
+          % Required: simulate tomogram template_input tomo_size exclusion output_path output_prefix
+          if length(varargin) < 7
+            error('simulate tomogram requires: <template_input> <tomo_size_xyz> <exclusion_factor> <output_path> <output_prefix>');
+          end
+          % Parse template input - can be single MRC or text file with MRC/PDB pairs
+          template_input_path = varargin{3};
+          if ~exist(template_input_path, 'file')
+            error('Template input file not found: %s', template_input_path);
+          end
+          template_inputs = parse_simulate_template_input(template_input_path);
+          % Validate output directory exists
+          if ~isfolder(varargin{6})
+            error('Output directory does not exist: %s', varargin{6});
+          end
+          % Parse tomo_size from "nX,nY,nZ" string
+          tomo_size = str2double(strsplit(varargin{4}, ','));
+          if length(tomo_size) ~= 3 || any(isnan(tomo_size))
+            error('tomo_size_xyz must be three comma-separated integers (e.g., "512,512,256")');
+          end
+          % Collect optional name-value pairs
+          opts = parse_simulate_options(varargin(8:end));
+          EMC_syntheticTomogram(template_inputs, tomo_size, ...
+                                str2double(varargin{5}), varargin{6}, varargin{7}, opts{:});
+
+        case 'tlt_file'
+          % Required: simulate tlt_file tomogram_path defocus_angstrom
+          if length(varargin) < 4
+            error('simulate tlt_file requires: <tomogram_path> <defocus_angstrom>');
+          end
+          % Validate tomogram exists
+          if ~exist(varargin{3}, 'file')
+            error('Tomogram file not found: %s', varargin{3});
+          end
+          opts = parse_simulate_options(varargin(5:end));
+          EMC_generate_synthetic_tltFile(varargin{3}, str2double(varargin{4}), opts{:});
+
+        case 'projections'
+          % Required: simulate projections tomogram_path tiltfile_path slab_thickness
+          if length(varargin) < 5
+            error('simulate projections requires: <tomogram_path> <tiltfile_path> <slab_thickness_angstrom>');
+          end
+          % Validate files exist
+          if ~exist(varargin{3}, 'file')
+            error('Tomogram file not found: %s', varargin{3});
+          end
+          if ~exist(varargin{4}, 'file')
+            error('Tilt file not found: %s', varargin{4});
+          end
+          opts = parse_simulate_options(varargin(6:end));
+          EMC_generate_projections(varargin{3}, varargin{4}, ...
+                                    str2double(varargin{5}), opts{:});
+
+        case 'project'
+          % Required: simulate project project_path data_path particle_radius particle_mass
+          if length(varargin) < 6
+            error('simulate project requires: <project_path> <synthetic_data_path> <particle_radius> <particle_mass>');
+          end
+          % Validate project path does not exist
+          if isfolder(varargin{3})
+            error('Project directory already exists: %s', varargin{3});
+          end
+          % Validate data path exists
+          if ~isfolder(varargin{4})
+            error('Synthetic data directory not found: %s', varargin{4});
+          end
+          opts = parse_simulate_options(varargin(7:end));
+          EMC_setup_synthetic_project(varargin{3}, varargin{4}, ...
+                                       str2double(varargin{5}), str2double(varargin{6}), opts{:});
+
+        otherwise
+          error('simulate operations are: tomogram, tlt_file, projections, project');
       end
     end
   case 'tomoCPR'
@@ -1072,4 +1200,129 @@ fprintf('\nzShift\tselect tiles with a defocus offset. Determine tilt gradient.\
 
 
 end % end of print experimental options
+
+function opts = parse_simulate_options(args)
+% Parse name-value pairs from command line for simulate commands
+%
+% Converts string arguments to appropriate types (numbers, vectors, strings).
+% Handles comma-separated values as numeric vectors.
+%
+% Input:
+%   args - Cell array of command-line arguments (name-value pairs)
+%
+% Output:
+%   opts - Cell array suitable for passing to functions as varargin
+%
+% Example:
+%   parse_simulate_options({'max_particles', '500', 'tilt_range', '-60,60'})
+%   Returns: {'max_particles', 500, 'tilt_range', [-60, 60]}
+
+opts = {};
+i = 1;
+while i <= length(args)
+  param_name = args{i};
+  if i+1 <= length(args)
+    param_value = args{i+1};
+    % Try to convert to number if it looks like one
+    num_val = str2double(param_value);
+    if ~isnan(num_val)
+      opts{end+1} = param_name;
+      opts{end+1} = num_val;
+    else
+      % Check for comma-separated numeric vector
+      if contains(param_value, ',')
+        vec_vals = str2double(strsplit(param_value, ','));
+        if ~any(isnan(vec_vals))
+          opts{end+1} = param_name;
+          opts{end+1} = vec_vals;
+        else
+          % Keep as string if not all numeric
+          opts{end+1} = param_name;
+          opts{end+1} = param_value;
+        end
+      else
+        % Keep as string
+        opts{end+1} = param_name;
+        opts{end+1} = param_value;
+      end
+    end
+    i = i + 2;
+  else
+    error('Missing value for parameter: %s', param_name);
+  end
+end
+end % end of parse_simulate_options
+
+function template_inputs = parse_simulate_template_input(input_path)
+% Parse template input file for simulate tomogram command
+%
+% Determines if input is:
+%   - Single MRC file -> returns the path string
+%   - Text file with MRC/PDB pairs -> returns cell array of {mrc, pdb} pairs
+%
+% Text file format (alternating lines):
+%   Line 1: path/to/template1.mrc
+%   Line 2: path/to/model1.pdb
+%   Line 3: path/to/template2.mrc
+%   Line 4: path/to/model2.cif
+%   ...
+%
+% Input:
+%   input_path - Path to single MRC file or text file with MRC/PDB pairs
+%
+% Output:
+%   template_inputs - Either string (single MRC) or cell array of {mrc, pdb} pairs
+
+[~, ~, ext] = fileparts(input_path);
+
+% Check if it's a single MRC file
+if strcmpi(ext, '.mrc')
+  template_inputs = input_path;
+  return;
+end
+
+% Otherwise, treat as text file with MRC/PDB pairs
+fid = fopen(input_path, 'r');
+if fid == -1
+  error('Cannot open template input file: %s', input_path);
+end
+cleanup = onCleanup(@() fclose(fid));
+
+lines = {};
+while ~feof(fid)
+  line = strtrim(fgetl(fid));
+  if ~isempty(line) && ~startsWith(line, '#')  % Skip empty lines and comments
+    lines{end+1} = line;
+  end
+end
+
+n_lines = length(lines);
+if n_lines == 0
+  error('Template input file is empty: %s', input_path);
+end
+
+if mod(n_lines, 2) ~= 0
+  error('Template input file must have even number of lines (MRC/PDB pairs): %s has %d lines', input_path, n_lines);
+end
+
+% Build cell array of {mrc, pdb} pairs
+n_pairs = n_lines / 2;
+template_inputs = cell(1, n_pairs);
+for i = 1:n_pairs
+  mrc_path = lines{2*i - 1};
+  pdb_path = lines{2*i};
+
+  % Validate files exist
+  if ~exist(mrc_path, 'file')
+    error('Template MRC file not found: %s', mrc_path);
+  end
+  if ~exist(pdb_path, 'file')
+    error('Template PDB/CIF file not found: %s', pdb_path);
+  end
+
+  template_inputs{i} = {mrc_path, pdb_path};
+end
+
+fprintf('Parsed %d MRC/PDB template pair(s) from %s\n', n_pairs, input_path);
+end % end of parse_simulate_template_input
 
