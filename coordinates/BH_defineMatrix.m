@@ -101,6 +101,11 @@ elseif strcmpi(DIRECTION, 'inverse') || strcmpi(DIRECTION, 'inv') || strcmpi(DIR
   % IMPORTANT NOTE: because the order is flipped, successive rotations by
   % multiple matrices must be right multplied for inverse operations. eg:
   % R1(e1,e2,e3) & R2(e4,e5,e6) then Rtot = R1 * R2 = e1*e2*e3*e4*e5*e6*Mat
+  % NOTE on flip: the flip is unflipped (which is very confusing) so the preceding line is what is implemented.
+  % NOTE on sense: this is also confusing, the definition used here rotates a vector anti-clockwise for a positive rotation. 
+  % We are using this to mean, the particle is rotated in this manner and we want to rotate it by -1*angle. By rotating the interpolant grid
+  % by +angle we get the value there and bring it back (rotate by -angle) to the average frame. In that meaning, the sense/sign is "inverted"
+  % So to recap, angles passed in are considered active intrinsict rotations, e1, then e2', then e3'' (or extrinsic e3,e2,e1)
   angles = flip(angles);
   %   angles = [angles(3), angles(2), angles(1)];
 else

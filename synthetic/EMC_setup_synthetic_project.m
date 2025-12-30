@@ -306,6 +306,12 @@ for i = 1:n_tomos
     shift_x_sorted = EMC_tlt_get_projection_values(tlt_data, 2);
     shift_y_sorted = EMC_tlt_get_projection_values(tlt_data, 3);
 
+    % Get rotation matrix elements from TLT columns 7-10 (A11, A12, A21, A22)
+    A11_sorted = EMC_tlt_get_projection_values(tlt_data, 7);
+    A12_sorted = EMC_tlt_get_projection_values(tlt_data, 8);
+    A21_sorted = EMC_tlt_get_projection_values(tlt_data, 9);
+    A22_sorted = EMC_tlt_get_projection_values(tlt_data, 10);
+
     % Write .tlt file (just tilt angles, one per line)
     tlt_angles_dest = fullfile(project_path, 'fixedStacks', sprintf('%s.tlt', tilt_name));
     fid = fopen(tlt_angles_dest, 'w');
@@ -315,12 +321,13 @@ for i = 1:n_tomos
     fclose(fid);
     fprintf('  Created fixedStacks/%s.tlt\n', tilt_name);
 
-    % Write .xf file (A11 A12 A21 A22 dX dY - identity rotation with shifts)
+    % Write .xf file (A11 A12 A21 A22 dX dY - rotation matrix from TLT with shifts)
     xf_dest = fullfile(project_path, 'fixedStacks', sprintf('%s.xf', tilt_name));
     fid = fopen(xf_dest, 'w');
     for j = 1:length(tilt_angles_sorted)
-        % Identity rotation matrix [1 0; 0 1] with shifts from TLT
-        fprintf(fid, '%f %f %f %f %f %f\n', 1.0, 0.0, 0.0, 1.0, ...
+        % Rotation matrix from TLT columns 7-10 with shifts from columns 2-3
+        fprintf(fid, '%f %f %f %f %f %f\n', ...
+                A11_sorted(j), A12_sorted(j), A21_sorted(j), A22_sorted(j), ...
                 shift_x_sorted(j), shift_y_sorted(j));
     end
     fclose(fid);

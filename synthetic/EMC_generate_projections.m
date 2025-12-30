@@ -182,11 +182,15 @@ for iProc = 1:n_to_process
     iTilt = tilt_indices(iProc);
     tilt_angle = tilt_angles(iTilt);
 
-    % Get rotation matrix using emClarity convention ('TILT' = Ry matrix)
+    % Get rotation matrix using SPIDER (ZYZ) convention for in-plane rotation support
+    % SPIDER convention: [e1, e2, e3] = Rz(e3) * Ry(e2) * Rz(e1)
+    % For tilt with in-plane rotation: [0, tilt_angle, in_plane_angle]
     % 'fwdVector': active transform on vectors - use for transforming coordinates directly
     % 'fwd': active transform on specimen - use for interpolation/sampling
-    rTilt_coordinate = BH_defineMatrix(tilt_angle, 'TILT', 'fwdVector');
-    rTilt_sample = BH_defineMatrix(tilt_angle, 'TILT', 'fwd');
+    in_plane_rotation = 4.0;  % degrees, fixed for testing
+    euler_angles = flip([0, tilt_angle, in_plane_rotation]);
+    rTilt_coordinate = BH_defineMatrix(euler_angles, 'SPIDER', 'fwdVector');
+    rTilt_sample = BH_defineMatrix(euler_angles, 'SPIDER', 'fwd');
 
     % Calculate bounding box of rotated tomogram in microscope Z
     % Corner coordinates relative to origin (use pre-calculated tomo_origin)
@@ -206,6 +210,18 @@ for iProc = 1:n_to_process
 
     z_min = min(z_rotated);
     z_max = max(z_rotated);
+
+    % Calculate Y padding needed for in-plane rotation
+    % With in-plane rotation, Y sampling depends on full rotation:
+    %   Y_sample = gX * R(2,1) + gY * R(2,2) + gZ * R(2,3)
+    % Maximum Y deviation from nominal position = |gX_max * R(2,1)| + |gZ_max * R(2,3)|
+    max_gX = max(abs(1 - tomo_origin(1)), abs(tomo_size(1) - tomo_origin(1)));
+    max_gZ = max(abs(z_min), abs(z_max));
+    y_rotation_padding = ceil(max_gX * abs(rTilt_sample(2,1)) + ...
+                              max_gZ * abs(rTilt_sample(2,3))) + 1;
+    total_y_padding = shift_y_padding + y_rotation_padding;
+    fprintf('  Y-rotation padding: %d pixels (total Y padding: %d)\n', ...
+            y_rotation_padding, total_y_padding);
 
     % Number of slabs to process
     % If the last slab would be undersized, combine it with the second-to-last
@@ -284,7 +300,7 @@ for iProc = 1:n_to_process
 
     % Y-shift for this tilt (Y unchanged by Y-axis rotation)
     this_shift_y = shifts_rot(2);
-    P = shift_y_padding;  % Pre-computed padding for max shift coverage
+    P = total_y_padding;  % Includes both shift and rotation padding
 
     % Pre-create coordinate grids for each Y-chunk (reuse across all slabs/batches)
     % Grids are sized for output (chunk_ny), but tomo_chunk will be larger (chunk_ny + 2P)
@@ -379,17 +395,24 @@ for iProc = 1:n_to_process
                 z_offset = z_slab_centers(iSlab);
 
                 % Sample slab and project - use last slab grids if different thickness
+                % Full 3x3 rotation for all coordinates (supports in-plane rotation)
                 if iSlab == n_slabs && last_slab_nz ~= slab_nz
+                    gX = chunk_grids_last{iChunk}.gX;
+                    gY = chunk_grids_last{iChunk}.gY;
+                    gZ = chunk_grids_last{iChunk}.gZ + z_offset;
                     batch_slices{iLocal}(:, y_start:y_end) = sum(interpn(tomo_chunk, ...
-                        chunk_grids_last{iChunk}.gX * rTilt_sample(1,1) + (chunk_grids_last{iChunk}.gZ + z_offset) * rTilt_sample(1,3) + tomo_origin(1) + shifts_rot(1), ...
-                        chunk_grids_last{iChunk}.gY + origin_y + this_shift_y, ...
-                        chunk_grids_last{iChunk}.gX * rTilt_sample(3,1) + (chunk_grids_last{iChunk}.gZ + z_offset) * rTilt_sample(3,3) + tomo_origin(3) + shifts_rot(3), ...
+                        gX * rTilt_sample(1,1) + gY * rTilt_sample(1,2) + gZ * rTilt_sample(1,3) + tomo_origin(1) + shifts_rot(1), ...
+                        gX * rTilt_sample(2,1) + gY * rTilt_sample(2,2) + gZ * rTilt_sample(2,3) + origin_y + shifts_rot(2), ...
+                        gX * rTilt_sample(3,1) + gY * rTilt_sample(3,2) + gZ * rTilt_sample(3,3) + tomo_origin(3) + shifts_rot(3), ...
                         'linear', 0), 3);
                 else
+                    gX = chunk_grids{iChunk}.gX;
+                    gY = chunk_grids{iChunk}.gY;
+                    gZ = chunk_grids{iChunk}.gZ + z_offset;
                     batch_slices{iLocal}(:, y_start:y_end) = sum(interpn(tomo_chunk, ...
-                        chunk_grids{iChunk}.gX * rTilt_sample(1,1) + (chunk_grids{iChunk}.gZ + z_offset) * rTilt_sample(1,3) + tomo_origin(1) + shifts_rot(1), ...
-                        chunk_grids{iChunk}.gY + origin_y + this_shift_y, ...
-                        chunk_grids{iChunk}.gX * rTilt_sample(3,1) + (chunk_grids{iChunk}.gZ + z_offset) * rTilt_sample(3,3) + tomo_origin(3) + shifts_rot(3), ...
+                        gX * rTilt_sample(1,1) + gY * rTilt_sample(1,2) + gZ * rTilt_sample(1,3) + tomo_origin(1) + shifts_rot(1), ...
+                        gX * rTilt_sample(2,1) + gY * rTilt_sample(2,2) + gZ * rTilt_sample(2,3) + origin_y + shifts_rot(2), ...
+                        gX * rTilt_sample(3,1) + gY * rTilt_sample(3,2) + gZ * rTilt_sample(3,3) + tomo_origin(3) + shifts_rot(3), ...
                         'linear', 0), 3);
                 end
             end
@@ -480,6 +503,41 @@ end
 elapsed = toc;
 fprintf('Projection complete: %d tilts in %.1f seconds (%.2f sec/tilt)\n', ...
         n_to_process, elapsed, elapsed/n_to_process);
+
+%% Update TLT file with in-plane rotation matrix (columns 7-10)
+% Store the 2D rotation matrix for IMOD .xf format:
+%   A11 A12 A21 A22 = [cos(φ), -sin(φ), sin(φ), cos(φ)]
+% This matches the convention used in BH_to_cisTEM_mapBack.m
+in_plane_for_tlt = 4.0;  % degrees, matching projection generation
+cos_phi = cosd(in_plane_for_tlt);
+sin_phi = sind(in_plane_for_tlt);
+
+% Store inverse rotation since we applied rotation to the sampling grid
+% Forward rotation of grid by φ = inverse rotation of image by φ
+TLT(:, 7) = cos_phi;   % A11
+TLT(:, 8) = sin_phi;   % A12 (inverted: +sin instead of -sin)
+TLT(:, 9) = -sin_phi;  % A21 (inverted: -sin instead of +sin)
+TLT(:, 10) = cos_phi;  % A22
+
+fprintf('Updating TLT file with in-plane rotation: %.1f degrees\n', in_plane_for_tlt);
+fprintf('  Inverse rotation matrix (for .xf): [%.4f, %.4f; %.4f, %.4f]\n', cos_phi, sin_phi, -sin_phi, cos_phi);
+
+% Write updated TLT file
+fid = fopen(tiltfile_path, 'w');
+if fid == -1
+    error('EMC:generate_projections', 'Could not open TLT file for writing: %s', tiltfile_path);
+end
+
+% Format string matching BH_ctf_Estimate.m output format
+fmt = ['%d\t%08.2f\t%08.2f\t%07.3f\t%07.3f\t%07.3f\t%07.7f\t%07.7f\t', ...
+       '%07.7f\t%07.7f\t%5e\t%5e\t%5e\t%7e\t%5e\t%5e\t%5e\t%5e\t%5e\t', ...
+       '%d\t%d\t%d\t%8.2f\n'];
+
+for i = 1:n_tilts
+    fprintf(fid, fmt, TLT(i, :));
+end
+fclose(fid);
+fprintf('  Updated %s\n', tiltfile_path);
 
 %% Save output stack
 fprintf('Saving projection stack to %s\n', stack_path);
