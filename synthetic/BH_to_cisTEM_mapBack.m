@@ -903,5 +903,5 @@ end
 if exist(newstack_file_with_n_stacks, 'file')
     delete(newstack_file_with_n_stacks);
 end
-
 end % End of function
+
