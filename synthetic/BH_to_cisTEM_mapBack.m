@@ -79,13 +79,6 @@ end
 mapBackIter = subTomoMeta.currentTomoCPR;
 
 
-% TODO: use these to add an optional defocus fitting step
-% So translational, optional defocus, angles
-ctfRange = emc.('tomo_cpr_defocus_range')*10^10;
-ctfInc = emc.('tomo_cpr_defocus_step')*10^10;
-calcCTF = emc.('tomo_cpr_defocus_refine');
-
-
 [tilt_series_filenames, nTiltSeries] = BH_returnIncludedTilts( subTomoMeta.mapBackGeometry );
 
 % Cycle 0 is named differently - I'll be deleting this in an overhaul of the way
@@ -597,6 +590,19 @@ for iTiltSeries = tiltStart:nTiltSeries
   particlePad = 2.0;
   tileRadius = floor(particlePad.*particle_radius);
   tileSize = BH_multi_iterator((2.*tileRadius).*[1,1],'fourier2d');
+
+  % Optional tile size override from parameter file
+  calculated_tile_size = tileSize;
+  if emc.cisTEM_output_tile_size > 0
+    override_tile_size = BH_multi_iterator(emc.cisTEM_output_tile_size .* [1,1], 'fourier2d');
+    if any(override_tile_size < calculated_tile_size)
+      error('cisTEM_output_tile_size=%d (FFT: [%d,%d]) < minimum [%d,%d].', ...
+             emc.cisTEM_output_tile_size, override_tile_size, calculated_tile_size);
+    end
+    tileSize = override_tile_size;
+    fprintf('Tile size override: [%d,%d] (minimum was [%d,%d])\n', tileSize, calculated_tile_size);
+  end
+
   tileOrigin = emc_get_origin_index(tileSize);
   
   nFidsTotal = numel(unique(fidList(parList(:,1)~=-9999,2)));
@@ -610,7 +616,7 @@ for iTiltSeries = tiltStart:nTiltSeries
 
   if (firstTilt)
     iDataCounter = 1;
-    starFile = fopen(sprintf('%s_initial.star',output_prefix),'w');
+    starFile = fopen(sprintf('%s.star',output_prefix),'w');
     fprintf(starFile, [ ...
       '# Written by emClarity Version 2.0.0-alpha on %s\n\n' ...
       'data_\n\n' ...
@@ -644,11 +650,10 @@ for iTiltSeries = tiltStart:nTiltSeries
       '_cisTEMPreExposure #27\n' ...
       '_cisTEMTotalExposure #28\n' ...
       '_cisTEMOriginalImageFilename #29\n' ...
-      '#    POS     PSI   THETA     PHI       SHX       SHY      DF1      DF2  ANGAST  PSHIFT     OCC      LogP      SIGMA   SCORE  CHANGE    PSIZE    VOLT      Cs    AmpC  BTILTX  BTILTY  ISHFTX  ISHFTY 2DCLS  TGRP    PARGRP  PREEXP  TOTEXP  ORIGIMG\n' ...
+      '_cisTEMOriginalXPosition #30\n' ...
+      '# NOTE: _cisTEMOriginalXPosition stores the tilt angle in degrees, not the original X position\n' ...
+      '#    POS     PSI   THETA     PHI       SHX       SHY      DF1      DF2  ANGAST  PSHIFT     OCC      LogP      SIGMA   SCORE  CHANGE    PSIZE    VOLT      Cs    AmpC  BTILTX  BTILTY  ISHFTX  ISHFTY 2DCLS  TGRP    PARGRP  PREEXP  TOTEXP  ORIGIMG  TILTANG\n' ...
       ], datetime);
-
-    % Initialize per-particle metadata storage for Pass 2 refinement
-    particle_metadata = {};
 
     firstTilt = false;
   end
@@ -750,7 +755,7 @@ for iTiltSeries = tiltStart:nTiltSeries
         ampContrast = emc.('AMPCONT') * 10^0;
         beamTiltX = 0.0;
         beamTiltY = 0.0;
-        beamTiltShiftX = 0.0;
+      beamTiltShiftX = 0.0;
         beamTiltShiftY = 0.0;
         best2dClass = 0.0;
         if (particle_was_skipped)
@@ -773,31 +778,17 @@ for iTiltSeries = tiltStart:nTiltSeries
         df2 = (wrkDefAngTilt(iFid,1) - wrkPar(iFid,5)) * 10;
         dfA = wrkPar(iFid,6) + astigmatism_angle_convention_switch; % Adjust for 90 deg difference in definition
         
-        % Original image filename groups particles by tilt for Pass 2 refinement
+        % Original image filename groups particles by tilt for downstream refinement
         original_image_filename = sprintf('%s_%03d', tiltName, iPrj);
 
-        fprintf(starFile, '%8u %7.2f %7.2f %7.2f %9.2f %9.2f %8.1f %8.1f %7.2f %7.2f %5i %7.2f %9i %10.4f %7.2f %8.5f %7.2f %7.2f %7.4f %7.3f %7.3f %7.3f %7.3f %5i %5i %8u %7.2f %7.2f %s\n', ...
+        fprintf(starFile, '%8u %7.2f %7.2f %7.2f %9.2f %9.2f %8.1f %8.1f %7.2f %7.2f %5i %7.2f %9i %10.4f %7.2f %8.5f %7.2f %7.2f %7.4f %7.3f %7.3f %7.3f %7.3f %5i %5i %8u %7.2f %7.2f %s %7.2f\n', ...
           iDataCounter,-e1,-e2,-e3,xShift,yShift, ...
           df1,df2,dfA, ...
           phaseShift, occupancy, logp, sigma, score, scoreChange, ...
           pixelSize, micVoltage, micCS, ampContrast, ...
           beamTiltX, beamTiltY, beamTiltShiftX, beamTiltShiftY, ...
           best2dClass, beamTiltGroup, particleGroup, preExposure, totalExposure, ...
-          original_image_filename);
-
-        % Store per-particle metadata for Pass 2 refinement
-        particle_metadata{end+1} = struct( ...
-          'stack_slice_index', iDataCounter, ...
-          'tilt_series_name', tiltName, ...
-          'tilt_projection_index', iPrj, ...
-          'tilt_angle_degrees', TLT(iPrj, 4), ...
-          'defocus_mean_angstroms', wrkDefAngTilt(iFid,1) * 10, ...
-          'half_astigmatism_angstroms', wrkPar(iFid,5) * 10, ...
-          'astigmatism_angle_radians', dfA * pi / 180, ...
-          'initial_shift_x', sx, ...
-          'initial_shift_y', sy, ...
-          'euler_angles', [-e1, -e2, -e3], ...
-          'original_image_filename', original_image_filename); %#ok<AGROW>
+          original_image_filename, TLT(iPrj, 4));
 
         iDataCounter = iDataCounter + 1;
         iGpuDataCounter = iGpuDataCounter + 1;  % Keep global counter for progress
@@ -876,7 +867,7 @@ fprintf('Output stack: %s.mrc\n', output_prefix);
 fprintf('  Dimensions: %d x %d x %d slices\n', outputSizeXandY(1), outputSizeXandY(2), outputNumberOfSlices);
 fprintf('  Expected particles: %d\n', total_particles_in_stack);
 
-fprintf('\nOutput star file: %s_initial.star\n', output_prefix);
+fprintf('\nOutput star file: %s.star\n', output_prefix);
 fprintf('  Records written: %d\n', total_records_in_star);
 
 fprintf('\nDebug Information:\n');
@@ -900,227 +891,10 @@ else
     fprintf('\n✓ VALIDATION PASSED: Stack and star file have matching record counts (%d)\n', outputNumberOfSlices);
 end
 
-%% ===== Pass 2: ADAM-based CTF/shift refinement =====
-
-if (emc.tomo_cpr_defocus_refine)
-  fprintf('\n=== Pass 2: ADAM-based CTF refinement ===\n');
-
-  % Group particles by original_image_filename (one group per tilt projection)
-  all_original_image_filenames = cellfun(@(m) m.original_image_filename, particle_metadata, 'UniformOutput', false);
-  [unique_tilt_names, ~, tilt_group_indices] = unique(all_original_image_filenames);
-  n_tilt_groups = length(unique_tilt_names);
-
-  % Get tilt angles for sorting by ascending |tilt|
-  tilt_angles_per_group = zeros(n_tilt_groups, 1);
-  for group_index = 1:n_tilt_groups
-    members = find(tilt_group_indices == group_index);
-    tilt_angles_per_group(group_index) = particle_metadata{members(1)}.tilt_angle_degrees;
-  end
-  [~, ascending_tilt_order] = sort(abs(tilt_angles_per_group));
-
-  % Load the particle stack for reading tiles
-  particle_stack_mrc = MRCImage(sprintf('%s.mrc', output_prefix), 0);
-
-  % Prepare refinement options from parameter file
-  refinement_options = struct();
-  refinement_options.defocus_search_range = emc.tomo_cpr_defocus_range * 10^10; % Convert to Angstroms
-  refinement_options.maximum_iterations = emc.tomo_cpr_maximum_iterations;
-  refinement_options.upsample_factor = emc.tomo_cpr_upsample_factor;
-  refinement_options.upsample_window = emc.tomo_cpr_upsample_window;
-  refinement_options.CTFSIZE = tileSize;
-  refinement_options.use_phase_correlation = false;
-  refinement_options.warmup_iterations = 3;
-  refinement_options.lowpass_cutoff = lowPassCutoff;
-  refinement_options.astigmatism_angle_range = emc.tomo_cpr_astigmatism_angle_range;
-  refinement_options.z_offset_bound_factor = emc.tomo_cpr_z_offset_bound_factor;
-  refinement_options.peak_search_radius = peak_search_radius;
-  refinement_options.maximum_xy_shift = max(peak_search_radius);
-
-  % Storage for refined values per particle (indexed by stack slice)
-  refined_defocus_1 = zeros(total_records_in_star, 1);
-  refined_defocus_2 = zeros(total_records_in_star, 1);
-  refined_astigmatism_angle = zeros(total_records_in_star, 1);
-  refined_shift_x = zeros(total_records_in_star, 1);
-  refined_shift_y = zeros(total_records_in_star, 1);
-  refined_scores = zeros(total_records_in_star, 1);
-  refined_occupancy = 100.0 * ones(total_records_in_star, 1);
-
-  % Tilt-dependent scoring accumulators
-  baseline_median_score = [];
-  accumulated_angle_score_pairs = [];
-
-  % TODO: Load reference volume and project for each tilt.
-  % For now, this is a placeholder - the reference projection code needs to be
-  % integrated from BH_synthetic_mapBack.m or the averaging step.
-  % The reference tiles would be extracted from a projected reference volume
-  % at each tilt angle using the particle Euler angles.
-
-  for sorted_index = 1:n_tilt_groups
-    group_index = ascending_tilt_order(sorted_index);
-    current_tilt_name = unique_tilt_names{group_index};
-    member_indices = find(tilt_group_indices == group_index);
-    n_particles_this_tilt = length(member_indices);
-    current_tilt_angle = tilt_angles_per_group(group_index);
-
-    fprintf('  Refining tilt %s (angle %.1f deg, %d particles)...\n', ...
-      current_tilt_name, current_tilt_angle, n_particles_this_tilt);
-
-    % Read data tiles from stack
-    data_tiles = cell(n_particles_this_tilt, 1);
-    ref_tiles = cell(n_particles_this_tilt, 1);
-    initial_shifts = zeros(n_particles_this_tilt, 2);
-
-    ctf_params_for_tilt = struct();
-    ctf_params_for_tilt.defocus_mean = zeros(n_particles_this_tilt, 1);
-    ctf_params_for_tilt.half_astigmatism = zeros(n_particles_this_tilt, 1);
-    ctf_params_for_tilt.astigmatism_angle = zeros(n_particles_this_tilt, 1);
-    ctf_params_for_tilt.pixel_size_angstroms = emc.pixel_size_angstroms;
-    ctf_params_for_tilt.wavelength_angstroms = emc.VOLTAGE; % Will be computed properly below
-    ctf_params_for_tilt.spherical_aberration_mm = emc.Cs * 10^3;
-    ctf_params_for_tilt.amplitude_contrast = emc.AMPCONT;
-    ctf_params_for_tilt.tilt_angle_degrees = current_tilt_angle;
-
-    % Compute relativistic electron wavelength in Angstroms
-    voltage_volts = emc.VOLTAGE;
-    ctf_params_for_tilt.wavelength_angstroms = 12.2643 / sqrt(voltage_volts * (1 + voltage_volts * 0.978466e-6));
-
-    for particle_index = 1:n_particles_this_tilt
-      metadata = particle_metadata{member_indices(particle_index)};
-      slice_index = metadata.stack_slice_index;
-
-      data_tiles{particle_index} = gpuArray(single( ...
-        OPEN_IMG('single', particle_stack_mrc, [1, tileSize(1)], [1, tileSize(2)], slice_index, 'keep')));
-
-      % TODO: Replace with actual reference projection tiles
-      % For now, use the data tile itself as a placeholder
-      % (this will be replaced when reference volume loading is integrated)
-      ref_tiles{particle_index} = data_tiles{particle_index};
-
-      initial_shifts(particle_index, :) = [metadata.initial_shift_x, metadata.initial_shift_y];
-      ctf_params_for_tilt.defocus_mean(particle_index) = metadata.defocus_mean_angstroms;
-      ctf_params_for_tilt.half_astigmatism(particle_index) = metadata.half_astigmatism_angstroms;
-      ctf_params_for_tilt.astigmatism_angle(particle_index) = metadata.astigmatism_angle_radians;
-    end
-
-    % Run ADAM refinement for this tilt
-    tilt_results = EMC_refine_tilt_ctf(data_tiles, ref_tiles, ctf_params_for_tilt, initial_shifts, refinement_options);
-
-    % Store refined values for each particle in this tilt group
-    for particle_index = 1:n_particles_this_tilt
-      metadata = particle_metadata{member_indices(particle_index)};
-      slice_index = metadata.stack_slice_index;
-
-      % Apply per-tilt defocus offset and per-particle dz
-      particle_dz = 0;
-      if ~isempty(tilt_results.delta_z) && particle_index <= length(tilt_results.delta_z)
-        particle_dz = tilt_results.delta_z(particle_index);
-      end
-      defocus_correction = tilt_results.delta_defocus_tilt + particle_dz * cosd(current_tilt_angle);
-
-      refined_defocus_1(slice_index) = metadata.defocus_mean_angstroms + metadata.half_astigmatism_angstroms + ...
-        tilt_results.delta_half_astigmatism + defocus_correction;
-      refined_defocus_2(slice_index) = metadata.defocus_mean_angstroms - metadata.half_astigmatism_angstroms - ...
-        tilt_results.delta_half_astigmatism + defocus_correction;
-      refined_astigmatism_angle(slice_index) = (metadata.astigmatism_angle_radians + tilt_results.delta_astigmatism_angle) * 180 / pi;
-      refined_shift_x(slice_index) = tilt_results.shift_x(particle_index) * emc.pixel_size_angstroms * emc.pixelMultiplier;
-      refined_shift_y(slice_index) = tilt_results.shift_y(particle_index) * emc.pixel_size_angstroms * emc.pixelMultiplier;
-      refined_scores(slice_index) = tilt_results.per_particle_scores(particle_index);
-    end
-
-    % Tilt-dependent scoring
-    tilt_scores = tilt_results.per_particle_scores;
-    if abs(current_tilt_angle) < 10
-      baseline_median_score = median(tilt_scores);
-      score_threshold = prctile(tilt_scores, 10);
-    else
-      if ~isempty(baseline_median_score) && ~isempty(accumulated_angle_score_pairs)
-        % Fit cos^alpha model from accumulated data
-        angles_rad = accumulated_angle_score_pairs(:,1) * pi / 180;
-        log_ratio = log(accumulated_angle_score_pairs(:,2) / baseline_median_score);
-        log_cos = log(cos(angles_rad));
-        valid = isfinite(log_ratio) & isfinite(log_cos) & log_cos ~= 0;
-        if any(valid)
-          alpha_fit = log_ratio(valid) \ log_cos(valid);
-        else
-          alpha_fit = 1;
-        end
-        expected_score = baseline_median_score * cosd(current_tilt_angle)^alpha_fit;
-        score_threshold = expected_score * 0.3;
-      else
-        score_threshold = prctile(tilt_scores, 10);
-      end
-    end
-
-    % Mark particles below threshold
-    for particle_index = 1:n_particles_this_tilt
-      metadata = particle_metadata{member_indices(particle_index)};
-      slice_index = metadata.stack_slice_index;
-      if refined_scores(slice_index) < score_threshold
-        refined_occupancy(slice_index) = 0;
-      end
-    end
-
-    % Accumulate for scoring model
-    kept_scores = tilt_scores(tilt_scores >= score_threshold);
-    if ~isempty(kept_scores)
-      accumulated_angle_score_pairs(end+1,:) = [current_tilt_angle, median(kept_scores)]; %#ok<AGROW>
-    end
-
-    fprintf('    delta_defocus=%.1f A, delta_astig=%.1f A, delta_angle=%.3f rad, converged=%d\n', ...
-      tilt_results.delta_defocus_tilt, tilt_results.delta_half_astigmatism, ...
-      tilt_results.delta_astigmatism_angle, tilt_results.converged);
-  end
-
-  % Save tilt-dependent scoring diagnostics
-  tilt_score_model = struct();
-  tilt_score_model.baseline_median_score = baseline_median_score;
-  tilt_score_model.angle_score_pairs = accumulated_angle_score_pairs;
-  save(sprintf('%s_tilt_score_model.mat', output_prefix), 'tilt_score_model');
-
-  % Write refined star file by reading initial and updating values
-  fprintf('  Writing refined star file...\n');
-  initial_star_lines = readlines(sprintf('%s_initial.star', output_prefix));
-  refined_star_file = fopen(sprintf('%s.star', output_prefix), 'w');
-
-  for line_index = 1:length(initial_star_lines)
-    line = initial_star_lines(line_index);
-    % Check if this is a data line (starts with a number after whitespace)
-    tokens = strsplit(strtrim(line));
-    if ~isempty(tokens) && ~isempty(tokens{1}) && ~isnan(str2double(tokens{1})) && str2double(tokens{1}) > 0
-      stack_position = str2double(tokens{1});
-      if stack_position >= 1 && stack_position <= total_records_in_star
-        % Replace defocus, shift, score, and occupancy values
-        tokens{5} = sprintf('%9.2f', refined_shift_x(stack_position));
-        tokens{6} = sprintf('%9.2f', refined_shift_y(stack_position));
-        tokens{7} = sprintf('%8.1f', refined_defocus_1(stack_position));
-        tokens{8} = sprintf('%8.1f', refined_defocus_2(stack_position));
-        tokens{9} = sprintf('%7.2f', refined_astigmatism_angle(stack_position));
-        tokens{11} = sprintf('%5i', refined_occupancy(stack_position));
-        tokens{14} = sprintf('%10.4f', refined_scores(stack_position));
-        fprintf(refined_star_file, '%s\n', strjoin(tokens, ' '));
-        continue;
-      end
-    end
-    fprintf(refined_star_file, '%s\n', line);
-  end
-  fclose(refined_star_file);
-
-  fprintf('  Pass 2 refinement complete.\n');
-  fprintf('  Refined star file: %s.star\n', output_prefix);
-  fprintf('  Initial star file: %s_initial.star\n', output_prefix);
-  fprintf('  Tilt score model: %s_tilt_score_model.mat\n', output_prefix);
-
-else
-  % No refinement requested - copy initial star file to final name
-  copyfile(sprintf('%s_initial.star', output_prefix), sprintf('%s.star', output_prefix));
-end
-
 fprintf('\n=== Processing Complete ===\n');
 fprintf('Created cisTEM-compatible files:\n');
 fprintf('  %s.mrc  (%d particles)\n', output_prefix, outputNumberOfSlices);
 fprintf('  %s.star (%d records)\n', output_prefix, total_records_in_star);
-
-fprintf('\nFunction completed successfully. Files ready for external refinement.\n');
 
 % Clean up temporary files
 if exist(newstack_file, 'file')

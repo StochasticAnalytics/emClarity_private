@@ -214,6 +214,12 @@ else
   emc.cisTEM_astigmatism_angle_convention_switch = 0;  % Default: no angle convention switch
 end
 
+if isfield(emc, 'cisTEM_output_tile_size')
+  EMC_assert_numeric(emc.cisTEM_output_tile_size, 1, [32, 2048]);
+else
+  emc.cisTEM_output_tile_size = 0;  % 0 means use dynamic calculation
+end
+
 if isfield(emc,'flgCutOutVolumes')
   EMC_assert_boolean(emc.flgCutOutVolumes)
 else

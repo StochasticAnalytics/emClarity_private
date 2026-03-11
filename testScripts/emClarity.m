@@ -159,7 +159,11 @@ emc = struct();
 if nArgs > 1 && ~(emcHelp || emcProgramHelp)
   switch varargin{1}
     case 'ctf'
-      emc = emC_testParse(varargin{3});
+      if strcmp(varargin{2}, 'ctfRefine')
+        multiGPUs = 0;  % Standalone program, manages own GPU
+      else
+        emc = emC_testParse(varargin{3});
+      end
     case 'rescale'
       % nothing to parse
       multiGPUs = 0;
@@ -590,13 +594,23 @@ switch varargin{1}
         '  Usage: emClarity ctf 3d param.m [scratch_dir]\n',...
         '    param.m    - Parameter file\n',...
         '    scratch_dir - [Optional] Temporary directory for processing\n\n',...
+        'ctfRefine - Standalone CTF refinement from star file + external reference\n',...
+        '  Usage: emClarity ctf ctfRefine star.star stack.mrc reference.mrc output.star [options]\n',...
+        '    star.star     - Input star file (from BH_to_cisTEM_mapBack)\n',...
+        '    stack.mrc     - Particle stack (from BH_to_cisTEM_mapBack)\n',...
+        '    reference.mrc - 3D reference volume (e.g. from cisTEM reconstruction)\n',...
+        '    output.star   - Output refined star file\n',...
+        '    [options]     - Name-value pairs (defocus_search_range, maximum_iterations, etc.)\n\n',...
         'Examples:\n',...
         '  emClarity ctf estimate param.m tilt01\n',...
-        '  emClarity ctf 3d param.m\n']);
+        '  emClarity ctf 3d param.m\n',...
+        '  emClarity ctf ctfRefine input.star stack.mrc ref.mrc output.star\n']);
     else
-      
+      if strcmp(varargin{2}, 'ctfRefine')
+        EMC_ctf_refine_from_star(varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7:end});
+      else
       emC_testParse(varargin{3});
-      
+
       switch varargin{2}
         case 'estimate'
           if (useV2)
@@ -637,8 +651,9 @@ switch varargin{1}
           end
           
         otherwise
-          error('ctf operations are estimate,refine,update, or 3d.');
+          error('ctf operations are estimate,refine,update,ctfRefine, or 3d.');
       end
+      end % if ctfRefine else
     end
   case 'simulate'
     if emcProgramHelp
