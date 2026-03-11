@@ -726,6 +726,41 @@ else
   emc.tomo_cpr_defocus_refine = false;
 end
 
+% Maximum astigmatism angle change allowed during refinement (radians, default: pi/4 = 45 degrees)
+if isfield(emc, 'tomo_cpr_astigmatism_angle_range')
+  EMC_assert_numeric(emc.tomo_cpr_astigmatism_angle_range, 1, [0.0, pi]);
+else
+  emc.tomo_cpr_astigmatism_angle_range = pi/4;
+end
+
+% Fourier upsampling factor for sub-pixel cross-correlation peak finding (default: 8)
+if isfield(emc, 'tomo_cpr_upsample_factor')
+  EMC_assert_numeric(emc.tomo_cpr_upsample_factor, 1, [1, 32]);
+else
+  emc.tomo_cpr_upsample_factor = 8;
+end
+
+% Half-width of the upsampling window in pixels (default: 8, giving a 17x17 window)
+if isfield(emc, 'tomo_cpr_upsample_window')
+  EMC_assert_numeric(emc.tomo_cpr_upsample_window, 1, [2, 32]);
+else
+  emc.tomo_cpr_upsample_window = 8;
+end
+
+% Maximum number of ADAM optimizer iterations for per-tilt CTF refinement (default: 15)
+if isfield(emc, 'tomo_cpr_maximum_iterations')
+  EMC_assert_numeric(emc.tomo_cpr_maximum_iterations, 1, [1, 100]);
+else
+  emc.tomo_cpr_maximum_iterations = 15;
+end
+
+% Per-particle Z offset bound as a multiple of the maximum allowed XY shift (default: 5)
+if isfield(emc, 'tomo_cpr_z_offset_bound_factor')
+  EMC_assert_numeric(emc.tomo_cpr_z_offset_bound_factor, 1, [1, 20]);
+else
+  emc.tomo_cpr_z_offset_bound_factor = 5;
+end
+
 if isfield(emc, 'print_alignment_stats')
   EMC_assert_boolean(emc.print_alignment_stats);
 else

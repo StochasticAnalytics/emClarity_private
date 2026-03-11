@@ -7,7 +7,7 @@ function [ ] = BH_synthetic_mapBack(PARAMETER_FILE, CYCLE, STAGEofALIGNMENT, til
 % will be given a unique density value in a seperate volume used to visualize
 % color in Chimera.
 %
-% Otherwise, pass a string that points at a single volume to use.
+% Otherwise, pass a string that points at a single volume to use
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Some flags that are worth keeping as options, but not accessible
