@@ -114,8 +114,8 @@ astigmatism_std_m = opts.astigmatism_std_angstrom * 1e-10;
 
 %% Generate random variations for each tilt
 % XY shifts (in pixels, from normal distribution)
-shift_x = 1.*opts.shift_std_pixels * randn(n_tilts, 1); % revert
-shift_y = 1.*opts.shift_std_pixels * randn(n_tilts, 1); % revert
+shift_x = 0.*opts.shift_std_pixels * randn(n_tilts, 1); % revert
+shift_y = 0.*opts.shift_std_pixels * randn(n_tilts, 1); % revert
 
 % Defocus variation per tilt (in meters)
 defocus_values = mean_defocus_m + defocus_std_m * randn(n_tilts, 1);

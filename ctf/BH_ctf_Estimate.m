@@ -343,6 +343,7 @@ if ( resample_stack)
   end
 
   base_cmd = sprintf('newstack -mode 12 -meansd 0,1 -xf %s.xf %s %s', mapBackPrfx, stackNameIN, outputStackName);
+  fprintf('Base command %s\n', base_cmd);
   [ newstack_err ] = system(sprintf('%s > /dev/null',base_cmd));
   if (newstack_err)
     system(base_cmd);

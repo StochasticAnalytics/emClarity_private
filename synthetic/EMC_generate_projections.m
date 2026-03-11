@@ -118,8 +118,8 @@ tilt_angles = TLT(:, 4);
 fprintf('  Tilt range: %.1f to %.1f degrees\n', min(tilt_angles), max(tilt_angles));
 
 % Shifts from TLT columns 2-3 (pixels)
-shift_x = TLT(:, 2) - 0.5; % REVERT
-shift_y = TLT(:, 3) - 0.5; % REVERT
+shift_x = TLT(:, 2); % REVERT
+shift_y = TLT(:, 3); % REVERT
 
 % Calculate padding needed for Y-shift interpolation (P pixels on each side)
 % Y-component of rotated shift = shift_y (unchanged by Y-axis rotation)
