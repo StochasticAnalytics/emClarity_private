@@ -177,6 +177,7 @@ class ClaudeCodeRunner:
             "--dangerously-skip-permissions",
             "--chrome",
             "--effort", "high",
+            "--verbose",
             "--max-turns", str(max_turns),
         ]
 
