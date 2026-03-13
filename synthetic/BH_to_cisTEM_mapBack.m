@@ -234,19 +234,7 @@ for iTiltSeries = tiltStart:nTiltSeries
     lowPassCutoff = 2*pixel_size;
   end
   
-  % FIXME: this should be in parseParameterFile
-  min_res_for_ctf_fitting = 10.0;
-  if (calcCTF)
-    try
-      min_res_for_ctf_fitting = emc.('min_res_for_ctf_fitting');
-    catch
-    end
-    
-    if sqrt(2)*pixel_size > min_res_for_ctf_fitting
-      fprintf('Warning the current resolution is too low to refine the defocus. Turning off this feature');
-      calcCTF = false;
-    end
-  end
+
   
 
    
@@ -662,6 +650,7 @@ for iTiltSeries = tiltStart:nTiltSeries
     fullXform = load(iXFName_inv);
   end
   
+  fprintf('tilt path %s\n', tilt_filepath);
   STACK = OPEN_IMG('single',tilt_filepath);
   
   for iPrj = 1:nPrjs
@@ -715,7 +704,32 @@ for iTiltSeries = tiltStart:nTiltSeries
       if  ( x_start > 0 && y_start > 0 && x_start + tileSize(1) - 1 < sTX && y_start + tileSize(2) - 1 < sTY )
         n_included_this_prj = n_included_this_prj + 1;
 
-        output_particle_stack(:,:,iGpuDataCounterLocal) = STACK(x_start:x_start+tileSize(1) - 1,y_start:y_start+tileSize(2) - 1,TLT(iPrj,1));
+        extracted_tile = STACK(x_start:x_start+tileSize(1) - 1,y_start:y_start+tileSize(2) - 1,TLT(iPrj,1));
+
+        % Defensive check: detect memory corruption (NaN/Inf/extreme values)
+        % The source tilt series is FP16 (max ~65504), so any value > 1e5 or NaN/Inf
+        % indicates a bit-flip in RAM during processing.
+        n_bad = sum(~isfinite(extracted_tile(:))) + sum(abs(extracted_tile(:)) > 1e5);
+        if n_bad > 0
+          % Re-read the tile to attempt recovery from transient memory error
+          extracted_tile = STACK(x_start:x_start+tileSize(1) - 1,y_start:y_start+tileSize(2) - 1,TLT(iPrj,1));
+          n_bad_retry = sum(~isfinite(extracted_tile(:))) + sum(abs(extracted_tile(:)) > 1e5);
+          if n_bad_retry > 0
+            fprintf('WARNING: Persistent bad pixels (%d) in tile iData=%d, tilt=%s, prj=%d at (%d,%d). Replacing with local mean.\n', ...
+                     n_bad_retry, iDataCounter, tiltName, iPrj, x_start, y_start);
+            bad_mask = ~isfinite(extracted_tile) | abs(extracted_tile) > 1e5;
+            good_vals = extracted_tile(~bad_mask);
+            if ~isempty(good_vals)
+              extracted_tile(bad_mask) = mean(good_vals);
+            else
+              extracted_tile(bad_mask) = 0;
+            end
+          else
+            fprintf('INFO: Transient bad pixels recovered on re-read for tile iData=%d\n', iDataCounter);
+          end
+        end
+
+        output_particle_stack(:,:,iGpuDataCounterLocal) = extracted_tile;
         n_particles_this_tilt_series = n_particles_this_tilt_series + 1;  % Track for entire tilt series
       
         % The trasformation of the particle is e1,e2,e3,esym  into it's postion in the tomogram frame, then
@@ -809,6 +823,15 @@ for iTiltSeries = tiltStart:nTiltSeries
     % Trim the stack to account for windowing skips
     n_particles_this_stack = iGpuDataCounterLocal - 1;
     output_particle_stack = gather(output_particle_stack(:,:,1:n_particles_this_stack));
+
+    % Final validation: check entire tilt-series sub-stack for memory corruption
+    n_bad_final = sum(~isfinite(output_particle_stack(:))) + sum(abs(output_particle_stack(:)) > 1e5);
+    if n_bad_final > 0
+      fprintf('WARNING: %d bad pixels detected in sub-stack for %s after extraction. Cleaning...\n', n_bad_final, tilt_filestem);
+      bad_mask = ~isfinite(output_particle_stack) | abs(output_particle_stack) > 1e5;
+      output_particle_stack(bad_mask) = 0;
+    end
+
     tmp_stack_filename = sprintf('%s/%s_%d.mrc',mbOUT{1:2},iCell);
     SAVE_IMG(output_particle_stack, tmp_stack_filename, pixelSize);
 

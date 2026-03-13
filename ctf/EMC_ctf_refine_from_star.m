@@ -21,7 +21,13 @@ function [] = EMC_ctf_refine_from_star(star_file_path, stack_file_path, ...
 %       'astigmatism_angle_range'  - Max astigmatism angle change in radians (default: pi/4)
 %       'z_offset_bound_factor'    - Z offset bound multiplier (default: 5)
 %       'n_debug_particles'        - Particles for angle convention debug (default: 20)
-%       'skip_debug'               - Skip angle convention debug (default: false)
+%       'debug_angle_convention'    - Run angle convention debug (default: false)
+%
+% BEHAVIORS TO WATCH:
+%   - ADAM score_history should increase monotonically after warmup; oscillation = lr too high
+%   - delta_z should cluster near 0; bimodal = sign error
+%   - Defocus corrections > 2000 A = failed refinement or wrong conventions
+%   - GPU memory with >500 particles per tilt group
 
 %% ===== Stage A: Parse inputs and star file =====
 
@@ -55,7 +61,7 @@ ref_interp = interpolator(ref_vol, [0,0,0], [0,0,0], 'SPIDER', 'inv', 'C1');
 
 %% ===== Stage C: Euler angle convention debug =====
 
-if ~opts.skip_debug
+if opts.debug_angle_convention
   best_permutation = run_angle_convention_debug(particles, stack_mrc, tile_size, ...
       ref_interp, ref_vol_size, opts.n_debug_particles);
 else
@@ -93,7 +99,8 @@ refined_occupancy = 100.0 * ones(n_total_particles, 1);
 
 % Tilt-dependent scoring accumulators
 baseline_median_score = [];
-accumulated_angle_score_pairs = [];
+accumulated_angle_score_pairs = zeros(n_tilt_groups, 2);
+n_accumulated_pairs = 0;
 
 % Get microscope parameters from first particle (constant across stack)
 pixel_size_angstroms = particles(1).pixel_size;
@@ -112,6 +119,8 @@ for sorted_index = 1:n_tilt_groups
 
   fprintf('  Refining tilt %s (angle %.1f deg, %d particles)...\n', ...
     current_tilt_name, current_tilt_angle, n_particles_this_tilt);
+
+  try
 
   % Determine consecutive slice range for batch loading
   slice_indices = [particles(member_indices).position_in_stack];
@@ -168,7 +177,7 @@ for sorted_index = 1:n_tilt_groups
   refinement_options.upsample_factor = opts.upsample_factor;
   refinement_options.upsample_window = opts.upsample_window;
   refinement_options.CTFSIZE = tile_size;
-  refinement_options.use_phase_correlation = false;
+  refinement_options.use_phase_compensated_correlation = false;
   refinement_options.warmup_iterations = opts.warmup_iterations;
   refinement_options.lowpass_cutoff = opts.lowpass_cutoff;
   refinement_options.astigmatism_angle_range = opts.astigmatism_angle_range;
@@ -211,13 +220,15 @@ for sorted_index = 1:n_tilt_groups
     baseline_median_score = median(tilt_scores);
     score_threshold = prctile(tilt_scores, 10);
   else
-    if ~isempty(baseline_median_score) && ~isempty(accumulated_angle_score_pairs)
-      angles_rad = accumulated_angle_score_pairs(:,1) * pi / 180;
-      log_ratio = log(accumulated_angle_score_pairs(:,2) / baseline_median_score);
+    if ~isempty(baseline_median_score) && n_accumulated_pairs > 0
+      pairs = accumulated_angle_score_pairs(1:n_accumulated_pairs, :);
+      angles_rad = pairs(:,1) * pi / 180;
+      log_ratio = log(pairs(:,2) / baseline_median_score);
       log_cos = log(cos(angles_rad));
       valid = isfinite(log_ratio) & isfinite(log_cos) & log_cos ~= 0;
       if any(valid)
-        alpha_fit = log_ratio(valid) \ log_cos(valid);
+        % Solve log_ratio = alpha * log_cos for alpha (MATLAB \ = least-squares solve)
+        alpha_fit = log_cos(valid) \ log_ratio(valid);
       else
         alpha_fit = 1;
       end
@@ -239,7 +250,8 @@ for sorted_index = 1:n_tilt_groups
   % Accumulate for scoring model
   kept_scores = tilt_scores(tilt_scores >= score_threshold);
   if ~isempty(kept_scores)
-    accumulated_angle_score_pairs(end+1,:) = [current_tilt_angle, median(kept_scores)]; %#ok<AGROW>
+    n_accumulated_pairs = n_accumulated_pairs + 1;
+    accumulated_angle_score_pairs(n_accumulated_pairs, :) = [current_tilt_angle, median(kept_scores)];
   end
 
   fprintf('    delta_defocus=%.1f A, delta_astig=%.1f A, delta_angle=%.3f rad, converged=%d\n', ...
@@ -248,7 +260,19 @@ for sorted_index = 1:n_tilt_groups
 
   % Clear GPU memory for this tilt group
   clear data_tiles ref_tiles;
+
+  catch ME
+    warning('EMC_ctf_refine_from_star:tiltFailed', ...
+        'Tilt %s failed: %s — skipping', current_tilt_name, ME.message);
+  end
 end
+
+%% ===== Summary statistics =====
+defocus_corrections = refined_defocus_1 - arrayfun(@(p) p.defocus_1, particles(:));
+fprintf('  Defocus corrections: mean=%.1f A, std=%.1f A\n', mean(defocus_corrections), std(defocus_corrections));
+n_rejected = sum(refined_occupancy == 0);
+fprintf('  Particles rejected: %d / %d (%.1f%%)\n', n_rejected, n_total_particles, ...
+    100 * n_rejected / max(n_total_particles, 1));
 
 %% ===== Stage F: Write refined star file =====
 
@@ -277,7 +301,7 @@ function opts = parse_options(args)
   opts.astigmatism_angle_range = pi/4;
   opts.z_offset_bound_factor = 5;
   opts.n_debug_particles = 20;
-  opts.skip_debug = false;
+  opts.debug_angle_convention = false;
 
   i = 1;
   while i <= length(args)
@@ -533,7 +557,14 @@ function write_refined_star_file(input_path, output_path, particles, ...
 % Write refined star file by reading original and replacing refined columns.
 
   fh_in = fopen(input_path, 'r');
+  if fh_in == -1
+    error('Cannot open input star file for reading: %s', input_path);
+  end
   fh_out = fopen(output_path, 'w');
+  if fh_out == -1
+    fclose(fh_in);
+    error('Cannot open output star file for writing: %s', output_path);
+  end
 
   particle_idx = 0;
 
@@ -554,7 +585,7 @@ function write_refined_star_file(input_path, output_path, particles, ...
     if first_char >= '0' && first_char <= '9'
       tokens = strsplit(trimmed);
       stack_pos = str2double(tokens{1});
-      if ~isnan(stack_pos) && stack_pos >= 1 && stack_pos <= length(particles)
+      if ~isnan(stack_pos) && stack_pos >= 1 && particle_idx < length(refined_df1)
         particle_idx = particle_idx + 1;
 
         % Replace columns 5-6 (shifts), 7-9 (defocus), 11 (occupancy), 14 (score)

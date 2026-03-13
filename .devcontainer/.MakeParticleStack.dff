@@ -1,0 +1,15 @@
+Read coordinates from file?:: yes
+X-dimension of original MIP:: 5760
+Y-dimension of original MIP:: 4092
+Input x,y,z coordinate file:: /home/himesb/tmp/coords_prepare_no_upsample.txt
+Input image file:: image.mrc
+Output star file:: /home/himesb/tmp/from_coords.star
+Output particle stack:: /home/himesb/tmp/from_coords.mrc
+Box size for particles (px.):: 256
+Pixel size of image (A):: 1.0
+Average defocus 1 (A):: 5000.0
+Average defocus 2 (A):: 5000.0
+Average defocus angle (deg):: 0.0
+Beam energy (keV):: 300.0
+Spherical aberration (mm):: 2.7
+Amplitude contrast:: 0.07

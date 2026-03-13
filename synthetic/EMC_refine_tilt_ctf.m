@@ -25,7 +25,7 @@ function [results] = EMC_refine_tilt_ctf(data_tiles, ref_tiles, ctf_params, init
 %       .upsample_window         - half-width of upsampling window (default: 8)
 %       .lowpass_cutoff          - lowpass cutoff in Angstroms (default: 10)
 %       .CTFSIZE                 - [nx, ny] size for CTF calculation
-%       .use_phase_correlation   - use phase correlation (default: false)
+%       .use_phase_compensated_correlation - use phase-compensated XCF (default: false)
 %       .warmup_iterations       - iterations with only per-tilt params (default: 3)
 %
 % OUTPUTS:
@@ -37,12 +37,30 @@ function [results] = EMC_refine_tilt_ctf(data_tiles, ref_tiles, ctf_params, init
 %       .delta_z                       - Nx1 per-particle Z offsets (Angstroms)
 %       .per_particle_scores           - Nx1 CC peak heights
 %       .score_history                 - per-iteration total score
+%       .score_trend                   - struct from monitor_score_trend (slope, smoothed scores)
 %       .converged                     - boolean
+%
+% BEHAVIORS TO WATCH:
+%   - ADAM score_history should increase monotonically after warmup; oscillation = lr too high
+%   - delta_z should cluster near 0; bimodal = sign error
+%   - Defocus corrections > 2000 A = failed refinement or wrong conventions
+%   - GPU memory with >500 particles per tilt group
 
 n_particles = length(data_tiles);
 if n_particles == 0
     results = empty_results();
     return;
+end
+
+% Input validation
+assert(length(ref_tiles) == n_particles, ...
+    'EMC_refine_tilt_ctf: data_tiles (%d) and ref_tiles (%d) must have the same length', ...
+    n_particles, length(ref_tiles));
+for val_i = 1:n_particles
+    assert(~isempty(data_tiles{val_i}), ...
+        'EMC_refine_tilt_ctf: data_tiles{%d} is empty', val_i);
+    assert(~isempty(ref_tiles{val_i}), ...
+        'EMC_refine_tilt_ctf: ref_tiles{%d} is empty', val_i);
 end
 
 % Parse options with defaults
@@ -52,7 +70,7 @@ upsample_factor        = get_opt(options, 'upsample_factor', 8);
 upsample_window        = get_opt(options, 'upsample_window', 8);
 lowpass_cutoff         = get_opt(options, 'lowpass_cutoff', 10);
 CTFSIZE                = options.CTFSIZE;
-use_phase_correlation  = get_opt(options, 'use_phase_correlation', false);
+use_phase_compensated_correlation  = get_opt(options, 'use_phase_compensated_correlation', false);
 warmup_iterations      = get_opt(options, 'warmup_iterations', 3);
 
 pixel_size_angstroms     = ctf_params.pixel_size_angstroms;
@@ -129,14 +147,32 @@ for iteration = 1:maximum_iterations
         params, data_fourier_transforms, reference_fourier_transforms, ctf_params, ...
         fourier_handle, CTFSIZE, pixel_size_angstroms, wavelength_angstroms, ...
         spherical_aberration_mm, amplitude_contrast, tilt_angle_degrees, ...
-        use_phase_correlation, peak_mask, upsample_factor, upsample_window, n_particles);
+        use_phase_compensated_correlation, peak_mask, upsample_factor, upsample_window, n_particles);
+
+    % Guard against non-finite scores (indicates degenerate CTF or data)
+    if ~isfinite(total_score)
+        warning('EMC_refine_tilt_ctf:nonFiniteScore', ...
+            'Non-finite total_score (%.4g) at iteration %d — aborting optimization', ...
+            total_score, iteration);
+        break;
+    end
 
     optimizer.add_score(total_score);
     score_history(end+1) = total_score; %#ok<AGROW>
 
     % Check convergence
-    if optimizer.has_converged(3, 0.001)
+    converged_flag = optimizer.has_converged(3, 0.001);
+    fprintf('    iter %2d: score=%.6f, converged=%d\n', iteration, total_score, converged_flag);
+    if converged_flag
         break;
+    end
+
+    % Monitor for score regression (after warmup)
+    score_trend = monitor_score_trend(score_history);
+    if score_trend.is_regressing && iteration > warmup_iterations
+        warning('EMC_refine_tilt_ctf:scoreRegression', ...
+            'Score regression detected at iteration %d (slope=%.4g)', ...
+            iteration, score_trend.slope);
     end
 
     % Compute gradients via central finite differences
@@ -152,13 +188,13 @@ for iteration = 1:maximum_iterations
             params_plus, data_fourier_transforms, reference_fourier_transforms, ctf_params, ...
             fourier_handle, CTFSIZE, pixel_size_angstroms, wavelength_angstroms, ...
             spherical_aberration_mm, amplitude_contrast, tilt_angle_degrees, ...
-            use_phase_correlation, peak_mask, upsample_factor, upsample_window, n_particles);
+            use_phase_compensated_correlation, peak_mask, upsample_factor, upsample_window, n_particles);
 
         [score_minus, ~, ~] = evaluate_score_and_shifts( ...
             params_minus, data_fourier_transforms, reference_fourier_transforms, ctf_params, ...
             fourier_handle, CTFSIZE, pixel_size_angstroms, wavelength_angstroms, ...
             spherical_aberration_mm, amplitude_contrast, tilt_angle_degrees, ...
-            use_phase_correlation, peak_mask, upsample_factor, upsample_window, n_particles);
+            use_phase_compensated_correlation, peak_mask, upsample_factor, upsample_window, n_particles);
 
         % Negative gradient because ADAM minimizes but we want to maximize score
         gradient(parameter_index) = -(score_plus - score_minus) / (2 * finite_difference_step(parameter_index));
@@ -173,7 +209,7 @@ final_params = optimizer.get_current_parameters();
     final_params, data_fourier_transforms, reference_fourier_transforms, ctf_params, ...
     fourier_handle, CTFSIZE, pixel_size_angstroms, wavelength_angstroms, ...
     spherical_aberration_mm, amplitude_contrast, tilt_angle_degrees, ...
-    use_phase_correlation, peak_mask, upsample_factor, upsample_window, n_particles);
+    use_phase_compensated_correlation, peak_mask, upsample_factor, upsample_window, n_particles);
 
 % Package results
 results.delta_defocus_tilt       = final_params(1);
@@ -184,6 +220,7 @@ results.shift_x                  = current_shifts(:,1);
 results.shift_y                  = current_shifts(:,2);
 results.per_particle_scores      = gather(per_particle_scores);
 results.score_history            = score_history;
+results.score_trend              = monitor_score_trend(score_history);
 results.converged                = optimizer.has_converged(3, 0.001);
 
 end % EMC_refine_tilt_ctf
@@ -195,7 +232,7 @@ function [total_score, per_particle_scores, shifts] = evaluate_score_and_shifts(
     params, data_fourier_transforms, reference_fourier_transforms, ctf_params, ...
     fourier_handle, CTFSIZE, pixel_size_angstroms, wavelength_angstroms, ...
     spherical_aberration_mm, amplitude_contrast, tilt_angle_degrees, ...
-    use_phase_correlation, peak_mask, upsample_factor, upsample_window, n_particles)
+    use_phase_compensated_correlation, peak_mask, upsample_factor, upsample_window, n_particles)
 % Evaluate the total CC score and measure per-particle X/Y shifts from CC peaks.
 
 delta_defocus_tilt       = params(1);
@@ -214,6 +251,21 @@ for i = 1:n_particles
         delta_half_astigmatism + delta_defocus_tilt + delta_z(i) * cosd(tilt_angle_degrees);
     effective_astigmatism_angle = ctf_params.astigmatism_angle(i) + delta_astigmatism_angle;
 
+    % Defocus sign/ordering validation (overfocus convention: both df > 0, df2 <= df1)
+    if effective_defocus_1 < 0
+        warning('EMC_refine_tilt_ctf:negativeDf1', ...
+            'Particle %d: effective_defocus_1 = %.1f A < 0 (underfocus)', i, effective_defocus_1);
+    end
+    if effective_defocus_2 < 0
+        warning('EMC_refine_tilt_ctf:negativeDf2', ...
+            'Particle %d: effective_defocus_2 = %.1f A < 0 (underfocus)', i, effective_defocus_2);
+    end
+    if effective_defocus_2 > effective_defocus_1
+        warning('EMC_refine_tilt_ctf:dfOrdering', ...
+            'Particle %d: df2 (%.1f) > df1 (%.1f) — convention expects df2 <= df1', ...
+            i, effective_defocus_2, effective_defocus_1);
+    end
+
     % Compute CTF via mexCTF
     ctf_image = mexCTF(true, false, int16(CTFSIZE(1)), int16(CTFSIZE(2)), ...
         single(pixel_size_angstroms), single(wavelength_angstroms), single(spherical_aberration_mm), ...
@@ -227,7 +279,10 @@ for i = 1:n_particles
 
     % Cross-correlate
     cross_correlation_map = data_fourier_transforms{i} .* reference_with_ctf;
-    if use_phase_correlation
+    if use_phase_compensated_correlation
+        % Phase-compensated XCF: modifies CC modulus to sharpen translational
+        % peak (Saxton, 1994, Eq. 14). Multiplies CC by itself / |CC| to
+        % enhance signal while regularizing near-zero amplitudes.
         cross_correlation_map = cross_correlation_map .* cross_correlation_map ./ (abs(cross_correlation_map) + 0.001);
     end
     cross_correlation_map = peak_mask .* real(fourier_handle.invFFT(cross_correlation_map));
@@ -271,9 +326,9 @@ for delta_i = -half_width:half_width
     end
 end
 
-% Mirror-pad: [x(end:-1:2), x, x(end-1:-1:2)] in each dimension
-mirror_rows = [window(end:-1:2, :); window; window(end-1:-1:2, :)];
-mirror_both = [mirror_rows(:, end:-1:2), mirror_rows, mirror_rows(:, end-1:-1:2)];
+% Mirror-pad: [x(end:-1:2), x, x(end-1:-1:1)] in each dimension
+mirror_rows = [window(end:-1:2, :); window; window(end-1:-1:1, :)];
+mirror_both = [mirror_rows(:, end:-1:2), mirror_rows, mirror_rows(:, end-1:-1:1)];
 
 % Get nice FFT size
 padded_size = BH_multi_iterator(size(mirror_both), 'fourier2d');
@@ -304,21 +359,20 @@ fourier_upsampled(end-half_freq_x+1:end, end-half_freq_y+1:end) = fourier_coeffi
 % Inverse FFT and scale
 upsampled_map = real(ifft2(fourier_upsampled)) * (upsample_factor^2);
 
-% Find peak in upsampled map
-[peak_height, upsampled_peak_index] = max(upsampled_map(:));
-[upsampled_peak_x, upsampled_peak_y] = ind2sub(size(upsampled_map), upsampled_peak_index);
+% Find peak in original window region only (exclude mirror padding)
+mirror_offset = window_size - 1;
+orig_start_x = mirror_offset * upsample_factor + 1;
+orig_start_y = mirror_offset * upsample_factor + 1;
+region_len = window_size * upsample_factor;
 
-% Convert upsampled peak position back to original pixel coordinates
-% The mirror padding added (window_size - 2) pixels before the original window start
-mirror_offset = window_size - 2;
+upsampled_region = upsampled_map(orig_start_x:orig_start_x + region_len - 1, ...
+                                 orig_start_y:orig_start_y + region_len - 1);
+[peak_height, region_peak_index] = max(upsampled_region(:));
+[region_peak_x, region_peak_y] = ind2sub(size(upsampled_region), region_peak_index);
 
-% Position of the original window center in the upsampled map
-original_region_start_x = mirror_offset * upsample_factor + 1;
-original_region_start_y = mirror_offset * upsample_factor + 1;
-
-% Sub-pixel offset from coarse peak
-subpixel_offset_x = (upsampled_peak_x - original_region_start_x - half_width * upsample_factor) / upsample_factor;
-subpixel_offset_y = (upsampled_peak_y - original_region_start_y - half_width * upsample_factor) / upsample_factor;
+% Sub-pixel offset: window center in region is at (half_width * upsample_factor + 1)
+subpixel_offset_x = (region_peak_x - 1 - half_width * upsample_factor) / upsample_factor;
+subpixel_offset_y = (region_peak_y - 1 - half_width * upsample_factor) / upsample_factor;
 
 % Peak position in original map coordinates
 peak_position = [coarse_peak_x + subpixel_offset_x, coarse_peak_y + subpixel_offset_y];
@@ -346,6 +400,52 @@ end
 end
 
 
+function trend = monitor_score_trend(score_history)
+% Compute smoothed slope over a sliding window of scores.
+% Detects both plateau (convergence) and regression (score decrease).
+%
+% Returns a struct with fields:
+%   .slope          - linear regression slope over the window
+%   .smoothed       - moving-average smoothed scores
+%   .is_regressing  - true if smoothed slope is negative (score decreasing)
+%   .is_plateau     - true if absolute slope is negligible
+
+window_size = min(5, length(score_history));
+trend.slope = 0;
+trend.smoothed = score_history;
+trend.is_regressing = false;
+trend.is_plateau = true;
+
+if length(score_history) < 3
+    return;
+end
+
+% Moving average smoothing (window of 3)
+smooth_w = min(3, length(score_history));
+kernel = ones(1, smooth_w) / smooth_w;
+trend.smoothed = conv(score_history, kernel, 'valid');
+
+% Linear regression over last window_size smoothed scores
+n_smooth = length(trend.smoothed);
+window = trend.smoothed(max(1, n_smooth - window_size + 1):end);
+x = (1:length(window))';
+x_mean = mean(x);
+y_mean = mean(window);
+trend.slope = sum((x - x_mean) .* (window(:) - y_mean)) / sum((x - x_mean).^2);
+
+% Classify trend
+score_scale = max(abs(score_history));
+if score_scale > 0
+    relative_slope = trend.slope / score_scale;
+else
+    relative_slope = 0;
+end
+trend.is_regressing = relative_slope < -1e-4;
+trend.is_plateau = abs(relative_slope) < 1e-4;
+
+end
+
+
 function results = empty_results()
 % Return empty results struct for zero-particle case.
 results.delta_defocus_tilt       = 0;
@@ -356,5 +456,6 @@ results.shift_x                  = [];
 results.shift_y                  = [];
 results.per_particle_scores      = [];
 results.score_history            = [];
+results.score_trend              = struct('slope', 0, 'smoothed', [], 'is_regressing', false, 'is_plateau', true);
 results.converged                = true;
 end
