@@ -1,0 +1,26 @@
+{
+  "_metadata": {
+    "phase": "0",
+    "created": "2026-03-11T12:00:00Z",
+    "last_updated": "2026-03-13T14:38:10.289502"
+  },
+  "_current_task_id": null,
+  "tasks": [
+    {
+      "id": "TASK-001",
+      "title": "Project scaffold setup",
+      "description": "Initialize React + TypeScript + Vite project with FastAPI backend",
+      "type": "infrastructure",
+      "status": "in_progress",
+      "depends_on": [],
+      "reference": null,
+      "acceptance_criteria": [
+        "TypeScript compiles without errors",
+        "Dev server starts on port 5173",
+        "FastAPI server starts on port 8000"
+      ],
+      "last_attempt": "2026-03-13T14:37:09.580740",
+      "retry_count": 1
+    }
+  ]
+}
