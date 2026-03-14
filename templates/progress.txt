@@ -72,3 +72,30 @@ TASK-012: Completed 2026-03-14
   - Fixed pre-existing TypeScript errors in ResultsPage.tsx (Recharts Tooltip formatter type widening)
   - TypeScript: 0 errors; Backend tests: 35/35 passed
 
+
+Developer: Completed 2026-03-14
+Task: TASK-016 – Integration testing and E2E validation
+  - Verified all 35 E2E tests in tests/ pass against the running backend
+  - All 35 E2E tests: PASSED (pytest tests/ -v)
+  - All 27 backend unit tests: PASSED (pytest backend/tests/ -v)
+  - TypeScript compiles without errors (tsc --noEmit exits 0)
+  - OpenAPI spec confirmed available at /openapi.json (FastAPI built-in)
+  - All endpoints use /api/v1/ prefix as required
+  - No test files modified (tests/ directory is read-only)
+  - No code changes were required; backend implementation was already correct
+
+Developer: Completed 2026-03-14
+Task: TASK-015 – App shell layout and navigation
+  - Created ProjectContext (src/context/ProjectContext.tsx) providing
+    activeProject state + setActiveProject/clearActiveProject actions
+  - Rewrote Header.tsx: left=microscope subtitle, centre=project name +
+    colour-coded state badge (UNINITIALIZED/INITIALIZED/TILT_ALIGNED/
+    CTF_ESTIMATED/AVG_COMPLETE), right=settings gear icon
+  - Created SystemInfoPanel.tsx: slide-in overlay showing CPU cores,
+    system RAM, and per-GPU VRAM/driver/CUDA details from /api/v1/system/info
+  - Updated MainLayout to wrap in ProjectProvider
+  - Updated ProjectDashboard to call setActiveProject via useEffect once
+    project data is fetched; ProjectPage clears context on back navigation
+  - Fixed pre-existing TS2532/TS2345/TS2538 errors in api/parameters.ts
+    (regex match groups are string|undefined in TypeScript 5.x strict mode)
+  - All 35 backend E2E tests pass; tsc compiles without errors
