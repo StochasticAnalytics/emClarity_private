@@ -338,7 +338,7 @@ class ClaudeCodeRunner:
     def _display_stream_event(
         event: Dict, elapsed: float, agent_label: str = "", task_id: str = "",
     ):
-        """Display a stream-json event to stderr for user visibility."""
+        """Display a stream-json event to stderr AND log to file."""
         etype = event.get("type", "?")
 
         # Build prefix: e.g. "[DEV ] [TASK-002c] "
@@ -348,9 +348,11 @@ class ClaudeCodeRunner:
         if task_id:
             tag += f"[{task_id}] "
 
+        line = None
+
         if etype == "system":
             sid = event.get("session_id", "?")[:8]
-            sys.stderr.write(f"  [{elapsed:6.1f}s] {tag}[INIT] session={sid}\n")
+            line = f"[{elapsed:6.1f}s] {tag}[INIT] session={sid}"
 
         elif etype == "assistant":
             msg = event.get("message", {})
@@ -360,25 +362,33 @@ class ClaudeCodeRunner:
                 btype = block.get("type", "?")
                 if btype == "text":
                     text = block.get("text", "")
-                    # Show first 150 chars of text output
                     preview = text[:150] + ("..." if len(text) > 150 else "")
-                    sys.stderr.write(f"  [{elapsed:6.1f}s] {tag}[TEXT] {preview}\n")
+                    line = f"[{elapsed:6.1f}s] {tag}[TEXT] {preview}"
                 elif btype == "tool_use":
                     name = block.get("name", "?")
                     inp = str(block.get("input", ""))[:80]
-                    sys.stderr.write(f"  [{elapsed:6.1f}s] {tag}[TOOL] {name}({inp})\n")
+                    line = f"[{elapsed:6.1f}s] {tag}[TOOL] {name}({inp})"
+                if line:
+                    sys.stderr.write(f"  {line}\n")
+                    logger.debug("[STREAM] %s", line)
+                    line = None  # Reset for next block in same event
+            sys.stderr.flush()
+            return  # Already handled per-block above
 
         elif etype == "result":
             result_text = event.get("result", "")[:100]
             cost = event.get("total_cost_usd", 0)
             turns = event.get("num_turns", "?")
-            sys.stderr.write(
-                f"  [{elapsed:6.1f}s] {tag}[DONE] turns={turns} "
-                f"cost=${cost:.4f} result='{result_text}'\n"
+            line = (
+                f"[{elapsed:6.1f}s] {tag}[DONE] turns={turns} "
+                f"cost=${cost:.4f} result='{result_text}'"
             )
 
         # Skip rate_limit_event and user (tool result) events — too noisy
 
+        if line:
+            sys.stderr.write(f"  {line}\n")
+            logger.debug("[STREAM] %s", line)
         sys.stderr.flush()
 
     def _parse_result(self, result: subprocess.CompletedProcess) -> Dict[str, Any]:
