@@ -151,8 +151,13 @@ function FscChart({ data, resolutionAngstroms }: FscChartProps) {
             tick={{ fontSize: 11 }}
           />
           <Tooltip
-            formatter={(value: number, name: string) => [formatFsc(value), name]}
-            labelFormatter={(label: number) => `Resolution: ${formatFrequency(label)}`}
+            formatter={(value, name) => [
+              typeof value === 'number' ? formatFsc(value) : '',
+              String(name),
+            ]}
+            labelFormatter={(label) =>
+              typeof label === 'number' ? `Resolution: ${formatFrequency(label)}` : String(label)
+            }
             contentStyle={{ fontSize: 12 }}
           />
           <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
@@ -476,8 +481,10 @@ function ParticleStatsContent({ stats }: { stats: ParticleStats }) {
               />
               <YAxis tick={{ fontSize: 11 }} />
               <Tooltip
-                formatter={(value: number) => [value, 'Particles']}
-                labelFormatter={(label: number) => `CCC: ${(label).toFixed(3)}`}
+                formatter={(value) => [typeof value === 'number' ? value : 0, 'Particles']}
+                labelFormatter={(label) =>
+                  typeof label === 'number' ? `CCC: ${label.toFixed(3)}` : String(label)
+                }
                 contentStyle={{ fontSize: 12 }}
               />
               <Bar dataKey="count" name="Particles" fill="#10b981" radius={[2, 2, 0, 0]} />
