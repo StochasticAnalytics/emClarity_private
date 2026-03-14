@@ -64,16 +64,27 @@ function groupByCategory(parameters: ParameterDefinition[]): ParameterGroup[] {
   return orderedGroups
 }
 
-/** Static schema data — will be replaced with API fetch in TASK-002c */
+/**
+ * Hook that provides the parameter schema for the editor UI.
+ *
+ * Currently returns a stub (no data) because backend integration is
+ * deferred to TASK-002c. When integration is added, this will use
+ * `useApiQuery` with the query keys from `@/api/parameters.ts`:
+ *
+ * ```ts
+ * import { parameterQueryKeys, PARAMETER_SCHEMA_ENDPOINT } from '@/api/parameters.ts'
+ *
+ * return useApiQuery<ParameterSchemaResponse>(
+ *   parameterQueryKeys.schema(),
+ *   PARAMETER_SCHEMA_ENDPOINT,
+ * )
+ * ```
+ */
 function useParameterSchema(): {
   data: ParameterSchemaResponse | undefined
   isLoading: boolean
   error: Error | null
 } {
-  // For now, return undefined (no data loaded yet).
-  // The component handles the empty state gracefully.
-  // In TASK-002c, this will be replaced with:
-  //   useApiQuery<ParameterSchemaResponse>(['parameters', 'schema'], '/api/v1/parameters/schema')
   return {
     data: undefined,
     isLoading: false,
