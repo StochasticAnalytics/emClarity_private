@@ -1,9 +1,11 @@
 """V1 API endpoints for job tracking and management.
 
 Routes:
-    GET /api/v1/jobs           - List jobs, optionally filtered by project_id
-    GET /api/v1/jobs/schema    - Return the Job schema definition
-    GET /api/v1/jobs/{id}      - Get a specific job's status (404 if not found)
+    GET    /api/v1/jobs           - List jobs, optionally filtered by project_id
+    GET    /api/v1/jobs/schema    - Return the Job schema definition
+    GET    /api/v1/jobs/{id}      - Get a specific job's status (404 if not found)
+    GET    /api/v1/jobs/{id}/log  - Fetch the tail of a job's log file
+    DELETE /api/v1/jobs/{id}      - Cancel a running job
 """
 
 from __future__ import annotations
@@ -102,4 +104,59 @@ async def get_job(job_id: str) -> Job:
     job = _jobs.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
+    return job
+
+
+@router.get("/{job_id}/log", response_model=dict[str, Any])
+async def get_job_log(job_id: str, tail: int = 100) -> dict[str, Any]:
+    """Fetch the tail of a job's log file.
+
+    Query parameters:
+        tail: Number of lines to return from the end of the log (default 100)
+
+    Returns 404 if the job does not exist.
+    """
+    job = _jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
+
+    log_content = ""
+    if job.log_path:
+        try:
+            from pathlib import Path  # noqa: PLC0415
+
+            log_file = Path(job.log_path)
+            if log_file.exists():
+                lines = log_file.read_text(encoding="utf-8", errors="replace").splitlines()
+                log_content = "\n".join(lines[-tail:])
+        except OSError:
+            log_content = ""
+
+    return {"job_id": job_id, "log": log_content}
+
+
+@router.delete("/{job_id}", response_model=Job)
+async def cancel_job(job_id: str) -> Job:
+    """Cancel a running or pending job.
+
+    Marks the job status as CANCELLED.  For running jobs the OS process
+    would normally receive SIGTERM; in this in-memory implementation the
+    status is updated directly.
+
+    Returns 404 if the job does not exist.
+    """
+    job = _jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
+
+    if job.status in (JobStatus.PENDING, JobStatus.RUNNING):
+        updated = job.model_copy(
+            update={
+                "status": JobStatus.CANCELLED,
+                "updated_at": datetime.now(tz=timezone.utc),
+            }
+        )
+        _jobs[job_id] = updated
+        return updated
+
     return job
