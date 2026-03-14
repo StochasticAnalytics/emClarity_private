@@ -206,7 +206,35 @@ class ClaudeCodeRunner:
         logger.debug("ClaudeCodeRunner cwd: %s", self.project_root)
 
         if self.stream_output:
-            return self._run_streaming(cmd, user_message, timeout, inactivity_timeout, agent_label, task_id)
+            # Tiered inactivity retries: 120s → 300s → 900s
+            inactivity_tiers = [inactivity_timeout, 300, 900]
+            for attempt, tier_timeout in enumerate(inactivity_tiers):
+                result = self._run_streaming(
+                    cmd, user_message, timeout, tier_timeout,
+                    agent_label, task_id,
+                )
+                # Only retry on inactivity timeout, not other failures
+                if result.get("text", "").startswith("Session stalled"):
+                    if attempt < len(inactivity_tiers) - 1:
+                        logger.warning(
+                            "[RETRY] Inactivity timeout (%ds) for %s %s — "
+                            "retrying with %ds (attempt %d/%d)",
+                            tier_timeout, agent_label, task_id,
+                            inactivity_tiers[attempt + 1],
+                            attempt + 2, len(inactivity_tiers),
+                        )
+                        self._log_timeout(
+                            "inactivity-retry", tier_timeout,
+                            0, 0, agent_label, task_id,
+                        )
+                        continue
+                    else:
+                        logger.error(
+                            "[RETRY] All %d inactivity tiers exhausted for %s %s",
+                            len(inactivity_tiers), agent_label, task_id,
+                        )
+                return result
+            return result  # Shouldn't reach here, but safety
 
         try:
             result = subprocess.run(
