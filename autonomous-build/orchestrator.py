@@ -579,10 +579,22 @@ class TaskManager:
 
         Prioritises ``in_progress`` tasks (interrupted work from a prior
         run) over ``pending`` tasks.
+
+        A deferred (split) task counts as satisfied if ALL of its
+        children are complete.
         """
+        tasks_by_id = {t["id"]: t for t in self.prd["tasks"]}
+
         completed_ids = {
             t["id"] for t in self.prd["tasks"] if t["status"] == "complete"
         }
+
+        # A deferred task is satisfied when all its split children are complete
+        for t in self.prd["tasks"]:
+            if t["status"] == "deferred":
+                children = t.get("split_into", [])
+                if children and all(c in completed_ids for c in children):
+                    completed_ids.add(t["id"])
 
         # First pass: look for in_progress (interrupted) tasks
         for task in self.prd["tasks"]:
