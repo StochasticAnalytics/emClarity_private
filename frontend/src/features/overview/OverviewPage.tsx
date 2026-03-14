@@ -29,6 +29,10 @@ interface ProjectDetails {
   directory: string
   state: string
   current_cycle: number
+  /** Total particle count from template search (0 when not yet available). */
+  particle_count?: number
+  /** Best resolution in Ångströms from the latest FSC calculation, or null. */
+  best_resolution_angstrom?: number | null
 }
 
 interface TiltSeriesListResponse {
@@ -80,9 +84,13 @@ const STATE_ORDER: ReadonlyArray<string> = [
   'DONE',
 ]
 
+/**
+ * Returns the numeric index of `state` in STATE_ORDER, or -1 if unrecognised.
+ * Callers that need a fallback must handle -1 explicitly — we do NOT silently
+ * map unknown states to UNINITIALIZED (index 0) to avoid misrepresenting state.
+ */
 function stateIndex(state: string): number {
-  const idx = STATE_ORDER.indexOf(state.toUpperCase())
-  return idx === -1 ? 0 : idx
+  return STATE_ORDER.indexOf(state.toUpperCase())
 }
 
 /**
@@ -260,6 +268,15 @@ interface PipelineProgressStepperProps {
 function PipelineProgressStepper({ currentState }: PipelineProgressStepperProps) {
   const currentIdx = stateIndex(currentState)
 
+  // Only the first step that is not yet completed but has been activated is
+  // shown as "Current step".  This prevents multiple steps with the same
+  // activeFromStateIdx (e.g. all CYCLE_N steps) from all showing as active
+  // simultaneously.
+  const activeStepIdx = TUTORIAL_PIPELINE_STEPS.findIndex(
+    (step) =>
+      currentIdx < step.completedFromStateIdx && currentIdx >= step.activeFromStateIdx,
+  )
+
   return (
     <div className="w-full">
       {/* Scrollable horizontal stepper */}
@@ -270,10 +287,7 @@ function PipelineProgressStepper({ currentState }: PipelineProgressStepperProps)
         >
           {TUTORIAL_PIPELINE_STEPS.map((step, idx) => {
             const isCompleted = currentIdx >= step.completedFromStateIdx
-            const isActive =
-              !isCompleted &&
-              currentIdx >= step.activeFromStateIdx &&
-              (idx === 0 || currentIdx >= TUTORIAL_PIPELINE_STEPS[idx - 1].completedFromStateIdx - 1)
+            const isActive = idx === activeStepIdx
             const isLast = idx === TUTORIAL_PIPELINE_STEPS.length - 1
 
             return (
@@ -391,19 +405,47 @@ interface RecentJobsSectionProps {
 }
 
 function RecentJobsSection({ projectId }: RecentJobsSectionProps) {
-  const { data: allJobs, isLoading } = useApiQuery<Job[]>(
+  const {
+    data: allJobs,
+    isLoading,
+    isError,
+    error,
+  } = useApiQuery<Job[]>(
     ['overview-recent-jobs', projectId],
     `/api/v1/jobs?project_id=${projectId}`,
   )
 
-  // Take the 5 most recent jobs (API returns newest-first based on JobsPage behaviour)
-  const recentJobs = allJobs ? allJobs.slice(0, 5) : []
+  // Sort by created_at descending on the client side to guarantee the 5 most
+  // recent jobs are shown, regardless of API response ordering.
+  const recentJobs =
+    allJobs != null
+      ? [...allJobs]
+          .sort(
+            (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+          )
+          .slice(0, 5)
+      : []
 
   if (isLoading) {
     return (
       <div className="flex items-center gap-2 py-4 text-sm text-gray-500 dark:text-gray-400">
         <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
         Loading recent jobs…
+      </div>
+    )
+  }
+
+  // Surface API errors explicitly — do NOT silently collapse them to "No jobs yet".
+  if (isError) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : 'An unknown error occurred while fetching jobs.'
+    return (
+      <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20">
+        <p className="text-sm text-red-600 dark:text-red-400">
+          <span className="font-medium">Failed to load recent jobs:</span> {message}
+        </p>
       </div>
     )
   }
@@ -502,9 +544,15 @@ export function OverviewPage() {
   const isLoading = projectLoading || tiltsLoading
 
   const displayName = activeProject?.name ?? project?.name ?? projectId ?? '—'
-  const state = workflowData?.state ?? activeProject?.state ?? project?.state ?? 'UNINITIALIZED'
+  // Normalize state to UPPERCASE so badge color comparisons and stateIndex()
+  // work correctly regardless of whether the source returns lowercase or uppercase.
+  const state = (
+    workflowData?.state ?? activeProject?.state ?? project?.state ?? 'UNINITIALIZED'
+  ).toUpperCase()
   const cycle = project?.current_cycle
   const tiltCount = tiltsData?.tilt_series.length
+  const particleCount = project?.particle_count
+  const bestResolution = project?.best_resolution_angstrom
 
   // State badge colour
   const stateBadgeClass =
@@ -574,13 +622,25 @@ export function OverviewPage() {
             />
             <StatCard
               label="Particles"
-              value="—"
-              sub="Available after picking"
+              value={
+                particleCount !== undefined && particleCount > 0
+                  ? particleCount.toLocaleString()
+                  : '—'
+              }
+              sub={
+                particleCount !== undefined && particleCount > 0
+                  ? undefined
+                  : 'Available after picking'
+              }
             />
             <StatCard
               label="Resolution"
-              value="—"
-              sub="Available after averaging"
+              value={
+                bestResolution != null
+                  ? `${bestResolution.toFixed(1)} Å`
+                  : '—'
+              }
+              sub={bestResolution != null ? undefined : 'Available after averaging'}
             />
           </div>
 

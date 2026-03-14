@@ -17,6 +17,7 @@ export interface ActiveProject {
   id: string
   name: string
   state: string
+  directory?: string
 }
 
 export interface ProjectContextValue {
