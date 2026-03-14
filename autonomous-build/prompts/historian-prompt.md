@@ -14,92 +14,81 @@ Review the git commits between a start tag and HEAD for a specific task. Clean u
 
 3. **Do NOT squash across task boundaries**: Only touch commits that belong to the current task (identified by `[TASK-XXX]` prefix in their message). Never modify commits from prior tasks or other work.
 
-4. **Preserve commits from other agents or the user**: If you find commits that don't have the current task's `[TASK-XXX]` prefix, leave them completely untouched. These are user commits, orchestrator infrastructure changes, or other task work.
+4. **Preserve commits from other agents or the user**: If you find commits that don't have the current task's `[TASK-XXX]` prefix, leave them completely untouched.
 
 5. **Write meaningful commit messages**: Format: `[TASK-XXX] <verb> <what> — <why>`
-   - Example: `[TASK-002c] Wire parameter schema UI to backend API — connect static schema to live endpoint`
-   - Example: `[TASK-002c] Fix fallback to static schema when backend unreachable — QA found regression`
 
-6. **Preserve the "why"**: When rewriting commit messages, include context about what the change accomplishes, not just what files were touched.
+6. **Preserve the "why"**: Include context about what the change accomplishes, not just what files were touched.
 
 ## Process
 
-**IMPORTANT: Do NOT use `git rebase -i` — it requires interactive input which is not available. Use the non-interactive approach below.**
+**IMPORTANT: Do NOT use `git rebase -i` directly — it requires interactive input. Use `GIT_SEQUENCE_EDITOR` as shown below.**
 
-1. Run `git log --oneline <start_tag>..HEAD` to see all commits in scope
-2. Run `git log --stat <start_tag>..HEAD` for detail on what changed
-3. Identify which commits belong to this task (have `[TASK-XXX]` prefix) vs. other work
-4. Identify revert+fix pairs among the task commits
+### Step 1: Survey commits
 
-### To squash revert+fix pairs (non-interactive):
-
-Use `GIT_SEQUENCE_EDITOR` to script the rebase:
-
-```bash
-# Example: squash commits ABC123 and DEF456 into one
-GIT_SEQUENCE_EDITOR="sed -i 's/^pick DEF456/fixup DEF456/; s/^pick ABC123/fixup ABC123/'" git rebase -i <start_tag>
-```
-
-Or use `git reset --soft` for a simpler approach when ALL task commits should be squashed:
-
-```bash
-# Find the commit just before the first task commit
-FIRST_TASK_COMMIT=$(git log --oneline --reverse <start_tag>..HEAD | grep '\[TASK-XXX\]' | head -1 | cut -d' ' -f1)
-PARENT=$(git rev-parse ${FIRST_TASK_COMMIT}^)
-
-# Soft reset preserves changes but removes commits
-git reset --soft $PARENT
-
-# Re-commit with clean message
-git commit -m "[TASK-XXX] <clean description>"
-```
-
-### To reword a commit message:
-
-```bash
-git commit --amend -m "[TASK-XXX] New message here"
-```
-
-This only works for HEAD. For older commits, use `GIT_SEQUENCE_EDITOR`:
-
-```bash
-GIT_SEQUENCE_EDITOR="sed -i 's/^pick ABC123/reword ABC123/'" git rebase -i <start_tag>
-```
-
-When the rebase opens for rewording, it will use the editor. Set `GIT_EDITOR` to a script:
-
-```bash
-GIT_EDITOR="bash -c 'echo \"[TASK-XXX] New message\" > \$1'" git rebase -i <start_tag>
-```
-
-### Simpler alternative — if task commits are contiguous:
-
-If all the task's commits are at the tip of HEAD (no interleaved user commits after them), the safest approach is:
-
-```bash
-# Count how many task commits there are
-TASK_COUNT=$(git log --oneline <start_tag>..HEAD | grep -c '\[TASK-XXX\]')
-
-# Soft reset that many commits
-git reset --soft HEAD~${TASK_COUNT}
-
-# Re-commit as one clean commit
-git commit -m "[TASK-XXX] <description> — <why>"
-```
-
-## Important Constraints
-
-- If there are no commits with the task's `[TASK-XXX]` prefix between the start tag and HEAD, do nothing.
-- If there is only 1 task commit and it already has a good message, do nothing.
-- If any rebase encounters conflicts, abort (`git rebase --abort`) and leave history as-is. Report what you would have done but don't fail.
-- Never force-push. You are working on a local branch.
-- **Be very careful with interleaved commits.** If user/orchestrator commits are mixed between task commits, do NOT use `git reset --soft HEAD~N` — it would collapse non-task commits too. In that case, use `GIT_SEQUENCE_EDITOR` with sed, or just leave the history as-is and report what cleanup would be ideal.
-- This history will be reviewed during the Phase 0 → Phase 1 transition as a knowledge source for how the system was built. Treat it accordingly.
-
-## Verification
-
-After any cleanup, always run:
 ```bash
 git log --oneline <start_tag>..HEAD
 ```
-to verify the result looks correct before finishing.
+
+### Step 2: Check contiguity
+
+Task commits may be interleaved with non-task commits (user work, infrastructure). Check:
+
+```bash
+git log --oneline <start_tag>..HEAD | awk '/\[TASK-XXX\]/{print "TASK", $0; next}{print "OTHER", $0}'
+```
+
+If the output shows `TASK, OTHER, TASK` pattern (task commits separated by non-task commits), then the task commits are **interleaved** and cannot be safely rebased without moving unrelated commits.
+
+**If interleaved**: Do NOT attempt rebase. Instead, report:
+- Which commits belong to this task
+- Which are revert+fix pairs that ideally would be squashed
+- Why rebase was skipped (interleaved non-task commits)
+Then exit. This is a valid outcome — not a failure.
+
+**If contiguous** (all task commits are in an unbroken sequence): proceed to Step 3.
+
+### Step 3: Squash contiguous task commits
+
+Use `GIT_SEQUENCE_EDITOR` to script the rebase non-interactively.
+
+First, identify the commits:
+```bash
+# Get the SHA of the commit just before the first task commit
+FIRST_TASK=$(git log --oneline --reverse <start_tag>..HEAD | grep '\[TASK-XXX\]' | head -1 | cut -d' ' -f1)
+REBASE_BASE=$(git rev-parse ${FIRST_TASK}^)
+```
+
+Then create a sed script to mark commits for squash/fixup:
+```bash
+# Example: keep first task commit, fixup the rest
+FIRST_SHA=$(git log --oneline --reverse ${REBASE_BASE}..HEAD | grep '\[TASK-XXX\]' | head -1 | cut -d' ' -f1)
+
+# Build sed commands to fixup all task commits except the first
+# Leave non-task commits as "pick"
+GIT_SEQUENCE_EDITOR="sed -i 's/^pick <REVERT_SHA>/fixup <REVERT_SHA>/; s/^pick <FIX_SHA>/fixup <FIX_SHA>/'" \
+  git rebase -i ${REBASE_BASE}
+```
+
+After squashing, amend the message:
+```bash
+git commit --amend -m "[TASK-XXX] <clean description> — <why>"
+```
+
+### Step 4: Verify
+
+```bash
+git log --oneline <start_tag>..HEAD
+```
+
+Confirm the result looks correct.
+
+## Important Constraints
+
+- The working tree has been stashed clean for you — do not run `git stash` yourself.
+- If any rebase encounters conflicts, abort (`git rebase --abort`) and report what happened. Do not force through conflicts.
+- If there are no commits with the task's `[TASK-XXX]` prefix, do nothing.
+- If there is only 1 task commit and it has a good message, do nothing.
+- Never force-push.
+- Be efficient — get all the information you need in as few git commands as possible.
+- This history will be reviewed during the Phase 0 → Phase 1 transition as a knowledge source. Treat it accordingly.

@@ -8,6 +8,7 @@ Manages Developer and QA agents, monitors context usage, handles task splitting.
 
 import json
 import logging
+import os
 import re
 import shutil
 import signal
@@ -1457,12 +1458,55 @@ class Orchestrator:
 
     # -- historian ---------------------------------------------------------
 
+    def _git_stash_push(self, message: str = "orchestrator-auto") -> bool:
+        """Stash uncommitted changes. Returns True if something was stashed."""
+        cwd = str(self.config.project_root)
+        result = subprocess.run(
+            ["git", "stash", "push", "--include-untracked", "-m", message],
+            capture_output=True, text=True, timeout=30, cwd=cwd,
+        )
+        stashed = "No local changes" not in result.stdout
+        if stashed:
+            logger.info("[GIT] Stashed uncommitted changes: %s", message)
+        else:
+            logger.debug("[GIT] Nothing to stash")
+        return stashed
+
+    def _git_stash_pop(self) -> bool:
+        """Pop the most recent stash. Returns True on success."""
+        cwd = str(self.config.project_root)
+        result = subprocess.run(
+            ["git", "stash", "pop"],
+            capture_output=True, text=True, timeout=30, cwd=cwd,
+        )
+        if result.returncode == 0:
+            logger.info("[GIT] Stash popped successfully")
+            return True
+        else:
+            logger.warning(
+                "[GIT] Stash pop failed (rc=%d): %s — dropping stash",
+                result.returncode, result.stderr[:200],
+            )
+            # Drop the stash to avoid accumulation, restore clean state
+            subprocess.run(
+                ["git", "stash", "drop"],
+                capture_output=True, text=True, timeout=10, cwd=cwd,
+            )
+            subprocess.run(
+                ["git", "checkout", "--", "."],
+                capture_output=True, text=True, timeout=10, cwd=cwd,
+            )
+            return False
+
     def _run_historian(self, task_id: str):
         """Run the Historian agent to clean up git history for a completed task.
 
         The Historian reviews commits since the task's start tag, squashes
         revert+fix pairs, ensures meaningful commit messages, and maintains
         a minimum of one commit per sub-agent per task.
+
+        Stashes uncommitted changes before running (git rebase requires
+        a clean working tree) and restores them after.
         """
         start_tag = f"autobuild/{task_id}/start"
 
@@ -1476,12 +1520,17 @@ class Orchestrator:
             logger.info("[HIST] No start tag found for %s — skipping historian", task_id)
             return
 
+        # Stash uncommitted changes so rebase can work on a clean tree
+        stashed = self._git_stash_push(f"pre-historian-{task_id}")
+
         # Load historian prompt
         prompt_path = Path("prompts/historian-prompt.md")
         try:
             system_prompt = prompt_path.read_text(encoding="utf-8")
         except FileNotFoundError:
             logger.warning("[HIST] Historian prompt not found: %s — skipping", prompt_path)
+            if stashed:
+                self._git_stash_pop()
             return
 
         user_message = (
@@ -1517,6 +1566,16 @@ class Orchestrator:
             logger.warning(
                 "[HIST] Historian failed for %s — history left as-is", task_id,
             )
+
+        # Restore stashed changes
+        if stashed:
+            self._git_stash_pop()
+
+        # DEBUG: exit after historian to inspect results
+        if os.environ.get("HISTORIAN_DEBUG_EXIT"):
+            logger.info("[HIST] HISTORIAN_DEBUG_EXIT set — exiting for inspection")
+            self._generate_report()
+            sys.exit(0)
 
     # -- oracle ------------------------------------------------------------
 
