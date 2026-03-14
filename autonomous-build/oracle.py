@@ -139,8 +139,10 @@ class OracleValidator:
         return results
 
     def _check_typescript(self) -> Dict:
-        """Validate TypeScript compilation"""
+        """Validate TypeScript compilation from the gui/ subdirectory."""
         start = time.time()
+
+        gui_cwd = str(Path(self.cwd or ".") / "gui")
 
         try:
             result = subprocess.run(
@@ -148,7 +150,7 @@ class OracleValidator:
                 capture_output=True,
                 text=True,
                 timeout=60,
-                cwd=self.cwd,
+                cwd=gui_cwd,
             )
 
             duration_ms = int((time.time() - start) * 1000)

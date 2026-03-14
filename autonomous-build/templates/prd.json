@@ -2,9 +2,9 @@
   "_metadata": {
     "phase": "0",
     "created": "2026-03-11T12:00:00Z",
-    "last_updated": "2026-03-13T17:45:18.690214"
+    "last_updated": "2026-03-14T08:46:15.043141"
   },
-  "_current_task_id": "TASK-002",
+  "_current_task_id": "TASK-002a",
   "tasks": [
     {
       "id": "TASK-001",
@@ -29,7 +29,7 @@
       "title": "Parameter schema API endpoint",
       "description": "Implement GET /api/v1/parameters/schema endpoint that loads parameter_schema.json and serves it to the frontend. Response must be a JSON object with a 'parameters' key containing an array of parameter definitions. Each parameter must have: name, type, required, description, category fields. Parameter types must match the golden schema: 'numeric', 'numeric_array', 'string', 'boolean'. Categories must include: microscope, hardware, ctf, alignment, classification. Required parameters (PIXEL_SIZE, Cs, VOLTAGE, AMPCONT, nGPUs, nCpuCores, symmetry) must be marked required=true. Ranges must be [min, max] with min<=max.",
       "type": "backend",
-      "status": "in_progress",
+      "status": "deferred",
       "depends_on": [
         "TASK-001"
       ],
@@ -44,8 +44,49 @@
         "Ranges are valid [min, max] with min<=max",
         "All tests in tests/test_parameter_schema.py pass"
       ],
-      "retry_count": 0,
-      "last_attempt": "2026-03-13T17:45:18.690202"
+      "retry_count": 3,
+      "last_attempt": "2026-03-13T18:08:45.299612",
+      "split_into": [
+        "TASK-002a",
+        "TASK-002b",
+        "TASK-002c"
+      ]
+    },
+    {
+      "id": "TASK-002a",
+      "title": "Parameter schema API endpoint - UI component only",
+      "description": "Implement frontend UI for: Implement GET /api/v1/parameters/schema endpoint that loads parameter_schema.json and serves it to the frontend. Response must be a JSON object with a 'parameters' key containing an array of parameter definitions. Each parameter must have: name, type, required, description, category fields. Parameter types must match the golden schema: 'numeric', 'numeric_array', 'string', 'boolean'. Categories must include: microscope, hardware, ctf, alignment, classification. Required parameters (PIXEL_SIZE, Cs, VOLTAGE, AMPCONT, nGPUs, nCpuCores, symmetry) must be marked required=true. Ranges must be [min, max] with min<=max.. No backend integration yet.",
+      "type": "frontend",
+      "status": "in_progress",
+      "depends_on": [
+        "TASK-001"
+      ],
+      "reference": "autonomous-build/templates/phase0-artifacts/parameter_schema.json",
+      "last_attempt": "2026-03-14T08:46:15.043127",
+      "retry_count": 1
+    },
+    {
+      "id": "TASK-002b",
+      "title": "Parameter schema API endpoint - Backend endpoint",
+      "description": "Implement backend logic for: Implement GET /api/v1/parameters/schema endpoint that loads parameter_schema.json and serves it to the frontend. Response must be a JSON object with a 'parameters' key containing an array of parameter definitions. Each parameter must have: name, type, required, description, category fields. Parameter types must match the golden schema: 'numeric', 'numeric_array', 'string', 'boolean'. Categories must include: microscope, hardware, ctf, alignment, classification. Required parameters (PIXEL_SIZE, Cs, VOLTAGE, AMPCONT, nGPUs, nCpuCores, symmetry) must be marked required=true. Ranges must be [min, max] with min<=max.",
+      "type": "backend",
+      "status": "pending",
+      "depends_on": [
+        "TASK-001"
+      ],
+      "reference": "autonomous-build/templates/phase0-artifacts/parameter_schema.json"
+    },
+    {
+      "id": "TASK-002c",
+      "title": "Parameter schema API endpoint - Frontend/backend integration",
+      "description": "Connect UI to backend endpoint",
+      "type": "integration",
+      "status": "pending",
+      "depends_on": [
+        "TASK-002a",
+        "TASK-002b"
+      ],
+      "reference": "autonomous-build/templates/phase0-artifacts/parameter_schema.json"
     },
     {
       "id": "TASK-003",
