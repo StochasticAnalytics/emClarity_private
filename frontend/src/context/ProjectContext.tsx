@@ -1,10 +1,11 @@
 /**
  * ProjectContext – shares the currently active project state across the app.
  *
- * Components inside a /project/:projectId route call `setProjectId` (via
- * ProjectLayout) so that the sidebar and header know which project is active.
- * When a project's data has been fetched, pages call `setActiveProject` to
- * broadcast the name and state badge to the Header.
+ * The ProjectLayout reads the project ID from the URL, fetches the project
+ * data from the API, and calls `setActiveProject` to broadcast the selection.
+ * Layout components (Header, Sidebar) and page components read from this
+ * context to display the current project name, state badge, and to make
+ * project-scoped API calls.
  */
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
 
@@ -19,11 +20,10 @@ export interface ActiveProject {
 }
 
 export interface ProjectContextValue {
-  /** Project ID extracted from the URL (set by ProjectLayout). */
-  projectId: string | null
-  /** Full project metadata fetched from the API. */
+  /** The currently active project, or null if no project is loaded. */
   activeProject: ActiveProject | null
-  setProjectId: (id: string | null) => void
+  /** Convenience getter: the active project's ID, or null. */
+  projectId: string | null
   setActiveProject: (project: ActiveProject) => void
   clearActiveProject: () => void
 }
@@ -43,12 +43,7 @@ interface ProjectProviderProps {
 }
 
 export function ProjectProvider({ children }: ProjectProviderProps) {
-  const [projectId, setProjectIdState] = useState<string | null>(null)
   const [activeProject, setActiveProjectState] = useState<ActiveProject | null>(null)
-
-  const setProjectId = useCallback((id: string | null) => {
-    setProjectIdState(id)
-  }, [])
 
   const setActiveProject = useCallback((project: ActiveProject) => {
     setActiveProjectState(project)
@@ -56,12 +51,13 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
 
   const clearActiveProject = useCallback(() => {
     setActiveProjectState(null)
-    setProjectIdState(null)
   }, [])
+
+  const projectId = activeProject?.id ?? null
 
   return (
     <ProjectContext.Provider
-      value={{ projectId, activeProject, setProjectId, setActiveProject, clearActiveProject }}
+      value={{ activeProject, projectId, setActiveProject, clearActiveProject }}
     >
       {children}
     </ProjectContext.Provider>
@@ -72,6 +68,7 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
 // Hook
 // ---------------------------------------------------------------------------
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useProject(): ProjectContextValue {
   const ctx = useContext(ProjectContext)
   if (!ctx) {

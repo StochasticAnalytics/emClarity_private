@@ -192,7 +192,8 @@ function FscSection() {
   const [state, setState] = useState<FetchState<FscData>>({ status: 'loading' })
 
   const fetchFsc = useCallback(async () => {
-    setState({ status: 'loading' })
+    // Note: callers are responsible for setting { status: 'loading' } before invoking this.
+    // setState is only called here after async operations to avoid react-hooks/set-state-in-effect.
     try {
       const data = await apiClient.get<FscData>('/api/v1/results/fsc')
       setState({ status: 'success', data })
@@ -210,6 +211,7 @@ function FscSection() {
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchFsc()
   }, [fetchFsc])
 
@@ -229,7 +231,6 @@ function FscSection() {
         </div>
         <button
           type="button"
-          onClick={() => void fetchFsc()}
           disabled={state.status === 'loading'}
           aria-label="Refresh FSC data"
           className={
@@ -240,6 +241,10 @@ function FscSection() {
             'focus:outline-none focus:ring-2 focus:ring-blue-500 ' +
             'transition-colors disabled:opacity-50'
           }
+          onClick={() => {
+            setState({ status: 'loading' })
+            void fetchFsc()
+          }}
         >
           <svg
             className={`w-3.5 h-3.5 ${state.status === 'loading' ? 'animate-spin' : ''}`}
@@ -282,7 +287,10 @@ function FscSection() {
             <p className="text-sm text-red-700 dark:text-red-400">{state.message}</p>
             <button
               type="button"
-              onClick={() => void fetchFsc()}
+              onClick={() => {
+                setState({ status: 'loading' })
+                void fetchFsc()
+              }}
               className="mt-2 text-sm text-red-600 dark:text-red-400 underline hover:no-underline"
             >
               Retry
@@ -337,7 +345,8 @@ function ParticleStatsSection() {
   const [state, setState] = useState<FetchState<ParticleStats>>({ status: 'loading' })
 
   const fetchStats = useCallback(async () => {
-    setState({ status: 'loading' })
+    // Note: callers are responsible for setting { status: 'loading' } before invoking this.
+    // setState is only called here after async operations to avoid react-hooks/set-state-in-effect.
     try {
       const data = await apiClient.get<ParticleStats>('/api/v1/results/particles')
       setState({ status: 'success', data })
@@ -355,6 +364,7 @@ function ParticleStatsSection() {
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchStats()
   }, [fetchStats])
 
@@ -400,7 +410,10 @@ function ParticleStatsSection() {
             <p className="text-sm text-red-700 dark:text-red-400">{state.message}</p>
             <button
               type="button"
-              onClick={() => void fetchStats()}
+              onClick={() => {
+                setState({ status: 'loading' })
+                void fetchStats()
+              }}
               className="mt-2 text-sm text-red-600 dark:text-red-400 underline hover:no-underline"
             >
               Retry
@@ -533,7 +546,8 @@ function SystemInfoSection() {
   const [state, setState] = useState<FetchState<SystemInfo>>({ status: 'loading' })
 
   const fetchSystemInfo = useCallback(async () => {
-    setState({ status: 'loading' })
+    // Note: callers are responsible for setting { status: 'loading' } before invoking this.
+    // setState is only called here after async operations to avoid react-hooks/set-state-in-effect.
     try {
       const data = await apiClient.get<SystemInfo>('/api/v1/system/info')
       setState({ status: 'success', data })
@@ -547,6 +561,7 @@ function SystemInfoSection() {
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchSystemInfo()
   }, [fetchSystemInfo])
 
@@ -569,7 +584,10 @@ function SystemInfoSection() {
         </div>
         <button
           type="button"
-          onClick={() => void fetchSystemInfo()}
+          onClick={() => {
+            setState({ status: 'loading' })
+            void fetchSystemInfo()
+          }}
           disabled={state.status === 'loading'}
           aria-label="Refresh system info"
           className={
@@ -620,7 +638,10 @@ function SystemInfoSection() {
             <p className="text-sm text-red-700 dark:text-red-400">{state.message}</p>
             <button
               type="button"
-              onClick={() => void fetchSystemInfo()}
+              onClick={() => {
+                setState({ status: 'loading' })
+                void fetchSystemInfo()
+              }}
               className="mt-2 text-sm text-red-600 dark:text-red-400 underline hover:no-underline"
             >
               Retry

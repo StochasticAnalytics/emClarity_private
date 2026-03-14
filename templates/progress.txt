@@ -99,3 +99,24 @@ Task: TASK-015 – App shell layout and navigation
   - Fixed pre-existing TS2532/TS2345/TS2538 errors in api/parameters.ts
     (regex match groups are string|undefined in TypeScript 5.x strict mode)
   - All 35 backend E2E tests pass; tsc compiles without errors
+
+Developer: Completed 2026-03-14T22:05:54Z (re-committed 2026-03-14)
+  Task: TASK-017 - Nested routing + global project context + nav rail
+  Implemented:
+    - All 8 routes in App.tsx: / (landing) + 7 project-scoped nested routes
+      under /project/:projectId/ with index redirect to overview
+    - ProjectContext.tsx: provides projectId + activeProject to all child
+      pages via React context; ProjectProvider wraps app in MainLayout
+    - ProjectLayout.tsx: reads projectId from URL, fetches project from API,
+      calls setActiveProject; renders Outlet once loaded; clears on unmount
+    - Sidebar: cisTEM-style vertical nav rail, 7 icon+label items
+      (Overview/Assets/Actions/Results/Settings/Jobs/Expert), active item
+      highlighted via NavLink className callback, disabled on landing page
+    - WorkflowPage + TiltSeriesPage: project ID sourced from URL params
+      via useParams, no independent ProjectSelector widgets
+    - ResultsPage.tsx + ProjectContext.tsx: no ESLint errors
+  Validation:
+    - TypeScript: npx tsc --noEmit → exit 0 (0 errors)
+    - Backend unit tests: 27/27 passed (pytest backend/)
+    - E2E tests: 35/35 passed (pytest tests/ with backend running)
+

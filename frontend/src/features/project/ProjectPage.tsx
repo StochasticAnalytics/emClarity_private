@@ -1,12 +1,13 @@
 /**
- * Project manager landing page (route: `/`).
+ * Project manager page (landing page).
  *
- * Provides two primary workflows:
+ * Provides two workflows:
  *  1. Create New Project – form with name, directory, and microscope parameters;
- *     on success navigates to /project/:id/overview.
- *  2. Load Existing Project – enter a project ID and navigate to its overview.
+ *     submits to POST /api/v1/projects then navigates to /project/:id/overview.
+ *  2. Load Existing Project – enter a project ID to open its overview.
  *
- * The full project dashboard lives at /project/:id/overview (OverviewPage).
+ * Once a project is selected, all project-scoped pages are accessible via the
+ * sidebar navigation at /project/:projectId/<section>.
  */
 import { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -22,10 +23,7 @@ import { apiClient, ApiError } from '@/api/client.ts'
 interface ProjectResponse {
   id: string
   name: string
-  directory: string
   state: string
-  parameters: Record<string, unknown>
-  current_cycle: number
 }
 
 // ---------------------------------------------------------------------------
@@ -60,10 +58,9 @@ const labelClass = 'block text-sm font-medium text-gray-700 dark:text-gray-300'
 
 interface NewProjectFormProps {
   onCreated: (projectId: string) => void
-  onCancel: () => void
 }
 
-function NewProjectForm({ onCreated, onCancel }: NewProjectFormProps) {
+function NewProjectForm({ onCreated }: NewProjectFormProps) {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -248,22 +245,13 @@ function NewProjectForm({ onCreated, onCancel }: NewProjectFormProps) {
         </div>
       )}
 
-      <div className="flex gap-3">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
-        >
-          ← Back
-        </button>
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="flex-1 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-blue-500 dark:hover:bg-blue-600"
-        >
-          {isSubmitting ? 'Creating…' : 'Create Project'}
-        </button>
-      </div>
+      <button
+        type="submit"
+        disabled={isSubmitting}
+        className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-blue-500 dark:hover:bg-blue-600"
+      >
+        {isSubmitting ? 'Creating…' : 'Create Project'}
+      </button>
     </form>
   )
 }
@@ -345,27 +333,43 @@ function LoadProjectPanel({ onLoaded }: LoadProjectPanelProps) {
 type View = 'home' | 'create'
 
 export function ProjectPage() {
-  const navigate = useNavigate()
   const [view, setView] = useState<View>('home')
+  const navigate = useNavigate()
 
-  // Navigate to project overview once created or loaded
-  const handleProjectReady = useCallback(
+  const handleProjectCreated = useCallback(
     (projectId: string) => {
-      navigate(`/project/${projectId}/overview`)
+      void navigate(`/project/${projectId}/overview`)
     },
     [navigate],
   )
+
+  const handleProjectLoaded = useCallback(
+    (projectId: string) => {
+      void navigate(`/project/${projectId}/overview`)
+    },
+    [navigate],
+  )
+
+  const handleBack = useCallback(() => {
+    setView('home')
+  }, [])
 
   // Create project view
   if (view === 'create') {
     return (
       <div className="space-y-4">
-        <h2 className="text-2xl font-semibold">New Project</h2>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleBack}
+            className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+          >
+            ← Back
+          </button>
+          <h2 className="text-2xl font-semibold">New Project</h2>
+        </div>
         <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
-          <NewProjectForm
-            onCreated={handleProjectReady}
-            onCancel={() => setView('home')}
-          />
+          <NewProjectForm onCreated={handleProjectCreated} />
         </div>
       </div>
     )
@@ -407,7 +411,7 @@ export function ProjectPage() {
           <p className="mt-1 mb-4 text-sm text-gray-500 dark:text-gray-400">
             Open a previously created project by its ID.
           </p>
-          <LoadProjectPanel onLoaded={handleProjectReady} />
+          <LoadProjectPanel onLoaded={handleProjectLoaded} />
         </div>
       </div>
     </div>

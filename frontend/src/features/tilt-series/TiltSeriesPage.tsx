@@ -1,9 +1,8 @@
 /**
  * Tilt-series table page.
  *
- * Displays and manages the tilt-series data for the active project.
- * Project ID is obtained from the URL via useParams (set by ProjectLayout).
- * The standalone ProjectSelector widget has been removed.
+ * Displays and manages the tilt-series data for a selected project.
+ * Uses @tanstack/react-table for a sortable, filterable table.
  *
  * Features:
  *  - Sortable and filterable table of tilt series
@@ -16,7 +15,7 @@
  *   POST /api/v1/workflow/{project_id}/run          – execute batch command
  */
 import { useState, useCallback, useMemo } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, Navigate } from 'react-router-dom'
 import {
   useReactTable,
   getCoreRowModel,
@@ -212,7 +211,7 @@ function BatchOperationsToolbar({
         type="button"
         className={buttonClass(runningCommand !== null)}
         disabled={runningCommand !== null}
-        onClick={() => { void handleRunCommand('autoAlign') }}
+        onClick={() => handleRunCommand('autoAlign')}
         title="Run autoAlign on selected tilt series"
       >
         {runningCommand === 'autoAlign' ? (
@@ -250,7 +249,7 @@ function BatchOperationsToolbar({
         type="button"
         className={buttonClass(runningCommand !== null)}
         disabled={runningCommand !== null}
-        onClick={() => { void handleRunCommand('ctf estimate') }}
+        onClick={() => handleRunCommand('ctf estimate')}
         title="Run ctf estimate on selected tilt series"
       >
         {runningCommand === 'ctf estimate' ? (
@@ -714,26 +713,25 @@ function TiltSeriesContent({ projectId }: TiltSeriesContentProps) {
 // ---------------------------------------------------------------------------
 
 export function TiltSeriesPage() {
+  // Project ID comes from the URL (/project/:projectId/assets)
   const { projectId } = useParams<{ projectId: string }>()
+
+  // Guard: redirect to root if projectId is missing (shouldn't happen with nested routing)
+  if (!projectId) {
+    return <Navigate to="/" replace />
+  }
 
   return (
     <div className="space-y-6">
       {/* Page header */}
       <div>
-        <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Assets</h2>
+        <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Tilt Series</h2>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
           View and manage tilt-series data sets. Select rows to run batch processing operations.
         </p>
       </div>
 
-      {/* Content area */}
-      {projectId ? (
-        <TiltSeriesContent projectId={projectId} />
-      ) : (
-        <div className="rounded-lg border border-dashed border-gray-300 dark:border-gray-700 p-12 text-center">
-          <p className="text-sm text-gray-500 dark:text-gray-400">No project selected.</p>
-        </div>
-      )}
+      <TiltSeriesContent projectId={projectId} />
     </div>
   )
 }

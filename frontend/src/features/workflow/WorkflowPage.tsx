@@ -6,17 +6,13 @@
  * as enabled buttons; unavailable commands are disabled with a tooltip
  * explaining which prerequisite state must be reached first.
  *
- * Project ID is now obtained from the URL via useParams (set by ProjectLayout).
- * The standalone ProjectSelector has been removed – project selection happens
- * on the landing page (/).
- *
  * API calls:
  *   GET  /api/v1/workflow/state-machine                 – full state machine def
  *   GET  /api/v1/workflow/{project_id}/available-commands – commands for project
  *   POST /api/v1/workflow/{project_id}/run              – execute a command
  */
 import { useState, useCallback, useEffect } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, Navigate } from 'react-router-dom'
 import { apiClient, ApiError } from '@/api/client.ts'
 import { useApiQuery } from '@/hooks/useApi.ts'
 
@@ -554,7 +550,7 @@ function CommandGrid({
 }
 
 // ---------------------------------------------------------------------------
-// WorkflowContent – main content panel
+// WorkflowContent – main content when a project is loaded
 // ---------------------------------------------------------------------------
 
 interface WorkflowContentProps {
@@ -624,7 +620,7 @@ function WorkflowContent({ projectId, stateMachine }: WorkflowContentProps) {
 
   return (
     <div className="space-y-8">
-      {/* Project + state header */}
+      {/* Project header */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide font-medium">
@@ -632,15 +628,13 @@ function WorkflowContent({ projectId, stateMachine }: WorkflowContentProps) {
           </p>
           <p className="mt-0.5 font-mono text-sm text-gray-700 dark:text-gray-300">{projectId}</p>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="text-right">
-            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide font-medium">
-              Current State
-            </p>
-            <span className="mt-0.5 inline-block rounded-full bg-blue-100 px-3 py-0.5 text-sm font-semibold text-blue-800 dark:bg-blue-900/40 dark:text-blue-200">
-              {stateLabel}
-            </span>
-          </div>
+        <div className="text-right">
+          <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide font-medium">
+            Current State
+          </p>
+          <span className="mt-0.5 inline-block rounded-full bg-blue-100 px-3 py-0.5 text-sm font-semibold text-blue-800 dark:bg-blue-900/40 dark:text-blue-200">
+            {stateLabel}
+          </span>
         </div>
       </div>
 
@@ -729,6 +723,7 @@ function WorkflowContent({ projectId, stateMachine }: WorkflowContentProps) {
 // ---------------------------------------------------------------------------
 
 export function WorkflowPage() {
+  // Project ID comes from the URL (/project/:projectId/actions)
   const { projectId } = useParams<{ projectId: string }>()
 
   // Fetch state machine once – it's static
@@ -738,10 +733,16 @@ export function WorkflowPage() {
     error: smError,
   } = useApiQuery<StateMachine>(['workflow-state-machine'], '/api/v1/workflow/state-machine')
 
+  // Guard: redirect to root if projectId is missing (shouldn't happen with nested routing)
+  if (!projectId) {
+    return <Navigate to="/" replace />
+  }
+
+  // Loading state machine
   if (smLoading) {
     return (
       <div className="space-y-4">
-        <h2 className="text-2xl font-semibold">Actions</h2>
+        <h2 className="text-2xl font-semibold">Workflow</h2>
         <div className="flex items-center gap-3 py-8">
           <div className="h-6 w-6 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
           <span className="text-gray-500 dark:text-gray-400">Loading pipeline definition…</span>
@@ -753,7 +754,7 @@ export function WorkflowPage() {
   if (smError ?? !stateMachine) {
     return (
       <div className="space-y-4">
-        <h2 className="text-2xl font-semibold">Actions</h2>
+        <h2 className="text-2xl font-semibold">Workflow</h2>
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 dark:border-amber-700 dark:bg-amber-900/20">
           <h3 className="font-semibold text-amber-800 dark:text-amber-200">
             Could not load state machine
@@ -766,23 +767,15 @@ export function WorkflowPage() {
     )
   }
 
-  if (!projectId) {
-    return (
-      <div className="space-y-4">
-        <h2 className="text-2xl font-semibold">Actions</h2>
-        <p className="text-gray-500 dark:text-gray-400">No project selected.</p>
-      </div>
-    )
-  }
-
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-semibold">Actions</h2>
+        <h2 className="text-2xl font-semibold">Workflow</h2>
         <p className="mt-2 text-gray-500 dark:text-gray-400">
           Visualize and execute the emClarity processing pipeline.
         </p>
       </div>
+
       <WorkflowContent projectId={projectId} stateMachine={stateMachine} />
     </div>
   )
