@@ -5,11 +5,13 @@
  * parameters. Parameters are grouped by category (microscope, hardware,
  * ctf, alignment, classification, etc.), each displayed in its own tab.
  *
- * This component currently uses a static parameter schema loaded from the
- * golden schema JSON. Backend API integration will be added in TASK-002c.
+ * This component loads the parameter schema from a static JSON file
+ * bundled at build time. Backend API integration will replace this in
+ * TASK-002c with a live call to GET /api/v1/parameters/schema.
  */
 import { useState, useMemo, useCallback } from 'react'
 import { ParameterCategoryTab } from './ParameterCategoryTab.tsx'
+import { loadStaticParameterSchema } from '@/api/parameters.ts'
 import type {
   ParameterCategory,
   ParameterDefinition,
@@ -67,9 +69,9 @@ function groupByCategory(parameters: ParameterDefinition[]): ParameterGroup[] {
 /**
  * Hook that provides the parameter schema for the editor UI.
  *
- * Currently returns a stub (no data) because backend integration is
- * deferred to TASK-002c. When integration is added, this will use
- * `useApiQuery` with the query keys from `@/api/parameters.ts`:
+ * Currently loads the schema from a static JSON file bundled at build
+ * time. In TASK-002c this will be replaced with a `useApiQuery` call
+ * to fetch the schema from the backend:
  *
  * ```ts
  * import { parameterQueryKeys, PARAMETER_SCHEMA_ENDPOINT } from '@/api/parameters.ts'
@@ -85,8 +87,18 @@ function useParameterSchema(): {
   isLoading: boolean
   error: Error | null
 } {
+  // Load the statically bundled parameter schema (no backend call).
+  // This is replaced by a real API call in TASK-002c.
+  const schema = useMemo(() => {
+    try {
+      return loadStaticParameterSchema()
+    } catch {
+      return undefined
+    }
+  }, [])
+
   return {
-    data: undefined,
+    data: schema,
     isLoading: false,
     error: null,
   }

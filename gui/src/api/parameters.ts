@@ -1,15 +1,18 @@
 /**
  * API module for parameter schema operations.
  *
- * Provides typed functions and hooks for fetching the parameter schema
- * from the backend. Currently returns a stub response; backend
- * integration will be wired in TASK-002c.
+ * Provides typed functions and hooks for fetching the parameter schema.
+ * Currently loads the schema from a static JSON file bundled at build
+ * time. In TASK-002c, this will be switched to call the real backend
+ * endpoint via the API client.
  */
 
 import type {
+  ParameterDefinition,
   ParameterSchemaResponse,
   ParameterValidationResult,
 } from '@/types/parameters.ts'
+import staticSchema from '@/data/parameter-schema.json'
 
 /** API v1 endpoint for the parameter schema. */
 export const PARAMETER_SCHEMA_ENDPOINT = '/api/v1/parameters/schema'
@@ -18,27 +21,50 @@ export const PARAMETER_SCHEMA_ENDPOINT = '/api/v1/parameters/schema'
 export const PARAMETER_VALIDATE_ENDPOINT = '/api/v1/parameters/validate'
 
 /**
+ * Load the parameter schema from the statically bundled JSON.
+ *
+ * The schema is imported at build time from
+ * `gui/src/data/parameter-schema.json` and returned as a typed
+ * `ParameterSchemaResponse`. This avoids a backend dependency while
+ * still providing real parameter data for the UI.
+ *
+ * @returns The parameter schema response with all 160 parameters
+ *
+ * @remarks
+ * In TASK-002c this will be replaced by an API call:
+ * ```ts
+ * return apiClient.get<ParameterSchemaResponse>(PARAMETER_SCHEMA_ENDPOINT, signal)
+ * ```
+ */
+export function loadStaticParameterSchema(): ParameterSchemaResponse {
+  const parameters = (
+    staticSchema as { parameters: ParameterDefinition[] }
+  ).parameters
+  return { parameters }
+}
+
+/**
  * Fetch the full parameter schema from the backend.
  *
- * @param signal - Optional AbortSignal for cancellation
+ * @param _signal - Optional AbortSignal for cancellation
  * @returns Promise resolving to the parameter schema response
  *
  * @remarks
  * In TASK-002c this will call the real backend endpoint.
- * For now it returns undefined to indicate no data loaded.
+ * For now it returns the static schema bundled at build time.
  */
 export async function fetchParameterSchema(
   _signal?: AbortSignal,
-): Promise<ParameterSchemaResponse | undefined> {
+): Promise<ParameterSchemaResponse> {
   // TODO(TASK-002c): Replace with actual API call:
   //   return apiClient.get<ParameterSchemaResponse>(PARAMETER_SCHEMA_ENDPOINT, signal)
-  return undefined
+  return loadStaticParameterSchema()
 }
 
 /**
  * Validate parameter values against the schema.
  *
- * @param parameters - Map of parameter names to values
+ * @param _parameters - Map of parameter names to values
  * @returns Promise resolving to the validation result
  *
  * @remarks
