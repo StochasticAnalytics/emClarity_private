@@ -1523,13 +1523,24 @@ class Orchestrator:
         except Exception:
             return ""
 
-    def _git_bookmark(self, task_id: str, suffix: str):
+    def _git_bookmark(self, task_id: str, suffix: str, force: bool = False):
         """Create a lightweight bookmark tag for traceability.
 
         Tags are informational only — never used as reset targets.
+        If the tag already exists and force=False, it is left as-is
+        (preserving the original commit it points to for checkpoint
+        validation).
         Examples: autobuild/TASK-002c/start, autobuild/TASK-002c/verified
         """
         tag_name = f"autobuild/{task_id}/{suffix}"
+
+        if not force:
+            # Check if tag already exists — don't overwrite
+            existing = self._git_resolve_ref(f"refs/tags/{tag_name}")
+            if existing:
+                logger.info("[GIT] Tag %s already exists at %s — keeping", tag_name, existing[:8])
+                return
+
         try:
             subprocess.run(
                 ["git", "tag", "-f", tag_name],
