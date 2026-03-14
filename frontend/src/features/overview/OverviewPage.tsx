@@ -2,15 +2,18 @@
  * Overview page – project dashboard.
  *
  * Displays a summary of the active project: name, state, current cycle,
- * and tilt-series count. This is the default landing page for a project
- * (equivalent to cisTEM's MyOverviewPanel).
+ * tilt-series count, particle count, and current resolution estimate.
+ * Also shows a pipeline progress stepper (matching tutorial Figure 1)
+ * and the last 5 recent jobs with status badges.
  *
  * The project data is already loaded by ProjectLayout via ProjectContext.
- * This page fetches additional details (tilt-series count) on its own.
+ * This page fetches additional details on its own.
  *
  * API calls:
- *   GET /api/v1/projects/{id}              – project state / cycle
- *   GET /api/v1/projects/{id}/tilt-series  – tilt-series list (for count)
+ *   GET /api/v1/projects/{id}                       – project state / cycle
+ *   GET /api/v1/projects/{id}/tilt-series           – tilt-series list (for count)
+ *   GET /api/v1/workflow/{id}/available-commands    – current workflow state
+ *   GET /api/v1/jobs?project_id={id}                – recent jobs list
  */
 import { useParams, Link } from 'react-router-dom'
 import { useProject } from '@/context/ProjectContext.tsx'
@@ -32,23 +35,212 @@ interface TiltSeriesListResponse {
   tilt_series: { name: string }[]
 }
 
+interface AvailableCommandsResponse {
+  project_id: string
+  state: string
+  commands: { name: string; description: string }[]
+}
+
+type JobStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED'
+
+interface Job {
+  id: string
+  project_id: string
+  command: string
+  status: JobStatus
+  created_at: string
+  updated_at: string
+}
+
 // ---------------------------------------------------------------------------
-// Stat card
+// Pipeline step definitions — 11 steps from emClarity tutorial Figure 1
+// ---------------------------------------------------------------------------
+
+interface PipelineStep {
+  id: string
+  label: string
+  subtitle: string
+  optional?: boolean
+  /** The minimum pipeline state index at which this step is considered "active" */
+  activeFromStateIdx: number
+  /** The minimum pipeline state index at which this step is considered "completed" */
+  completedFromStateIdx: number
+}
+
+/** Ordered states in the state machine, mapped to numeric indices for comparison. */
+const STATE_ORDER: ReadonlyArray<string> = [
+  'UNINITIALIZED',
+  'TILT_ALIGNED',
+  'CTF_ESTIMATED',
+  'RECONSTRUCTED',
+  'PARTICLES_PICKED',
+  'INITIALIZED',
+  'CYCLE_N',
+  'EXPORT',
+  'DONE',
+]
+
+function stateIndex(state: string): number {
+  const idx = STATE_ORDER.indexOf(state.toUpperCase())
+  return idx === -1 ? 0 : idx
+}
+
+/**
+ * 11-step pipeline from emClarity tutorial Figure 1.
+ * Each step has thresholds for when it becomes active and when it is completed,
+ * expressed as indices into STATE_ORDER.
+ */
+const TUTORIAL_PIPELINE_STEPS: ReadonlyArray<PipelineStep> = [
+  {
+    id: 'align-ts',
+    label: 'Align Tilt-Series',
+    subtitle: 'autoAlign',
+    activeFromStateIdx: 0, // active from UNINITIALIZED
+    completedFromStateIdx: 1, // done when ≥ TILT_ALIGNED
+  },
+  {
+    id: 'ctf-est',
+    label: 'Estimate CTF',
+    subtitle: 'ctf estimate',
+    activeFromStateIdx: 1,
+    completedFromStateIdx: 2, // done when ≥ CTF_ESTIMATED
+  },
+  {
+    id: 'sub-regions',
+    label: 'Select Sub-regions',
+    subtitle: 'segment',
+    activeFromStateIdx: 2,
+    completedFromStateIdx: 3, // done when ≥ RECONSTRUCTED
+  },
+  {
+    id: 'pick',
+    label: 'Pick Particles',
+    subtitle: 'templateSearch',
+    activeFromStateIdx: 3,
+    completedFromStateIdx: 4, // done when ≥ PARTICLES_PICKED
+  },
+  {
+    id: 'init',
+    label: 'Initialize Project',
+    subtitle: 'init',
+    activeFromStateIdx: 4,
+    completedFromStateIdx: 5, // done when ≥ INITIALIZED
+  },
+  {
+    id: 'recon',
+    label: 'Reconstruct Tomograms',
+    subtitle: 'ctf 3d',
+    activeFromStateIdx: 5,
+    completedFromStateIdx: 6, // done when ≥ CYCLE_N
+  },
+  {
+    id: 'avg',
+    label: 'Subtomogram Averaging',
+    subtitle: 'avg',
+    activeFromStateIdx: 6,
+    completedFromStateIdx: 7, // done when ≥ EXPORT
+  },
+  {
+    id: 'align',
+    label: 'Subtomogram Alignment',
+    subtitle: 'alignRaw',
+    activeFromStateIdx: 6,
+    completedFromStateIdx: 7,
+  },
+  {
+    id: 'tomocpr',
+    label: 'Tilt-Series Refinement',
+    subtitle: 'tomoCPR',
+    optional: true,
+    activeFromStateIdx: 6,
+    completedFromStateIdx: 7,
+  },
+  {
+    id: 'classify',
+    label: 'Classification',
+    subtitle: 'pca / cluster',
+    optional: true,
+    activeFromStateIdx: 6,
+    completedFromStateIdx: 7,
+  },
+  {
+    id: 'final',
+    label: 'Final Reconstruction',
+    subtitle: 'reconstruct',
+    activeFromStateIdx: 7,
+    completedFromStateIdx: 8, // done when = DONE
+  },
+]
+
+// ---------------------------------------------------------------------------
+// Status badge config for jobs
+// ---------------------------------------------------------------------------
+
+interface BadgeConfig {
+  label: string
+  className: string
+}
+
+const JOB_STATUS_BADGE: Record<JobStatus, BadgeConfig> = {
+  PENDING: {
+    label: 'Pending',
+    className:
+      'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ' +
+      'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300',
+  },
+  RUNNING: {
+    label: 'Running',
+    className:
+      'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ' +
+      'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
+  },
+  COMPLETED: {
+    label: 'Completed',
+    className:
+      'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ' +
+      'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
+  },
+  FAILED: {
+    label: 'Failed',
+    className:
+      'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ' +
+      'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
+  },
+  CANCELLED: {
+    label: 'Cancelled',
+    className:
+      'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ' +
+      'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400',
+  },
+}
+
+// ---------------------------------------------------------------------------
+// StatCard
 // ---------------------------------------------------------------------------
 
 interface StatCardProps {
   label: string
   value: string
   sub?: string
+  accent?: 'default' | 'blue' | 'green' | 'amber'
 }
 
-function StatCard({ label, value, sub }: StatCardProps) {
+function StatCard({ label, value, sub, accent = 'default' }: StatCardProps) {
+  const valueClass =
+    accent === 'blue'
+      ? 'text-blue-600 dark:text-blue-400'
+      : accent === 'green'
+        ? 'text-green-600 dark:text-green-400'
+        : accent === 'amber'
+          ? 'text-amber-600 dark:text-amber-400'
+          : 'text-gray-900 dark:text-gray-100'
+
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
       <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
         {label}
       </p>
-      <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-gray-100">{value}</p>
+      <p className={`mt-1 text-lg font-semibold ${valueClass}`}>{value}</p>
       {sub && (
         <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500 truncate">{sub}</p>
       )}
@@ -57,27 +249,228 @@ function StatCard({ label, value, sub }: StatCardProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Quick navigation cards
+// PipelineProgressStepper – 11-step tutorial Figure 1 stepper
 // ---------------------------------------------------------------------------
 
-interface QuickNavCardProps {
-  to: string
-  title: string
-  description: string
+interface PipelineProgressStepperProps {
+  /** Current workflow state string (e.g. "TILT_ALIGNED", "CYCLE_N") */
+  currentState: string
 }
 
-function QuickNavCard({ to, title, description }: QuickNavCardProps) {
+function PipelineProgressStepper({ currentState }: PipelineProgressStepperProps) {
+  const currentIdx = stateIndex(currentState)
+
   return (
-    <Link
-      to={to}
-      className="group block rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-sm transition-all"
-    >
-      <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-        {title} →
-      </h4>
-      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{description}</p>
-    </Link>
+    <div className="w-full">
+      {/* Scrollable horizontal stepper */}
+      <div className="overflow-x-auto pb-2">
+        <ol
+          aria-label="Pipeline progress"
+          className="flex items-start min-w-max gap-0"
+        >
+          {TUTORIAL_PIPELINE_STEPS.map((step, idx) => {
+            const isCompleted = currentIdx >= step.completedFromStateIdx
+            const isActive =
+              !isCompleted &&
+              currentIdx >= step.activeFromStateIdx &&
+              (idx === 0 || currentIdx >= TUTORIAL_PIPELINE_STEPS[idx - 1].completedFromStateIdx - 1)
+            const isLast = idx === TUTORIAL_PIPELINE_STEPS.length - 1
+
+            return (
+              <li
+                key={step.id}
+                className="flex items-start"
+                aria-current={isActive ? 'step' : undefined}
+              >
+                {/* Step content */}
+                <div className="flex flex-col items-center w-20">
+                  {/* Circle */}
+                  <div
+                    className={[
+                      'w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold border-2 z-10 transition-colors shrink-0',
+                      isCompleted
+                        ? 'bg-green-500 border-green-500 text-white'
+                        : isActive
+                          ? 'bg-blue-600 border-blue-600 text-white ring-4 ring-blue-100 dark:ring-blue-900/60'
+                          : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500',
+                    ].join(' ')}
+                    title={`${step.label}${step.optional ? ' (optional)' : ''} — ${step.subtitle}`}
+                  >
+                    {isCompleted ? (
+                      <svg
+                        className="w-4 h-4"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                        aria-hidden="true"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    ) : (
+                      <span>{idx + 1}</span>
+                    )}
+                  </div>
+
+                  {/* Label */}
+                  <span
+                    className={[
+                      'mt-2 text-xs font-medium text-center leading-tight px-1',
+                      isCompleted
+                        ? 'text-green-600 dark:text-green-400'
+                        : isActive
+                          ? 'text-blue-600 dark:text-blue-400'
+                          : 'text-gray-400 dark:text-gray-500',
+                    ].join(' ')}
+                  >
+                    {step.label}
+                  </span>
+
+                  {/* Subtitle (command name) */}
+                  <span
+                    className={[
+                      'mt-0.5 text-[10px] font-mono text-center leading-tight px-1',
+                      isCompleted
+                        ? 'text-green-500 dark:text-green-500'
+                        : isActive
+                          ? 'text-blue-400 dark:text-blue-500'
+                          : 'text-gray-300 dark:text-gray-600',
+                    ].join(' ')}
+                  >
+                    {step.optional ? `[${step.subtitle}]` : step.subtitle}
+                  </span>
+                </div>
+
+                {/* Connector line */}
+                {!isLast && (
+                  <div
+                    className={[
+                      'w-4 h-0.5 mt-4 shrink-0',
+                      isCompleted ? 'bg-green-400' : 'bg-gray-200 dark:bg-gray-700',
+                    ].join(' ')}
+                    aria-hidden="true"
+                  />
+                )}
+              </li>
+            )
+          })}
+        </ol>
+      </div>
+
+      {/* Legend */}
+      <div className="mt-3 flex flex-wrap gap-4 text-xs text-gray-500 dark:text-gray-400">
+        <div className="flex items-center gap-1.5">
+          <span className="w-3 h-3 rounded-full bg-green-500 shrink-0" />
+          Completed
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-3 h-3 rounded-full bg-blue-600 ring-2 ring-blue-100 dark:ring-blue-900 shrink-0" />
+          Current
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-3 h-3 rounded-full bg-white dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 shrink-0" />
+          Upcoming
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="font-mono">[…]</span>
+          Optional step
+        </div>
+      </div>
+    </div>
   )
+}
+
+// ---------------------------------------------------------------------------
+// RecentJobsSection
+// ---------------------------------------------------------------------------
+
+interface RecentJobsSectionProps {
+  projectId: string
+}
+
+function RecentJobsSection({ projectId }: RecentJobsSectionProps) {
+  const { data: allJobs, isLoading } = useApiQuery<Job[]>(
+    ['overview-recent-jobs', projectId],
+    `/api/v1/jobs?project_id=${projectId}`,
+  )
+
+  // Take the 5 most recent jobs (API returns newest-first based on JobsPage behaviour)
+  const recentJobs = allJobs ? allJobs.slice(0, 5) : []
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 py-4 text-sm text-gray-500 dark:text-gray-400">
+        <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+        Loading recent jobs…
+      </div>
+    )
+  }
+
+  if (recentJobs.length === 0) {
+    return (
+      <p className="py-4 text-sm text-gray-500 dark:text-gray-400">
+        No jobs yet. Run pipeline commands from the{' '}
+        <Link
+          to={`/project/${projectId}/actions`}
+          className="text-blue-600 hover:underline dark:text-blue-400"
+        >
+          Actions
+        </Link>{' '}
+        page to see jobs here.
+      </p>
+    )
+  }
+
+  return (
+    <div className="divide-y divide-gray-100 dark:divide-gray-800 rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+      {recentJobs.map((job) => {
+        const badge = JOB_STATUS_BADGE[job.status] ?? JOB_STATUS_BADGE['PENDING']
+        const timeAgo = formatRelativeTime(job.created_at)
+
+        return (
+          <div key={job.id} className="flex items-center justify-between gap-3 px-4 py-3">
+            <div className="min-w-0 flex-1">
+              <span className="block truncate font-mono text-sm font-medium text-gray-900 dark:text-gray-100">
+                {job.command}
+              </span>
+              <span className="text-xs text-gray-400 dark:text-gray-500">{timeAgo}</span>
+            </div>
+            <span className={badge.className}>{badge.label}</span>
+          </div>
+        )
+      })}
+      <div className="px-4 py-2">
+        <Link
+          to={`/project/${projectId}/jobs`}
+          className="text-xs text-blue-600 hover:underline dark:text-blue-400"
+        >
+          View all jobs →
+        </Link>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function formatRelativeTime(iso: string): string {
+  try {
+    const ms = Date.now() - new Date(iso).getTime()
+    const seconds = Math.floor(ms / 1000)
+    if (seconds < 60) return 'just now'
+    const minutes = Math.floor(seconds / 60)
+    if (minutes < 60) return `${minutes}m ago`
+    const hours = Math.floor(minutes / 60)
+    if (hours < 24) return `${hours}h ago`
+    const days = Math.floor(hours / 24)
+    return `${days}d ago`
+  } catch {
+    return iso
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -88,29 +481,40 @@ export function OverviewPage() {
   const { projectId } = useParams<{ projectId: string }>()
   const { activeProject } = useProject()
 
-  const {
-    data: project,
-    isLoading: projectLoading,
-  } = useApiQuery<ProjectDetails>(
+  const { data: project, isLoading: projectLoading } = useApiQuery<ProjectDetails>(
     ['project-details', projectId ?? ''],
     `/api/v1/projects/${projectId ?? ''}`,
     { enabled: !!projectId },
   )
 
-  const {
-    data: tiltsData,
-    isLoading: tiltsLoading,
-  } = useApiQuery<TiltSeriesListResponse>(
+  const { data: tiltsData, isLoading: tiltsLoading } = useApiQuery<TiltSeriesListResponse>(
     ['project-tilt-series-count', projectId ?? ''],
     `/api/v1/projects/${projectId ?? ''}/tilt-series`,
     { enabled: !!projectId },
   )
 
+  const { data: workflowData } = useApiQuery<AvailableCommandsResponse>(
+    ['overview-workflow-state', projectId ?? ''],
+    `/api/v1/workflow/${projectId ?? ''}/available-commands`,
+    { enabled: !!projectId },
+  )
+
   const isLoading = projectLoading || tiltsLoading
+
   const displayName = activeProject?.name ?? project?.name ?? projectId ?? '—'
-  const state = activeProject?.state ?? project?.state ?? '—'
+  const state = workflowData?.state ?? activeProject?.state ?? project?.state ?? 'UNINITIALIZED'
   const cycle = project?.current_cycle
   const tiltCount = tiltsData?.tilt_series.length
+
+  // State badge colour
+  const stateBadgeClass =
+    state === 'DONE'
+      ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300'
+      : state === 'CYCLE_N'
+        ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300'
+        : state !== 'UNINITIALIZED'
+          ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300'
+          : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
 
   return (
     <div className="space-y-6">
@@ -118,7 +522,7 @@ export function OverviewPage() {
       <div>
         <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Overview</h2>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Project summary and quick navigation.
+          Project summary, pipeline progress, and recent activity.
         </p>
       </div>
 
@@ -129,21 +533,37 @@ export function OverviewPage() {
         </div>
       ) : (
         <>
-          {/* Project identity */}
+          {/* Project identity card */}
           <div className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900">
-            <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-              {displayName}
-            </h3>
-            {project?.directory && (
-              <p className="mt-1 break-all font-mono text-xs text-gray-500 dark:text-gray-400">
-                {project.directory}
-              </p>
-            )}
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div className="min-w-0">
+                <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 truncate">
+                  {displayName}
+                </h3>
+                {project?.directory && (
+                  <p className="mt-1 break-all font-mono text-xs text-gray-500 dark:text-gray-400">
+                    {project.directory}
+                  </p>
+                )}
+              </div>
+              {/* State badge */}
+              <span
+                className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold shrink-0 ${stateBadgeClass}`}
+              >
+                {state}
+              </span>
+            </div>
           </div>
 
-          {/* Status summary cards */}
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-            <StatCard label="State" value={state} />
+          {/* Quick stats */}
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+            <StatCard
+              label="State"
+              value={state}
+              accent={
+                state === 'DONE' ? 'green' : state !== 'UNINITIALIZED' ? 'blue' : 'default'
+              }
+            />
             <StatCard
               label="Current Cycle"
               value={cycle !== undefined ? String(cycle) : '—'}
@@ -152,48 +572,56 @@ export function OverviewPage() {
               label="Tilt Series"
               value={tiltCount !== undefined ? String(tiltCount) : '—'}
             />
+            <StatCard
+              label="Particles"
+              value="—"
+              sub="Available after picking"
+            />
+            <StatCard
+              label="Resolution"
+              value="—"
+              sub="Available after averaging"
+            />
           </div>
 
-          {/* Quick navigation */}
-          <section aria-labelledby="quick-nav-heading">
-            <h3
-              id="quick-nav-heading"
-              className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300"
-            >
-              Quick Navigation
-            </h3>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <QuickNavCard
-                to={`/project/${projectId ?? ''}/assets`}
-                title="Assets"
-                description="View and manage tilt-series data sets"
-              />
-              <QuickNavCard
+          {/* Pipeline progress stepper */}
+          <section aria-labelledby="pipeline-heading">
+            <div className="mb-3 flex items-center justify-between gap-4">
+              <h3
+                id="pipeline-heading"
+                className="text-base font-semibold text-gray-900 dark:text-gray-100"
+              >
+                Pipeline Progress
+              </h3>
+              <Link
                 to={`/project/${projectId ?? ''}/actions`}
-                title="Actions"
-                description="Run processing pipeline commands"
-              />
-              <QuickNavCard
-                to={`/project/${projectId ?? ''}/results`}
-                title="Results"
-                description="View FSC curves and particle statistics"
-              />
-              <QuickNavCard
-                to={`/project/${projectId ?? ''}/settings`}
-                title="Settings"
-                description="Configure processing parameters"
-              />
-              <QuickNavCard
-                to={`/project/${projectId ?? ''}/jobs`}
-                title="Jobs"
-                description="Monitor running and completed jobs"
-              />
-              <QuickNavCard
-                to={`/project/${projectId ?? ''}/expert`}
-                title="Expert"
-                description="Advanced tools and utilities"
-              />
+                className="text-sm text-blue-600 hover:underline dark:text-blue-400"
+              >
+                Run commands →
+              </Link>
             </div>
+            <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
+              <PipelineProgressStepper currentState={state} />
+            </div>
+          </section>
+
+          {/* Recent jobs */}
+          <section aria-labelledby="recent-jobs-heading">
+            <div className="mb-3 flex items-center justify-between gap-4">
+              <h3
+                id="recent-jobs-heading"
+                className="text-base font-semibold text-gray-900 dark:text-gray-100"
+              >
+                Recent Jobs
+              </h3>
+              <Link
+                to={`/project/${projectId ?? ''}/jobs`}
+                className="text-sm text-blue-600 hover:underline dark:text-blue-400"
+              >
+                View all →
+              </Link>
+            </div>
+            {projectId && <RecentJobsSection projectId={projectId} />}
           </section>
         </>
       )}
