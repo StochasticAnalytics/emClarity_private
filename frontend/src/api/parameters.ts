@@ -1,44 +1,44 @@
 /**
  * API module for parameter schema operations.
  *
- * Provides typed functions and hooks for fetching the parameter schema.
- * Currently loads the schema from a static JSON file bundled at build
- * time. In TASK-002c, this will be switched to call the real backend
- * endpoint via the API client.
+ * Provides typed functions and hooks for fetching the parameter schema
+ * from the live backend endpoint GET /api/v1/parameters/schema, with
+ * automatic fallback to the statically bundled JSON when the backend
+ * is unreachable.
  */
 
+import { apiClient } from '@/api/client.ts'
 import type {
   ParameterDefinition,
   ParameterSchemaResponse,
   ParameterValidationResult,
 } from '@/types/parameters.ts'
-import staticSchema from '@/data/parameter-schema.json'
+import staticSchemaJson from '@/data/parameter-schema.json'
 
 /** API v1 endpoint for the parameter schema. */
 export const PARAMETER_SCHEMA_ENDPOINT = '/api/v1/parameters/schema'
 
-/** API v1 endpoint for parameter validation. */
-export const PARAMETER_VALIDATE_ENDPOINT = '/api/v1/parameters/validate'
+/**
+ * API endpoint for parameter validation.
+ *
+ * Uses the legacy /api/parameters prefix because the validate endpoint
+ * is only registered on the base router (not the v1 router).
+ */
+export const PARAMETER_VALIDATE_ENDPOINT = '/api/parameters/validate'
 
 /**
  * Load the parameter schema from the statically bundled JSON.
  *
  * The schema is imported at build time from
- * `gui/src/data/parameter-schema.json` and returned as a typed
- * `ParameterSchemaResponse`. This avoids a backend dependency while
- * still providing real parameter data for the UI.
+ * `frontend/src/data/parameter-schema.json` and returned as a typed
+ * `ParameterSchemaResponse`. Used as a fallback when the backend is
+ * unreachable, and as `initialData` for the react-query cache.
  *
  * @returns The parameter schema response with all 160 parameters
- *
- * @remarks
- * In TASK-002c this will be replaced by an API call:
- * ```ts
- * return apiClient.get<ParameterSchemaResponse>(PARAMETER_SCHEMA_ENDPOINT, signal)
- * ```
  */
 export function loadStaticParameterSchema(): ParameterSchemaResponse {
   const parameters = (
-    staticSchema as { parameters: ParameterDefinition[] }
+    staticSchemaJson as { parameters: ParameterDefinition[] }
   ).parameters
   return { parameters }
 }
@@ -46,40 +46,40 @@ export function loadStaticParameterSchema(): ParameterSchemaResponse {
 /**
  * Fetch the full parameter schema from the backend.
  *
- * @param _signal - Optional AbortSignal for cancellation
- * @returns Promise resolving to the parameter schema response
+ * Calls GET /api/v1/parameters/schema and returns the response as a
+ * typed `ParameterSchemaResponse`. Supports request cancellation via
+ * an optional AbortSignal.
  *
- * @remarks
- * In TASK-002c this will call the real backend endpoint.
- * For now it returns the static schema bundled at build time.
+ * @param signal - Optional AbortSignal for cancellation
+ * @returns Promise resolving to the parameter schema response
  */
 export async function fetchParameterSchema(
-  _signal?: AbortSignal,
+  signal?: AbortSignal,
 ): Promise<ParameterSchemaResponse> {
-  // TODO(TASK-002c): Replace with actual API call:
-  //   return apiClient.get<ParameterSchemaResponse>(PARAMETER_SCHEMA_ENDPOINT, signal)
-  return loadStaticParameterSchema()
+  return apiClient.get<ParameterSchemaResponse>(PARAMETER_SCHEMA_ENDPOINT, signal)
 }
 
 /**
  * Validate parameter values against the schema.
  *
- * @param _parameters - Map of parameter names to values
- * @returns Promise resolving to the validation result
+ * Calls POST /api/parameters/validate. The backend expects a list of
+ * `{name, value}` objects, so the input dict is converted to that format.
  *
- * @remarks
- * In TASK-002c this will call POST /api/v1/parameters/validate.
- * For now it performs client-side validation only.
+ * @param parameters - Map of parameter names to values
+ * @returns Promise resolving to the validation result
  */
 export async function validateParameters(
-  _parameters: Record<string, unknown>,
+  parameters: Record<string, unknown>,
 ): Promise<ParameterValidationResult> {
-  // TODO(TASK-002c): Replace with actual API call:
-  //   return apiClient.post<ParameterValidationResult>(
-  //     PARAMETER_VALIDATE_ENDPOINT,
-  //     { parameters }
-  //   )
-  return { valid: true, errors: [], warnings: [] }
+  // Convert dict to list of {name, value} objects as expected by the backend
+  const parameterList = Object.entries(parameters).map(([name, value]) => ({
+    name,
+    value,
+  }))
+  return apiClient.post<ParameterValidationResult>(
+    PARAMETER_VALIDATE_ENDPOINT,
+    parameterList,
+  )
 }
 
 /**

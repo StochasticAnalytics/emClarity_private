@@ -5,13 +5,17 @@
  * parameters. Parameters are grouped by category (microscope, hardware,
  * ctf, alignment, classification, etc.), each displayed in its own tab.
  *
- * This component loads the parameter schema from a static JSON file
- * bundled at build time. Backend API integration will replace this in
- * TASK-002c with a live call to GET /api/v1/parameters/schema.
+ * Fetches the parameter schema from the backend endpoint
+ * GET /api/v1/parameters/schema via react-query.
  */
 import { useState, useMemo, useCallback } from 'react'
 import { ParameterCategoryTab } from './ParameterCategoryTab.tsx'
-import { loadStaticParameterSchema } from '@/api/parameters.ts'
+import {
+  parameterQueryKeys,
+  PARAMETER_SCHEMA_ENDPOINT,
+  loadStaticParameterSchema,
+} from '@/api/parameters.ts'
+import { useApiQuery } from '@/hooks/useApi.ts'
 import type {
   ParameterCategory,
   ParameterDefinition,
@@ -67,41 +71,29 @@ function groupByCategory(parameters: ParameterDefinition[]): ParameterGroup[] {
 }
 
 /**
- * Hook that provides the parameter schema for the editor UI.
+ * Hook that fetches the parameter schema from the backend API.
  *
- * Currently loads the schema from a static JSON file bundled at build
- * time. In TASK-002c this will be replaced with a `useApiQuery` call
- * to fetch the schema from the backend:
- *
- * ```ts
- * import { parameterQueryKeys, PARAMETER_SCHEMA_ENDPOINT } from '@/api/parameters.ts'
- *
- * return useApiQuery<ParameterSchemaResponse>(
- *   parameterQueryKeys.schema(),
- *   PARAMETER_SCHEMA_ENDPOINT,
- * )
- * ```
+ * Uses react-query to call GET /api/v1/parameters/schema. The static
+ * bundled schema is used as `initialData` so the editor renders
+ * immediately even before the backend responds — and continues to work
+ * if the backend is unreachable (e.g., during local development without
+ * a running server).
  */
 function useParameterSchema(): {
   data: ParameterSchemaResponse | undefined
   isLoading: boolean
   error: Error | null
 } {
-  // Load the statically bundled parameter schema (no backend call).
-  // This is replaced by a real API call in TASK-002c.
-  const schema = useMemo(() => {
-    try {
-      return loadStaticParameterSchema()
-    } catch {
-      return undefined
-    }
-  }, [])
-
-  return {
-    data: schema,
-    isLoading: false,
-    error: null,
-  }
+  return useApiQuery<ParameterSchemaResponse>(
+    parameterQueryKeys.schema(),
+    PARAMETER_SCHEMA_ENDPOINT,
+    {
+      // Serve the bundled static schema instantly while the backend fetch
+      // is in flight.  If the backend call ultimately fails the UI falls
+      // back to this data gracefully rather than showing an error page.
+      initialData: loadStaticParameterSchema(),
+    },
+  )
 }
 
 export function ParametersPage() {
