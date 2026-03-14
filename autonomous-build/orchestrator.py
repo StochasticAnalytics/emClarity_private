@@ -1411,7 +1411,7 @@ class Orchestrator:
             system_prompt=system_prompt,
             user_message=user_message,
             max_turns=10,
-            timeout=120,
+            timeout=300,
             agent_label="HIST",
             task_id=task_id,
         )
