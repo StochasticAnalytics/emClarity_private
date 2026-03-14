@@ -1,9 +1,10 @@
 /**
  * ProjectContext – shares the currently active project state across the app.
  *
- * Components that load or create a project call `setActiveProject` to
- * broadcast the selection.  Layout components (Header, Sidebar) read from
- * this context to display the current project name and state badge.
+ * Components inside a /project/:projectId route call `setProjectId` (via
+ * ProjectLayout) so that the sidebar and header know which project is active.
+ * When a project's data has been fetched, pages call `setActiveProject` to
+ * broadcast the name and state badge to the Header.
  */
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
 
@@ -18,7 +19,11 @@ export interface ActiveProject {
 }
 
 export interface ProjectContextValue {
+  /** Project ID extracted from the URL (set by ProjectLayout). */
+  projectId: string | null
+  /** Full project metadata fetched from the API. */
   activeProject: ActiveProject | null
+  setProjectId: (id: string | null) => void
   setActiveProject: (project: ActiveProject) => void
   clearActiveProject: () => void
 }
@@ -38,7 +43,12 @@ interface ProjectProviderProps {
 }
 
 export function ProjectProvider({ children }: ProjectProviderProps) {
+  const [projectId, setProjectIdState] = useState<string | null>(null)
   const [activeProject, setActiveProjectState] = useState<ActiveProject | null>(null)
+
+  const setProjectId = useCallback((id: string | null) => {
+    setProjectIdState(id)
+  }, [])
 
   const setActiveProject = useCallback((project: ActiveProject) => {
     setActiveProjectState(project)
@@ -46,10 +56,13 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
 
   const clearActiveProject = useCallback(() => {
     setActiveProjectState(null)
+    setProjectIdState(null)
   }, [])
 
   return (
-    <ProjectContext.Provider value={{ activeProject, setActiveProject, clearActiveProject }}>
+    <ProjectContext.Provider
+      value={{ projectId, activeProject, setProjectId, setActiveProject, clearActiveProject }}
+    >
       {children}
     </ProjectContext.Provider>
   )

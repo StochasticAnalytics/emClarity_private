@@ -6,12 +6,17 @@
  * as enabled buttons; unavailable commands are disabled with a tooltip
  * explaining which prerequisite state must be reached first.
  *
+ * Project ID is now obtained from the URL via useParams (set by ProjectLayout).
+ * The standalone ProjectSelector has been removed – project selection happens
+ * on the landing page (/).
+ *
  * API calls:
  *   GET  /api/v1/workflow/state-machine                 – full state machine def
  *   GET  /api/v1/workflow/{project_id}/available-commands – commands for project
  *   POST /api/v1/workflow/{project_id}/run              – execute a command
  */
 import { useState, useCallback, useEffect } from 'react'
+import { useParams } from 'react-router-dom'
 import { apiClient, ApiError } from '@/api/client.ts'
 import { useApiQuery } from '@/hooks/useApi.ts'
 
@@ -549,71 +554,15 @@ function CommandGrid({
 }
 
 // ---------------------------------------------------------------------------
-// ProjectSelector – enter a project ID to load its workflow state
-// ---------------------------------------------------------------------------
-
-interface ProjectSelectorProps {
-  onProjectSelected: (id: string) => void
-  isLoading: boolean
-  error: string | null
-}
-
-function ProjectSelector({ onProjectSelected, isLoading, error }: ProjectSelectorProps) {
-  const [input, setInput] = useState('')
-
-  const handleSubmit = useCallback(() => {
-    const trimmed = input.trim()
-    if (trimmed) {
-      onProjectSelected(trimmed)
-    }
-  }, [input, onProjectSelected])
-
-  return (
-    <div className="space-y-2">
-      <label
-        htmlFor="workflow-project-id"
-        className="block text-sm font-medium text-gray-700 dark:text-gray-300"
-      >
-        Project ID
-      </label>
-      <div className="flex gap-2">
-        <input
-          id="workflow-project-id"
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') handleSubmit()
-          }}
-          placeholder="Enter project ID…"
-          aria-label="Project ID"
-          className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-        />
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={isLoading || !input.trim()}
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-blue-500 dark:hover:bg-blue-600"
-        >
-          {isLoading ? 'Loading…' : 'Load'}
-        </button>
-      </div>
-      {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// WorkflowContent – main content when a project is loaded
+// WorkflowContent – main content panel
 // ---------------------------------------------------------------------------
 
 interface WorkflowContentProps {
   projectId: string
   stateMachine: StateMachine
-  onBack: () => void
 }
 
-function WorkflowContent({ projectId, stateMachine, onBack }: WorkflowContentProps) {
+function WorkflowContent({ projectId, stateMachine }: WorkflowContentProps) {
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [refreshCounter, setRefreshCounter] = useState(0)
 
@@ -667,13 +616,6 @@ function WorkflowContent({ projectId, stateMachine, onBack }: WorkflowContentPro
       <div className="rounded-lg border border-red-200 bg-red-50 p-6 dark:border-red-800 dark:bg-red-900/20 space-y-3">
         <h3 className="font-semibold text-red-800 dark:text-red-200">Failed to load workflow</h3>
         <p className="text-sm text-red-600 dark:text-red-400">{error.message}</p>
-        <button
-          type="button"
-          onClick={onBack}
-          className="text-sm text-red-600 underline hover:text-red-800 dark:text-red-400"
-        >
-          ← Change project
-        </button>
       </div>
     )
   }
@@ -682,7 +624,7 @@ function WorkflowContent({ projectId, stateMachine, onBack }: WorkflowContentPro
 
   return (
     <div className="space-y-8">
-      {/* Project header */}
+      {/* Project + state header */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide font-medium">
@@ -699,13 +641,6 @@ function WorkflowContent({ projectId, stateMachine, onBack }: WorkflowContentPro
               {stateLabel}
             </span>
           </div>
-          <button
-            type="button"
-            onClick={onBack}
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
-          >
-            ← Back
-          </button>
         </div>
       </div>
 
@@ -794,9 +729,7 @@ function WorkflowContent({ projectId, stateMachine, onBack }: WorkflowContentPro
 // ---------------------------------------------------------------------------
 
 export function WorkflowPage() {
-  const [projectId, setProjectId] = useState<string | null>(null)
-  const [selectorError, setSelectorError] = useState<string | null>(null)
-  const [isChecking, setIsChecking] = useState(false)
+  const { projectId } = useParams<{ projectId: string }>()
 
   // Fetch state machine once – it's static
   const {
@@ -805,36 +738,10 @@ export function WorkflowPage() {
     error: smError,
   } = useApiQuery<StateMachine>(['workflow-state-machine'], '/api/v1/workflow/state-machine')
 
-  const handleProjectSelected = useCallback(async (id: string) => {
-    setSelectorError(null)
-    setIsChecking(true)
-    try {
-      // Verify project exists before proceeding
-      await apiClient.get(`/api/v1/workflow/${id}/available-commands`)
-      setProjectId(id)
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 404) {
-        setSelectorError('Project not found. Check the ID and try again.')
-      } else if (err instanceof ApiError) {
-        setSelectorError(`Failed to load project: ${err.message}`)
-      } else {
-        setSelectorError('Unexpected error. Is the backend running?')
-      }
-    } finally {
-      setIsChecking(false)
-    }
-  }, [])
-
-  const handleBack = useCallback(() => {
-    setProjectId(null)
-    setSelectorError(null)
-  }, [])
-
-  // Loading state machine
   if (smLoading) {
     return (
       <div className="space-y-4">
-        <h2 className="text-2xl font-semibold">Workflow</h2>
+        <h2 className="text-2xl font-semibold">Actions</h2>
         <div className="flex items-center gap-3 py-8">
           <div className="h-6 w-6 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
           <span className="text-gray-500 dark:text-gray-400">Loading pipeline definition…</span>
@@ -846,7 +753,7 @@ export function WorkflowPage() {
   if (smError ?? !stateMachine) {
     return (
       <div className="space-y-4">
-        <h2 className="text-2xl font-semibold">Workflow</h2>
+        <h2 className="text-2xl font-semibold">Actions</h2>
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 dark:border-amber-700 dark:bg-amber-900/20">
           <h3 className="font-semibold text-amber-800 dark:text-amber-200">
             Could not load state machine
@@ -859,40 +766,24 @@ export function WorkflowPage() {
     )
   }
 
+  if (!projectId) {
+    return (
+      <div className="space-y-4">
+        <h2 className="text-2xl font-semibold">Actions</h2>
+        <p className="text-gray-500 dark:text-gray-400">No project selected.</p>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-semibold">Workflow</h2>
+        <h2 className="text-2xl font-semibold">Actions</h2>
         <p className="mt-2 text-gray-500 dark:text-gray-400">
           Visualize and execute the emClarity processing pipeline.
         </p>
       </div>
-
-      {projectId ? (
-        <WorkflowContent
-          projectId={projectId}
-          stateMachine={stateMachine}
-          onBack={handleBack}
-        />
-      ) : (
-        <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900 max-w-md space-y-4">
-          <div>
-            <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">
-              Open Project Workflow
-            </h3>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Enter a project ID to view its pipeline state and run commands.
-            </p>
-          </div>
-          <ProjectSelector
-            onProjectSelected={(id) => {
-              void handleProjectSelected(id)
-            }}
-            isLoading={isChecking}
-            error={selectorError}
-          />
-        </div>
-      )}
+      <WorkflowContent projectId={projectId} stateMachine={stateMachine} />
     </div>
   )
 }

@@ -1,8 +1,9 @@
 /**
  * Tilt-series table page.
  *
- * Displays and manages the tilt-series data for a selected project.
- * Uses @tanstack/react-table for a sortable, filterable table.
+ * Displays and manages the tilt-series data for the active project.
+ * Project ID is obtained from the URL via useParams (set by ProjectLayout).
+ * The standalone ProjectSelector widget has been removed.
  *
  * Features:
  *  - Sortable and filterable table of tilt series
@@ -15,6 +16,7 @@
  *   POST /api/v1/workflow/{project_id}/run          – execute batch command
  */
 import { useState, useCallback, useMemo } from 'react'
+import { useParams } from 'react-router-dom'
 import {
   useReactTable,
   getCoreRowModel,
@@ -139,59 +141,6 @@ function EmptyState() {
 }
 
 // ---------------------------------------------------------------------------
-// ProjectSelector component
-// ---------------------------------------------------------------------------
-
-interface ProjectSelectorProps {
-  projectId: string
-  onProjectIdChange: (id: string) => void
-}
-
-function ProjectSelector({ projectId, onProjectIdChange }: ProjectSelectorProps) {
-  const [inputValue, setInputValue] = useState(projectId)
-
-  const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
-      e.preventDefault()
-      const trimmed = inputValue.trim()
-      if (trimmed) {
-        onProjectIdChange(trimmed)
-      }
-    },
-    [inputValue, onProjectIdChange],
-  )
-
-  return (
-    <form onSubmit={handleSubmit} className="flex items-center gap-2">
-      <input
-        type="text"
-        value={inputValue}
-        onChange={(e) => setInputValue(e.target.value)}
-        placeholder="Enter project ID"
-        aria-label="Project ID"
-        className={
-          'block rounded-md border border-gray-300 px-3 py-1.5 text-sm shadow-sm ' +
-          'focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 ' +
-          'dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 ' +
-          'placeholder:text-gray-400 dark:placeholder:text-gray-500 w-72'
-        }
-      />
-      <button
-        type="submit"
-        className={
-          'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium ' +
-          'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 ' +
-          'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ' +
-          'disabled:opacity-50 disabled:cursor-not-allowed transition-colors'
-        }
-      >
-        Load
-      </button>
-    </form>
-  )
-}
-
-// ---------------------------------------------------------------------------
 // BatchOperationsToolbar component
 // ---------------------------------------------------------------------------
 
@@ -263,7 +212,7 @@ function BatchOperationsToolbar({
         type="button"
         className={buttonClass(runningCommand !== null)}
         disabled={runningCommand !== null}
-        onClick={() => handleRunCommand('autoAlign')}
+        onClick={() => { void handleRunCommand('autoAlign') }}
         title="Run autoAlign on selected tilt series"
       >
         {runningCommand === 'autoAlign' ? (
@@ -301,7 +250,7 @@ function BatchOperationsToolbar({
         type="button"
         className={buttonClass(runningCommand !== null)}
         disabled={runningCommand !== null}
-        onClick={() => handleRunCommand('ctf estimate')}
+        onClick={() => { void handleRunCommand('ctf estimate') }}
         title="Run ctf estimate on selected tilt series"
       >
         {runningCommand === 'ctf estimate' ? (
@@ -765,55 +714,24 @@ function TiltSeriesContent({ projectId }: TiltSeriesContentProps) {
 // ---------------------------------------------------------------------------
 
 export function TiltSeriesPage() {
-  const [projectId, setProjectId] = useState('')
-  const [activeProjectId, setActiveProjectId] = useState('')
-
-  const handleLoad = useCallback((id: string) => {
-    setActiveProjectId(id)
-  }, [])
+  const { projectId } = useParams<{ projectId: string }>()
 
   return (
     <div className="space-y-6">
       {/* Page header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Tilt Series</h2>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            View and manage tilt-series data sets. Select rows to run batch processing operations.
-          </p>
-        </div>
-
-        <ProjectSelector
-          projectId={projectId}
-          onProjectIdChange={(id) => {
-            setProjectId(id)
-            handleLoad(id)
-          }}
-        />
+      <div>
+        <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Assets</h2>
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          View and manage tilt-series data sets. Select rows to run batch processing operations.
+        </p>
       </div>
 
       {/* Content area */}
-      {activeProjectId ? (
-        <TiltSeriesContent projectId={activeProjectId} />
+      {projectId ? (
+        <TiltSeriesContent projectId={projectId} />
       ) : (
         <div className="rounded-lg border border-dashed border-gray-300 dark:border-gray-700 p-12 text-center">
-          <svg
-            className="mx-auto w-10 h-10 text-gray-300 dark:text-gray-600 mb-3"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={1.5}
-            aria-hidden="true"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"
-            />
-          </svg>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Enter a project ID above to view tilt series.
-          </p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">No project selected.</p>
         </div>
       )}
     </div>
