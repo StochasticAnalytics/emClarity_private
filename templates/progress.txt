@@ -25,3 +25,23 @@ Developer: Completed 2026-03-14
     inline validation error display
   - TypeScript compiles without errors (tsc --noEmit exits 0)
   - All 35 backend pytest tests pass
+TASK-011: Completed Sat Mar 14 03:14:34 PM EDT 2026
+  - Implemented JobsPage component with full job monitoring UI
+  - Job table: command, status badges, start time, duration columns
+  - Log viewer: polls /api/v1/jobs/{id}/log every 3s for running jobs
+  - Cancel button: DELETE /api/v1/jobs/{id} for RUNNING/PENDING jobs
+  - Auto-refresh: job list updates every 5 seconds via setInterval
+  - Empty state, error handling with retry, loading spinner
+  - Added log and cancel endpoints to backend v1_jobs.py
+  - All 35 backend tests pass, TypeScript compiles cleanly
+
+TASK-012: Completed 2026-03-14
+  - Built full ResultsPage component at frontend/src/features/results/ResultsPage.tsx
+  - FSC curve plotter using recharts LineChart with ReferenceLine at 0.143 threshold
+  - Fetches /api/v1/results/fsc; shows placeholder (not_available) on 404
+  - Particle statistics panel: total count, class distribution bar chart, CCC histogram
+  - Fetches /api/v1/results/particles; shows placeholder on 404
+  - System info panel: CPU cores, RAM, GPU cards with VRAM usage bars
+  - Fetches GET /api/v1/system/info (existing endpoint from TASK-006)
+  - All panels have loading spinners, error states with retry, graceful empty states
+  - TypeScript compiles without errors; all 27 backend + 35 E2E tests pass
