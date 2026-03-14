@@ -205,7 +205,21 @@ Check `templates/phase0-artifacts/parameter-schema.json` (or similar):
 
 ## Verdict Format
 
-Provide structured output:
+**CRITICAL: Your verdict MUST appear as plain text on its own line, NOT inside a markdown code block. The orchestrator parses your output programmatically.**
+
+Write your verdict like this (plain text, own line):
+
+VERDICT: PASS
+
+or
+
+VERDICT: NEEDS_WORK
+
+or
+
+VERDICT: BLOCKED
+
+Full report structure:
 
 ```markdown
 ## Review Report: [TASK-ID]

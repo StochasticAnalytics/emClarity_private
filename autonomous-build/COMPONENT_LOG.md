@@ -170,3 +170,37 @@ The E2E tests define the authoritative API contract. Key differences the develop
 5. **Workflow endpoints**: Tests expect project-scoped routes (`/workflow/{project_id}/...`)
 6. **Job model**: Tests expect `project_id`, `created_at`, `updated_at` fields
 7. **Deprecated params**: Tests expect `flgCCCcutoff` accepted as alias for `ccc_cutoff`
+
+---
+
+## Orchestrator Updates (2026-03-14)
+
+### Streaming Fix
+- Switched `--stream` mode to use `--output-format stream-json --verbose`
+- Reads stdout line-by-line (NDJSON events) instead of empty stderr
+- Background thread drains stderr to prevent pipe deadlock
+- Displays `[TOOL]`, `[TEXT]`, `[INIT]`, `[DONE]` events to console in real time
+
+### Logging Enhancements
+- Per-stage timing with token counts
+- Full QA output captured at INFO level
+- Task lifecycle summaries: `╰── TASK-002 COMPLETE (485s total)`
+- End-of-run report with per-status breakdown
+
+### QA Verdict Parser
+- Tries 3 patterns: exact markdown, plain text, heading
+- Unparseable output tagged and deferred to oracle (not blocked)
+- QA prompt updated to require plain-text verdict format
+- QA timeout increased 300s → 600s
+
+### New: claude-launcher.sh
+- Launches claude with orchestrator-compatible flags
+- Auto-injects `memories/MEMORY.md` via `--append-system-prompt`
+- Use for interactive sessions that need project context
+
+### New: Memory Files
+| File | Purpose |
+|------|---------|
+| `memories/claude_cli_patterns.md` | CLI flags, output formats, subprocess patterns |
+| `memories/orchestrator_tuning.md` | Config, retry, streaming lessons |
+| `memories/phase_0_notes.md` | Agent observations, QA self-correction |

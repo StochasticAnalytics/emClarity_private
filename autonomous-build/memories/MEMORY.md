@@ -1,43 +1,61 @@
-# Key Learnings
+# Autonomous Build — Project Memory Compendium
 
-## Background Agent Permissions
-- Background agents (`run_in_background=true`) CANNOT get interactive permission prompts
-- Write, Bash, and other permission-requiring tools get **auto-denied** for background agents
-- This causes agents to spin in retry loops for hours with no output
-- **Solution**: Either run agents in foreground, or extract content from agent output logs manually using `python3` to parse the JSON lines format
-- Agent output files are at `/tmp/claude-1000/-workspaces-cisTEMx/tasks/<agent_id>.output`
-- Output format: JSON lines, one per message, with `type` field (user/assistant/progress)
-- To extract Write tool content: parse JSON, find `type=assistant` lines with `tool_use` content where `name=Write`
+## Memory Merge Workflow
 
-## Memory Backup
-- Home directory (`/home/cisTEMdev/`) is **ephemeral** - wiped on container restart
-- Memory files must be backed up to `/workspaces/cisTEMx/autonomous-build/memories/`
-- After updating MEMORY.md, always copy it to the backup location:
-  `cp /home/cisTEMdev/.claude/projects/-workspaces-cisTEMx/memory/MEMORY.md /workspaces/cisTEMx/autonomous-build/memories/`
-- On fresh container, restore with the reverse copy
+This file is the persistent master. The home-dir MEMORY.md (`/home/cisTEMdev/.claude/projects/-workspaces-cisTEMx/memory/MEMORY.md`) is ephemeral and accumulates new auto-memories during sessions.
+
+**Merge procedure (do this periodically):**
+1. Read both files. Identify entries in home-dir that are not yet in this compendium.
+2. Move new entries from home-dir → here (or into a topic file in this directory).
+3. Remove the moved entries from home-dir so it stays lean. What remains in home-dir is "new since last merge."
+4. **Simple conflicts** (same topic, different detail): the home-dir version is more recent — use it.
+5. **Complex conflicts** (contradictory conclusions, changed assumptions): flag these and review with the user before resolving. Do not silently pick a winner.
+6. After merge, the home-dir MEMORY.md should only contain entries that haven't been merged yet.
+
+## Memory Index
+
+| File | Type | Summary |
+|------|------|---------|
+| [claude_cli_patterns.md](claude_cli_patterns.md) | reference | CLI flags, output formats, subprocess patterns |
+| [orchestrator_tuning.md](orchestrator_tuning.md) | project | Streaming fix, QA parser, config lessons |
+| [phase_0_notes.md](phase_0_notes.md) | project | Developer/QA agent observations, self-correction on oversight |
+
+## Environment
+
+- Home directory (`/home/cisTEMdev/`) is **ephemeral** — wiped on container restart
+- This compendium at `autonomous-build/memories/` is the persistent master copy
+- `claude-launcher.sh` in autonomous-build/ appends this file to system prompt via `--append-system-prompt`
 
 ## Project Structure
-- Artifacts go to: `autonomous-build/templates/phase0-artifacts/`
-- Parameter schema: `parameter_schema.json` (160 params from BH_parseParameterFile.m)
-- Workflow map: `workflow_map.md` (command dependencies, pipeline order)
 
-## GUI Baseline (established 2026-03-13)
 - **Frontend**: React 19 + TypeScript 5 + Vite 8 at `gui/`
 - **Backend**: FastAPI + Pydantic v2 at `backend/`
 - **E2E Tests**: 35 tests at `tests/` (LOCKED, chmod 444/555)
 - **Backend Tests**: 27 tests at `backend/tests/`
-- **Oracle baseline**: 83 assertions, TypeScript+backend+immutability checks enabled
-- **PRD**: 16 tasks in `autonomous-build/templates/prd.json` (TASK-001 complete, rest pending)
-- **Component log**: `autonomous-build/COMPONENT_LOG.md` tracks all added tools/packages
+- **Phase 0 artifacts**: `autonomous-build/templates/phase0-artifacts/`
+  - `parameter_schema.json` — 160 params from BH_parseParameterFile.m
+  - `workflow_map.md` — 28 commands, pipeline order, dependencies
+  - `build-context-master.md` — full architecture spec (React+TS stack)
+  - `orchestration-spec.md` — shell scripts, parallelization, external tools
+- **PRD**: `autonomous-build/templates/prd.json` — 16+ tasks, TASK-001 complete
+- **Component log**: `autonomous-build/COMPONENT_LOG.md`
+- **Oracle baseline**: 83 assertions
 
-## API Contract Misalignments (intentional for developer agent)
-- E2E tests use `/api/v1/` prefix; backend currently uses `/api/`
-- E2E tests expect `{"parameters": [...]}` wrapper; backend returns flat array
-- E2E tests expect project creation with `{name, directory, parameters}`, backend uses `{name, path}`
-- E2E tests expect project `id` field; backend uses `name`+`path`
-- E2E tests expect project-scoped workflow routes (`/workflow/{project_id}/...`)
-- These misalignments are the developer agent's job to resolve (TASK-002 through TASK-006)
+## API Contract (tests are ground truth)
 
-## Sandbox Restrictions
-- Bash commands need `dangerouslyDisableSandbox: true` due to bwrap namespace restrictions in this container
-- Always use this flag for shell commands
+E2E tests define the API contract the developer agent must implement:
+- Endpoints use `/api/v1/` prefix
+- Schema response: `{"parameters": [...]}`
+- Project creation: `{name, directory, parameters}` → `{id, state, ...}`
+- Project-scoped workflow routes: `/workflow/{project_id}/...`
+- State machine endpoint: `/workflow/state-machine`
+- Job model requires: `id, project_id, command, status`
+
+## Sandbox
+
+- Bash commands in Claude Code need `dangerouslyDisableSandbox: true` (bwrap namespace restriction)
+- Background agents (`run_in_background=true`) cannot get interactive permission prompts — tools auto-denied
+
+## Critical Design Principle
+
+**When oversight mechanisms fail technically, fix the mechanism — never remove the oversight.** The adversarial QA architecture exists to protect against agents (including helpful ones) removing their own checks. See `phase_0_notes.md` for the full lesson.
