@@ -135,3 +135,16 @@ class ParameterValidationResult(BaseModel):
         default_factory=list,
         description="List of non-fatal validation warnings",
     )
+
+
+class ParameterValidationRequest(BaseModel):
+    """Request body for the v1 parameter validation endpoint.
+
+    Accepts parameters as a flat dict ``{name: value}`` which is more
+    ergonomic than the legacy list-of-objects format.
+    """
+
+    parameters: dict[str, Any] = Field(
+        ...,
+        description="Flat mapping of parameter name to value",
+    )

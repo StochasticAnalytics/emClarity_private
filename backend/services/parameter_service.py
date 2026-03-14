@@ -141,6 +141,98 @@ class ParameterService:
             warnings=warnings,
         )
 
+    def validate_parameters_dict(
+        self, parameters: dict[str, Any]
+    ) -> ParameterValidationResult:
+        """Validate a flat dict of ``{name: value}`` pairs against the schema.
+
+        This is the preferred method for the v1 API endpoint.  It handles:
+        - Deprecated parameter name translation (e.g. ``flgCCCcutoff`` ->
+          ``ccc_cutoff``) so that legacy parameter files are accepted.
+        - Type checking: numeric parameters reject non-numeric strings.
+        - Range validation and required-parameter checks.
+
+        Args:
+            parameters: Dict mapping parameter names (or deprecated names)
+                to their values.
+
+        Returns:
+            A ParameterValidationResult with ``valid=True`` when all checks
+            pass, otherwise with ``errors`` populated.
+        """
+        schema = self.get_schema()
+        schema_map = {d.name: d for d in schema}
+
+        # Build deprecated-name -> current-name lookup from the schema JSON.
+        deprecated_lookup: dict[str, str] = {}
+        if _SCHEMA_PATH.exists():
+            raw = json.loads(_SCHEMA_PATH.read_text())
+            entries = raw if isinstance(raw, list) else raw.get("parameters", [])
+            for entry in entries:
+                dep = entry.get("deprecated_name")
+                if dep:
+                    deprecated_lookup[dep] = entry["name"]
+
+        errors: list[str] = []
+        warnings: list[str] = []
+
+        # Translate deprecated names and build a normalised working dict.
+        normalised: dict[str, Any] = {}
+        for name, value in parameters.items():
+            canonical = deprecated_lookup.get(name, name)
+            normalised[canonical] = value
+
+        # Check required parameters.
+        for defn in schema:
+            if defn.required and defn.name not in normalised:
+                errors.append(f"Required parameter '{defn.name}' is missing")
+
+        # Numeric types that require a numeric value.
+        numeric_types = {ParameterType.NUMERIC, ParameterType.FLOAT, ParameterType.INTEGER}
+
+        # Validate each provided value.
+        for name, value in normalised.items():
+            defn = schema_map.get(name)
+            if defn is None:
+                warnings.append(f"Unknown parameter '{name}' - not in schema")
+                continue
+
+            # Type check: numeric parameters must not be non-numeric strings.
+            if defn.type in numeric_types and isinstance(value, str):
+                try:
+                    float(value)
+                except (ValueError, TypeError):
+                    errors.append(
+                        f"Parameter '{name}' expects a numeric value, "
+                        f"got string '{value}'"
+                    )
+                    continue  # skip further checks for this parameter
+
+            # Range check for numeric types.
+            if defn.range is not None and isinstance(value, (int, float)):
+                lo, hi = defn.range
+                if not (lo <= value <= hi):
+                    errors.append(
+                        f"Parameter '{name}' value {value} "
+                        f"outside allowed range [{lo}, {hi}]"
+                    )
+
+            # Enum / allowed-values check.
+            if defn.allowed_values is not None:
+                if value not in defn.allowed_values and str(value) not in [
+                    str(v) for v in defn.allowed_values
+                ]:
+                    errors.append(
+                        f"Parameter '{name}' value '{value}' "
+                        f"not in allowed values: {defn.allowed_values}"
+                    )
+
+        return ParameterValidationResult(
+            valid=len(errors) == 0,
+            errors=errors,
+            warnings=warnings,
+        )
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------

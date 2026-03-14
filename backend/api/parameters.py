@@ -2,10 +2,11 @@
 
 Routes:
     GET  /api/v1/parameters/schema    - Return the full parameter schema (v1, wrapped)
+    POST /api/v1/parameters/validate  - Validate a dict of parameter values (v1)
     GET  /api/parameters/schema       - Return the full parameter schema (legacy, flat list)
     GET  /api/parameters/file/{path}  - Load a parameter file from disk
     POST /api/parameters/file         - Save a parameter file to disk
-    POST /api/parameters/validate     - Validate parameter values
+    POST /api/parameters/validate     - Validate parameter values (legacy)
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from backend.models.parameter import (
     ParameterDefinition,
     ParameterFile,
     ParameterSchemaResponse,
+    ParameterValidationRequest,
     ParameterValidationResult,
     ParameterValue,
 )
@@ -42,6 +44,19 @@ async def get_parameter_schema_v1() -> ParameterSchemaResponse:
     This is the preferred endpoint for the React frontend.
     """
     return ParameterSchemaResponse(parameters=_service.get_schema())
+
+
+@v1_router.post("/validate", response_model=ParameterValidationResult)
+async def validate_parameters_v1(
+    request: ParameterValidationRequest,
+) -> ParameterValidationResult:
+    """Validate a flat dict of parameter values against the schema.
+
+    Accepts ``{"parameters": {"PIXEL_SIZE": 1.35e-10, ...}}`` and returns
+    a validation result.  Deprecated parameter names (e.g. ``flgCCCcutoff``)
+    are transparently translated to their canonical form before validation.
+    """
+    return _service.validate_parameters_dict(request.parameters)
 
 
 # ---- legacy endpoint (flat list, backward compat) -----------------------
