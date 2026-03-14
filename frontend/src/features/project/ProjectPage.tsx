@@ -1,21 +1,20 @@
 /**
- * Project manager page (landing / welcome mode).
+ * Project manager page (landing page).
  *
- * Shown at `/` when no project is loaded. Provides:
- *  1. emClarity branding + version
- *  2. Create New Project – form with name, directory, and microscope parameters;
+ * Provides two workflows:
+ *  1. Create New Project – form with name, directory, and microscope parameters;
  *     submits to POST /api/v1/projects then navigates to /project/:id/overview.
- *  3. Open Existing Project – directory path input; submits to
- *     POST /api/v1/projects/load then navigates to /project/:id/overview.
- *  4. Recent Projects – up to 5 previously opened projects from localStorage.
+ *  2. Load Existing Project – enter a project ID to open its overview.
+ *
+ * Once a project is selected, all project-scoped pages are accessible via the
+ * sidebar navigation at /project/:projectId/<section>.
  */
 import { useState, useCallback } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { apiClient, ApiError } from '@/api/client.ts'
-import { useRecentProjects } from '@/hooks/useRecentProjects.ts'
 
 // ---------------------------------------------------------------------------
 // Types mirroring the backend response models
@@ -25,7 +24,6 @@ interface ProjectResponse {
   id: string
   name: string
   state: string
-  directory: string
 }
 
 // ---------------------------------------------------------------------------
@@ -59,7 +57,7 @@ const labelClass = 'block text-sm font-medium text-gray-700 dark:text-gray-300'
 // ---------------------------------------------------------------------------
 
 interface NewProjectFormProps {
-  onCreated: (project: ProjectResponse) => void
+  onCreated: (projectId: string) => void
 }
 
 function NewProjectForm({ onCreated }: NewProjectFormProps) {
@@ -89,7 +87,7 @@ function NewProjectForm({ onCreated }: NewProjectFormProps) {
             AMPCONT: data.AMPCONT,
           },
         })
-        onCreated(response)
+        onCreated(response.id)
       } catch (err) {
         if (err instanceof ApiError) {
           setSubmitError(`Failed to create project: ${err.message}`)
@@ -259,54 +257,52 @@ function NewProjectForm({ onCreated }: NewProjectFormProps) {
 }
 
 // ---------------------------------------------------------------------------
-// OpenProjectPanel – directory path input
+// LoadProjectPanel
 // ---------------------------------------------------------------------------
 
-interface OpenProjectPanelProps {
-  onLoaded: (project: ProjectResponse) => void
+interface LoadProjectPanelProps {
+  onLoaded: (projectId: string) => void
 }
 
-function OpenProjectPanel({ onLoaded }: OpenProjectPanelProps) {
-  const [directory, setDirectory] = useState('')
+function LoadProjectPanel({ onLoaded }: LoadProjectPanelProps) {
+  const [projectId, setProjectId] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
   const handleLoad = useCallback(async () => {
-    const trimmed = directory.trim()
+    const trimmed = projectId.trim()
     if (!trimmed) {
-      setError('Directory path is required')
+      setError('Project ID is required')
       return
     }
     setError(null)
     setIsLoading(true)
     try {
-      const response = await apiClient.post<ProjectResponse>('/api/v1/projects/load', {
-        directory: trimmed,
-      })
-      onLoaded(response)
+      await apiClient.get<ProjectResponse>(`/api/v1/projects/${trimmed}`)
+      onLoaded(trimmed)
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
-        setError('Project directory not found. Check the path and ensure it is a valid emClarity project.')
+        setError('Project not found')
       } else {
-        setError('Failed to open project. Check the path and ensure the backend is running.')
+        setError('Failed to load project. Check the ID and ensure the backend is running.')
       }
     } finally {
       setIsLoading(false)
     }
-  }, [directory, onLoaded])
+  }, [projectId, onLoaded])
 
   return (
     <div className="space-y-2">
       <div className="flex gap-2">
         <input
           type="text"
-          value={directory}
+          value={projectId}
           onChange={(e) => {
-            setDirectory(e.target.value)
+            setProjectId(e.target.value)
             setError(null)
           }}
-          placeholder="/path/to/existing/project"
-          aria-label="Project directory path"
+          placeholder="Enter project ID…"
+          aria-label="Project ID"
           className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
@@ -322,7 +318,7 @@ function OpenProjectPanel({ onLoaded }: OpenProjectPanelProps) {
           disabled={isLoading}
           className="rounded-md bg-gray-700 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-gray-600 dark:hover:bg-gray-500"
         >
-          {isLoading ? 'Opening…' : 'Open'}
+          {isLoading ? 'Loading…' : 'Load'}
         </button>
       </div>
       {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
@@ -339,22 +335,19 @@ type View = 'home' | 'create'
 export function ProjectPage() {
   const [view, setView] = useState<View>('home')
   const navigate = useNavigate()
-  const { recentProjects, addRecentProject } = useRecentProjects()
 
   const handleProjectCreated = useCallback(
-    (project: ProjectResponse) => {
-      addRecentProject({ id: project.id, name: project.name, directory: project.directory })
-      void navigate(`/project/${project.id}/overview`)
+    (projectId: string) => {
+      void navigate(`/project/${projectId}/overview`)
     },
-    [navigate, addRecentProject],
+    [navigate],
   )
 
-  const handleProjectOpened = useCallback(
-    (project: ProjectResponse) => {
-      addRecentProject({ id: project.id, name: project.name, directory: project.directory })
-      void navigate(`/project/${project.id}/overview`)
+  const handleProjectLoaded = useCallback(
+    (projectId: string) => {
+      void navigate(`/project/${projectId}/overview`)
     },
-    [navigate, addRecentProject],
+    [navigate],
   )
 
   const handleBack = useCallback(() => {
@@ -382,23 +375,16 @@ export function ProjectPage() {
     )
   }
 
-  // Welcome / home view
+  // Home view
   return (
-    <div className="space-y-8">
-      {/* emClarity branding */}
-      <div className="text-center pt-4">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-600 dark:bg-blue-500 mb-4 shadow-lg">
-          <span className="text-2xl font-bold text-white select-none">eC</span>
-        </div>
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
-          emClarity
-        </h1>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Cryo-ET Sub-tomogram Averaging · v1.5.3
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-semibold">Project Manager</h2>
+        <p className="mt-2 text-gray-500 dark:text-gray-400">
+          Create or open an emClarity project to get started.
         </p>
       </div>
 
-      {/* Action cards */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Create new project card */}
         <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
@@ -417,50 +403,17 @@ export function ProjectPage() {
           </button>
         </div>
 
-        {/* Open existing project card */}
+        {/* Load existing project card */}
         <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
           <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">
-            Open Existing Project
+            Load Existing Project
           </h3>
           <p className="mt-1 mb-4 text-sm text-gray-500 dark:text-gray-400">
-            Enter the path to an existing emClarity project directory.
+            Open a previously created project by its ID.
           </p>
-          <OpenProjectPanel onLoaded={handleProjectOpened} />
+          <LoadProjectPanel onLoaded={handleProjectLoaded} />
         </div>
       </div>
-
-      {/* Recent projects */}
-      {recentProjects.length > 0 && (
-        <section aria-labelledby="recent-heading">
-          <h3
-            id="recent-heading"
-            className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300"
-          >
-            Recent Projects
-          </h3>
-          <div className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
-            {recentProjects.map((project) => (
-              <Link
-                key={project.id}
-                to={`/project/${project.id}/overview`}
-                className="flex items-start justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors group"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate">
-                    {project.name}
-                  </p>
-                  <p className="mt-0.5 text-xs font-mono text-gray-400 dark:text-gray-500 truncate">
-                    {project.directory}
-                  </p>
-                </div>
-                <span className="ml-3 flex-shrink-0 text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">
-                  {new Date(project.lastOpened).toLocaleDateString()}
-                </span>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
     </div>
   )
 }

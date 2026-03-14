@@ -71,11 +71,3 @@ class Project(BaseModel):
         default=None,
         description="Path to the active parameter file",
     )
-    particle_count: int = Field(
-        default=0,
-        description="Total number of particles found during template search (0 if not yet run)",
-    )
-    best_resolution_angstrom: float | None = Field(
-        default=None,
-        description="Best resolution in Ångströms from the latest FSC calculation, or None",
-    )

@@ -34,8 +34,6 @@ class _ProjectRecord(BaseModel):
     state: ProjectState
     parameters: dict[str, Any]
     current_cycle: int = 0
-    particle_count: int = 0
-    best_resolution_angstrom: float | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -63,8 +61,6 @@ class ProjectResponse(BaseModel):
     state: str
     parameters: dict[str, Any]
     current_cycle: int = 0
-    particle_count: int = 0
-    best_resolution_angstrom: float | None = None
 
 
 class TiltSeriesListResponse(BaseModel):
@@ -73,77 +69,9 @@ class TiltSeriesListResponse(BaseModel):
     tilt_series: list[TiltSeries]
 
 
-class LoadProjectByDirectoryRequest(BaseModel):
-    """Payload for loading an existing project by its directory path."""
-
-    directory: str = Field(..., description="Absolute path to the project directory on disk")
-
-
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
-
-
-@router.post("/load", response_model=ProjectResponse)
-async def load_project_by_directory(request: LoadProjectByDirectoryRequest) -> ProjectResponse:
-    """Load an existing project from its directory path.
-
-    First checks if a project with that directory is already registered in memory.
-    If not, attempts to load the project structure from disk and registers it.
-
-    Returns 404 if the directory does not exist on disk.
-    """
-    from pathlib import Path  # noqa: PLC0415
-
-    resolved = str(Path(request.directory).resolve())
-
-    # Check if already registered (match on both original and resolved paths)
-    for record in _projects.values():
-        existing_resolved = str(Path(record.directory).resolve())
-        if existing_resolved == resolved or record.directory == request.directory:
-            return ProjectResponse(
-                id=record.id,
-                name=record.name,
-                directory=record.directory,
-                state=record.state.value,
-                parameters=record.parameters,
-                current_cycle=record.current_cycle,
-                particle_count=record.particle_count,
-                best_resolution_angstrom=record.best_resolution_angstrom,
-            )
-
-    # Try to load from disk
-    try:
-        project = _project_service.load_project(request.directory)
-    except FileNotFoundError as exc:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Project directory not found: {request.directory}",
-        ) from exc
-
-    project_id = str(uuid.uuid4())
-    record = _ProjectRecord(
-        id=project_id,
-        name=project.name,
-        directory=str(project.path),
-        state=project.state,
-        parameters={},
-        current_cycle=project.current_cycle,
-        particle_count=project.particle_count,
-        best_resolution_angstrom=project.best_resolution_angstrom,
-    )
-    _projects[project_id] = record
-
-    return ProjectResponse(
-        id=project_id,
-        name=record.name,
-        directory=record.directory,
-        state=record.state.value,
-        parameters=record.parameters,
-        current_cycle=record.current_cycle,
-        particle_count=record.particle_count,
-        best_resolution_angstrom=record.best_resolution_angstrom,
-    )
 
 
 @router.post("", status_code=201, response_model=ProjectResponse)
@@ -174,8 +102,6 @@ async def create_project(request: CreateProjectRequest) -> ProjectResponse:
         state=record.state.value,
         parameters=record.parameters,
         current_cycle=record.current_cycle,
-        particle_count=record.particle_count,
-        best_resolution_angstrom=record.best_resolution_angstrom,
     )
 
 
@@ -196,8 +122,6 @@ async def get_project(project_id: str) -> ProjectResponse:
         state=record.state.value,
         parameters=record.parameters,
         current_cycle=record.current_cycle,
-        particle_count=record.particle_count,
-        best_resolution_angstrom=record.best_resolution_angstrom,
     )
 
 
