@@ -57,6 +57,17 @@ export interface ParameterValue {
   value: unknown
 }
 
+/**
+ * A complete emClarity parameter file as returned by the file I/O
+ * endpoints (``GET/POST /api/v1/parameters/file``).
+ */
+export interface ParameterFile {
+  /** Ordered list of parameter name-value pairs. */
+  parameters: ParameterValue[]
+  /** Server-side filesystem path where the file is stored. */
+  path: string
+}
+
 /** Result of validating parameter values against the schema. */
 export interface ParameterValidationResult {
   valid: boolean

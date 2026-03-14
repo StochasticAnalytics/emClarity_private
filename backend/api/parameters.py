@@ -46,6 +46,54 @@ async def get_parameter_schema_v1() -> ParameterSchemaResponse:
     return ParameterSchemaResponse(parameters=_service.get_schema())
 
 
+@v1_router.get("/file/{path:path}", response_model=ParameterFile)
+async def load_parameter_file_v1(path: str) -> ParameterFile:
+    """Load and parse a MATLAB-style parameter file (v1).
+
+    Reads the file at the given server-side filesystem path, parses all
+    ``key = value`` assignments, and transparently migrates any deprecated
+    parameter names (e.g. ``flgCCCcutoff`` → ``ccc_cutoff``) before
+    returning the result.
+
+    Args:
+        path: Absolute or relative filesystem path to the ``.m`` file.
+
+    Returns:
+        A :class:`ParameterFile` with parsed and migrated parameter values.
+
+    Raises:
+        404: When the file does not exist at the given path.
+    """
+    try:
+        return _service.load_parameter_file_v1(path)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Parameter file not found: {path}")
+
+
+@v1_router.post("/file", response_model=ParameterFile)
+async def save_parameter_file_v1(param_file: ParameterFile) -> ParameterFile:
+    """Write parameter values to a MATLAB-style ``.m`` file (v1).
+
+    Creates any missing parent directories.  The output format is
+    compatible with the emClarity MATLAB parameter file parser.
+
+    Args:
+        param_file: The parameter file to write, including the target path
+            and the list of ``{name, value}`` pairs.
+
+    Returns:
+        The saved :class:`ParameterFile` echoed back on success.
+
+    Raises:
+        500: When the file cannot be written (e.g. permission denied).
+    """
+    try:
+        _service.save_parameter_file(param_file)
+        return param_file
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to save file: {exc}")
+
+
 @v1_router.post("/validate", response_model=ParameterValidationResult)
 async def validate_parameters_v1(
     request: ParameterValidationRequest,

@@ -141,6 +141,52 @@ class ParameterService:
             warnings=warnings,
         )
 
+    def load_parameter_file_v1(self, path: str) -> ParameterFile:
+        """Parse a MATLAB-style parameter file with deprecated name migration.
+
+        This is the preferred v1 method.  After parsing the raw key-value
+        pairs, any deprecated parameter names (e.g. ``flgCCCcutoff``) are
+        transparently translated to their current canonical names before the
+        result is returned.
+
+        Args:
+            path: Filesystem path to the ``.m`` parameter file.
+
+        Returns:
+            A :class:`ParameterFile` whose parameter names have been migrated
+            to their canonical forms.
+
+        Raises:
+            FileNotFoundError: When the file does not exist.
+        """
+        param_file = self.load_parameter_file(path)
+        migrated = self._migrate_deprecated_names(param_file.parameters)
+        return ParameterFile(parameters=migrated, path=path)
+
+    def _migrate_deprecated_names(
+        self, parameters: list[ParameterValue]
+    ) -> list[ParameterValue]:
+        """Translate any deprecated parameter names to their canonical form.
+
+        Reads the ``deprecated_name`` field from the golden schema to build a
+        lookup table, then replaces deprecated names in the supplied list.
+        Parameters whose names are already canonical are returned unchanged.
+        """
+        deprecated_lookup: dict[str, str] = {}
+        if _SCHEMA_PATH.exists():
+            raw = json.loads(_SCHEMA_PATH.read_text())
+            entries = raw if isinstance(raw, list) else raw.get("parameters", [])
+            for entry in entries:
+                dep = entry.get("deprecated_name")
+                if dep:
+                    deprecated_lookup[dep] = entry["name"]
+
+        migrated: list[ParameterValue] = []
+        for pv in parameters:
+            canonical = deprecated_lookup.get(pv.name, pv.name)
+            migrated.append(ParameterValue(name=canonical, value=pv.value))
+        return migrated
+
     def validate_parameters_dict(
         self, parameters: dict[str, Any]
     ) -> ParameterValidationResult:

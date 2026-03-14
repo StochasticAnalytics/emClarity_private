@@ -9,13 +9,15 @@
  * mount via react-query. Form submission calls POST /api/v1/parameters/validate
  * to validate parameter values against the backend schema.
  */
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useRef, type ChangeEvent } from 'react'
 import { ParameterCategoryTab } from './ParameterCategoryTab.tsx'
 import { useApiQuery } from '@/hooks/useApi.ts'
 import {
   PARAMETER_SCHEMA_ENDPOINT,
   parameterQueryKeys,
   validateParameters,
+  parseMatlabContent,
+  generateMatlabContent,
 } from '@/api/parameters.ts'
 import type {
   ParameterCategory,
@@ -88,6 +90,18 @@ export function ParametersPage() {
   const [values, setValues] = useState<Record<string, unknown>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isValidating, setIsValidating] = useState(false)
+
+  // ── Import state ───────────────────────────────────────────────────────────
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [importStatus, setImportStatus] = useState<
+    'idle' | 'loading' | 'success' | 'error'
+  >('idle')
+  const [importError, setImportError] = useState<string | null>(null)
+
+  // ── Export state ───────────────────────────────────────────────────────────
+  const [exportStatus, setExportStatus] = useState<
+    'idle' | 'loading' | 'success' | 'error'
+  >('idle')
 
   const groups = useMemo(() => {
     if (!schema?.parameters) return []
@@ -169,6 +183,92 @@ export function ParametersPage() {
     setIsValidating(false)
   }, [schema, values, isValidating])
 
+  /**
+   * Trigger the hidden file input to open the browser's file picker.
+   */
+  const handleImportClick = useCallback(() => {
+    setImportStatus('idle')
+    setImportError(null)
+    fileInputRef.current?.click()
+  }, [])
+
+  /**
+   * Handle file selection from the browser file picker.
+   *
+   * Reads the selected ``.m`` file as text, parses key-value pairs
+   * (including deprecated-name migration using the loaded schema),
+   * and merges the result into the current form values.
+   */
+  const handleFileChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0]
+      if (!file) return
+
+      setImportStatus('loading')
+      setImportError(null)
+
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        const content = e.target?.result
+        if (typeof content !== 'string') {
+          setImportStatus('error')
+          setImportError('Failed to read file content.')
+          return
+        }
+        try {
+          const parsed = parseMatlabContent(content, schema?.parameters ?? [])
+          setValues((prev) => ({ ...prev, ...parsed }))
+          setImportStatus('success')
+          // Clear field-level errors for freshly imported parameters.
+          setErrors((prev) => {
+            const next = { ...prev }
+            for (const name of Object.keys(parsed)) {
+              delete next[name]
+            }
+            return next
+          })
+        } catch (err) {
+          setImportStatus('error')
+          setImportError(
+            err instanceof Error ? err.message : 'Failed to parse parameter file.',
+          )
+        }
+      }
+      reader.onerror = () => {
+        setImportStatus('error')
+        setImportError('Failed to read the selected file.')
+      }
+      reader.readAsText(file)
+
+      // Reset the input so the same file can be re-imported if needed.
+      event.target.value = ''
+    },
+    [schema],
+  )
+
+  /**
+   * Serialise the current form values to MATLAB ``.m`` format and
+   * trigger a browser download so the user can save the file locally.
+   */
+  const handleExport = useCallback(() => {
+    if (Object.keys(values).length === 0) return
+
+    setExportStatus('loading')
+    try {
+      const content = generateMatlabContent(values)
+      const blob = new Blob([content], { type: 'text/plain' })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = 'param.m'
+      anchor.click()
+      URL.revokeObjectURL(url)
+      setExportStatus('success')
+    } catch {
+      setExportStatus('error')
+    }
+  }, [values])
+
   // Loading state
   if (isLoading) {
     return (
@@ -234,6 +334,16 @@ export function ParametersPage() {
   // Full parameter editor
   return (
     <div className="space-y-4">
+      {/* Hidden file input for Import */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".m"
+        className="hidden"
+        aria-hidden="true"
+        onChange={handleFileChange}
+      />
+
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div>
@@ -244,14 +354,57 @@ export function ParametersPage() {
             <span className="text-red-500">*</span>
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => { void handleValidate() }}
-          disabled={isValidating}
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-blue-500 dark:hover:bg-blue-600"
-        >
-          {isValidating ? 'Validating…' : 'Validate'}
-        </button>
+
+        {/* Action buttons */}
+        <div className="flex items-center gap-2">
+          {/* Import status feedback */}
+          {importStatus === 'success' && (
+            <span className="text-xs text-green-600 dark:text-green-400">
+              Imported ✓
+            </span>
+          )}
+          {importStatus === 'error' && importError && (
+            <span className="max-w-xs truncate text-xs text-red-600 dark:text-red-400" title={importError}>
+              {importError}
+            </span>
+          )}
+
+          {/* Export status feedback */}
+          {exportStatus === 'success' && (
+            <span className="text-xs text-green-600 dark:text-green-400">
+              Exported ✓
+            </span>
+          )}
+
+          {/* Import button – opens browser file picker */}
+          <button
+            type="button"
+            onClick={handleImportClick}
+            disabled={importStatus === 'loading'}
+            className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+          >
+            {importStatus === 'loading' ? 'Importing…' : 'Import'}
+          </button>
+
+          {/* Export button – generates and downloads param.m */}
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={exportStatus === 'loading' || Object.keys(values).length === 0}
+            className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+          >
+            {exportStatus === 'loading' ? 'Exporting…' : 'Export'}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { void handleValidate() }}
+            disabled={isValidating}
+            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-blue-500 dark:hover:bg-blue-600"
+          >
+            {isValidating ? 'Validating…' : 'Validate'}
+          </button>
+        </div>
       </div>
 
       {/* Category tabs */}

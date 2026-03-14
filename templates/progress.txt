@@ -45,3 +45,30 @@ TASK-012: Completed 2026-03-14
   - Fetches GET /api/v1/system/info (existing endpoint from TASK-006)
   - All panels have loading spinners, error states with retry, graceful empty states
   - TypeScript compiles without errors; all 27 backend + 35 E2E tests pass
+[TASK-014] Developer: Completed 2026-03-14
+  - Backend: Added GET /api/v1/parameters/file/{path} endpoint to v1_router in parameters.py
+    that reads MATLAB-style param.m files and migrates deprecated parameter names on import
+  - Backend: Added POST /api/v1/parameters/file endpoint to v1_router that saves parameter
+    values to .m format with parent directory creation
+  - Backend: Added ParameterService.load_parameter_file_v1() with _migrate_deprecated_names()
+    helper that translates e.g. flgCCCcutoff → ccc_cutoff using the golden schema JSON
+  - Frontend: Added ParameterFile interface to types/parameters.ts
+  - Frontend: Added importParameterFile(), exportParameterFile(), parseMatlabContent(),
+    generateMatlabContent() utilities to api/parameters.ts
+  - Frontend: Added Import button to ParametersPage that opens a browser file picker,
+    reads the .m file locally via FileReader, parses key-value pairs, migrates deprecated
+    names using the loaded schema, and merges values into the form state
+  - Frontend: Added Export button that serialises current form values to .m format and
+    triggers a browser download of param.m
+  - TypeScript: 0 errors (tsc --noEmit exits 0)
+  - All 35 E2E tests pass; all 17 backend unit tests pass
+
+[TASK-013] Developer: Completed Sat Mar 14 03:33:25 PM EDT 2026
+  - Implemented UtilitiesPage with 4 sections: SystemCheck, MaskCreator, VolumeRescaler, GeometryOperations
+  - All forms use react-hook-form + zod (v4) validation with inline error display
+  - System check calls POST /api/v1/utilities/check and displays terminal output
+  - Geometry dropdown populated with 5 operations: RemoveClasses, RemoveFraction, RemoveLowScoringParticles, RestoreParticles, PrintGeometry
+  - Created backend/api/v1_utilities.py with 4 POST endpoints delegating to subprocess (emClarity CLI)
+  - Fixed pre-existing TypeScript errors in ResultsPage.tsx (Recharts Tooltip formatter type widening)
+  - TypeScript: 0 errors; Backend tests: 35/35 passed
+
