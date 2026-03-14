@@ -8,12 +8,14 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from backend.api import jobs, parameters, projects, system, workflow
+from backend.api import v1_projects
 
 router = APIRouter()
 
 router.include_router(parameters.router)
 router.include_router(parameters.v1_router)
 router.include_router(projects.router)
+router.include_router(v1_projects.router)
 router.include_router(workflow.router)
 router.include_router(jobs.router)
 router.include_router(system.router)
