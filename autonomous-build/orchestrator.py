@@ -155,11 +155,20 @@ class ClaudeCodeRunner:
         system_prompt: str,
         user_message: str,
         max_turns: int = 50,
-        timeout: int = 600,
+        timeout: int = 1200,
+        inactivity_timeout: int = 120,
         agent_label: str = "",
         task_id: str = "",
     ) -> Dict[str, Any]:
         """Run a Claude Code CLI session and return structured results.
+
+        Args:
+            timeout: Hard ceiling on total session time (seconds).
+                     Default 1200s (20 min) — safety net, not the
+                     primary control.
+            inactivity_timeout: Kill if no stdout events for this many
+                     seconds (streaming mode only). Default 120s.
+                     This is the primary stall detector.
 
         Returns dict with keys:
             success (bool): True if CLI exited 0
@@ -197,7 +206,7 @@ class ClaudeCodeRunner:
         logger.debug("ClaudeCodeRunner cwd: %s", self.project_root)
 
         if self.stream_output:
-            return self._run_streaming(cmd, user_message, timeout, agent_label, task_id)
+            return self._run_streaming(cmd, user_message, timeout, inactivity_timeout, agent_label, task_id)
 
         try:
             result = subprocess.run(
@@ -219,6 +228,7 @@ class ClaudeCodeRunner:
 
     def _run_streaming(
         self, cmd: List[str], user_message: str, timeout: int,
+        inactivity_timeout: int = 120,
         agent_label: str = "", task_id: str = "",
     ) -> Dict[str, Any]:
         """Run CLI with ``--output-format stream-json`` for real-time output.
@@ -268,25 +278,59 @@ class ClaudeCodeRunner:
         stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
         stderr_thread.start()
 
-        # Read stdout line-by-line — each line is one stream-json event
+        # Read stdout line-by-line — each line is one stream-json event.
+        # Two timeout mechanisms:
+        #   1. inactivity_timeout: kill if no output for N seconds (primary)
+        #   2. timeout: hard ceiling on total session time (safety net)
         result_event: Optional[Dict] = None
         event_count = 0
         start_time = time.time()
+        last_event_time = start_time
+
+        import select
 
         try:
-            for line in proc.stdout:
+            while True:
                 elapsed = time.time() - start_time
+                idle = time.time() - last_event_time
+
+                # Hard ceiling
                 if elapsed > timeout:
                     proc.kill()
                     proc.wait()
                     stderr_thread.join(timeout=5)
-                    logger.error("Claude Code session timed out after %ds", timeout)
-                    return self._error_result("Session timed out")
+                    self._log_timeout("total", timeout, elapsed, event_count,
+                                      agent_label, task_id)
+                    return self._error_result(
+                        f"Session timed out after {timeout}s (total)")
+
+                # Inactivity check
+                if idle > inactivity_timeout:
+                    proc.kill()
+                    proc.wait()
+                    stderr_thread.join(timeout=5)
+                    self._log_timeout("inactivity", inactivity_timeout, elapsed,
+                                      event_count, agent_label, task_id)
+                    return self._error_result(
+                        f"Session stalled — no output for {inactivity_timeout}s")
+
+                # Wait for data with a short poll so we can check timeouts
+                ready, _, _ = select.select([proc.stdout], [], [], 5.0)
+                if not ready:
+                    # No data yet — check if process exited
+                    if proc.poll() is not None:
+                        break
+                    continue
+
+                line = proc.stdout.readline()
+                if not line:
+                    break  # EOF — process closed stdout
 
                 line = line.strip()
                 if not line:
                     continue
 
+                last_event_time = time.time()
                 event_count += 1
                 try:
                     event = json.loads(line)
@@ -296,7 +340,7 @@ class ClaudeCodeRunner:
 
                 etype = event.get("type", "?")
 
-                # Display events to console for real-time visibility
+                # Display events to console AND log to file
                 self._display_stream_event(event, elapsed, agent_label, task_id)
 
                 # Capture the final result event
@@ -496,6 +540,26 @@ class ClaudeCodeRunner:
             "cost_usd": 0.0,
             "raw": None,
         }
+
+    def _log_timeout(
+        self, kind: str, limit: int, elapsed: float,
+        event_count: int, agent_label: str, task_id: str,
+    ):
+        """Log timeout to orchestrator.log and a persistent timeout log."""
+        msg = (
+            f"[TIMEOUT] {kind} ({limit}s limit) after {elapsed:.0f}s — "
+            f"agent={agent_label} task={task_id} events={event_count}"
+        )
+        logger.error(msg)
+
+        # Append to persistent timeout log for trend analysis
+        timeout_log = Path("timeout.log")
+        try:
+            with open(timeout_log, "a") as f:
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                f.write(f"[{timestamp}] {msg}\n")
+        except Exception:
+            pass
 
     def preflight(self) -> bool:
         """Run a minimal CLI invocation to verify config is correct.
@@ -1411,7 +1475,6 @@ class Orchestrator:
             system_prompt=system_prompt,
             user_message=user_message,
             max_turns=10,
-            timeout=300,
             agent_label="HIST",
             task_id=task_id,
         )
