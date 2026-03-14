@@ -5,13 +5,18 @@
  * parameters. Parameters are grouped by category (microscope, hardware,
  * ctf, alignment, classification, etc.), each displayed in its own tab.
  *
- * This component loads the parameter schema from a static JSON file
- * bundled at build time. Backend API integration will replace this in
- * TASK-002c with a live call to GET /api/v1/parameters/schema.
+ * The parameter schema is fetched from GET /api/v1/parameters/schema on
+ * mount via react-query. Form submission calls POST /api/v1/parameters/validate
+ * to validate parameter values against the backend schema.
  */
 import { useState, useMemo, useCallback } from 'react'
 import { ParameterCategoryTab } from './ParameterCategoryTab.tsx'
-import { loadStaticParameterSchema } from '@/api/parameters.ts'
+import { useApiQuery } from '@/hooks/useApi.ts'
+import {
+  PARAMETER_SCHEMA_ENDPOINT,
+  parameterQueryKeys,
+  validateParameters,
+} from '@/api/parameters.ts'
 import type {
   ParameterCategory,
   ParameterDefinition,
@@ -66,49 +71,23 @@ function groupByCategory(parameters: ParameterDefinition[]): ParameterGroup[] {
   return orderedGroups
 }
 
-/**
- * Hook that provides the parameter schema for the editor UI.
- *
- * Currently loads the schema from a static JSON file bundled at build
- * time. In TASK-002c this will be replaced with a `useApiQuery` call
- * to fetch the schema from the backend:
- *
- * ```ts
- * import { parameterQueryKeys, PARAMETER_SCHEMA_ENDPOINT } from '@/api/parameters.ts'
- *
- * return useApiQuery<ParameterSchemaResponse>(
- *   parameterQueryKeys.schema(),
- *   PARAMETER_SCHEMA_ENDPOINT,
- * )
- * ```
- */
-function useParameterSchema(): {
-  data: ParameterSchemaResponse | undefined
-  isLoading: boolean
-  error: Error | null
-} {
-  // Load the statically bundled parameter schema (no backend call).
-  // This is replaced by a real API call in TASK-002c.
-  const schema = useMemo(() => {
-    try {
-      return loadStaticParameterSchema()
-    } catch {
-      return undefined
-    }
-  }, [])
-
-  return {
-    data: schema,
-    isLoading: false,
-    error: null,
-  }
-}
-
 export function ParametersPage() {
-  const { data: schema, isLoading, error } = useParameterSchema()
+  // Fetch parameter schema from the backend API on mount via react-query.
+  // Falls back to the static bundled schema when the backend is unreachable
+  // (handled inside fetchParameterSchema / the api client).
+  const {
+    data: schema,
+    isLoading,
+    error,
+  } = useApiQuery<ParameterSchemaResponse>(
+    parameterQueryKeys.schema(),
+    PARAMETER_SCHEMA_ENDPOINT,
+  )
+
   const [activeTab, setActiveTab] = useState<ParameterCategory>('microscope')
   const [values, setValues] = useState<Record<string, unknown>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [isValidating, setIsValidating] = useState(false)
 
   const groups = useMemo(() => {
     if (!schema?.parameters) return []
@@ -133,11 +112,20 @@ export function ParametersPage() {
     })
   }, [])
 
-  const handleValidate = useCallback(() => {
-    if (!schema?.parameters) return
+  /**
+   * Validate form values by:
+   * 1. Running client-side required-field and range checks for instant feedback
+   * 2. Calling POST /api/v1/parameters/validate for server-side validation
+   *
+   * Errors from both passes are merged and displayed inline next to each field.
+   */
+  const handleValidate = useCallback(async () => {
+    if (!schema?.parameters || isValidating) return
 
+    setIsValidating(true)
     const newErrors: Record<string, string> = {}
 
+    // --- Client-side validation pass ---
     for (const param of schema.parameters) {
       const val = values[param.name]
 
@@ -159,8 +147,27 @@ export function ParametersPage() {
       }
     }
 
+    // --- Server-side validation via POST /api/v1/parameters/validate ---
+    try {
+      const result = await validateParameters(values)
+      if (!result.valid) {
+        for (const errMsg of result.errors) {
+          // Extract parameter name from messages like "Parameter 'FOO' ..."
+          const match = /Parameter '(\w+)'/.exec(errMsg)
+          if (match) {
+            const paramName = match[1]
+            // Prefer the more specific server error message
+            newErrors[paramName] = errMsg
+          }
+        }
+      }
+    } catch {
+      // Backend unreachable – client-side errors are still applied above
+    }
+
     setErrors(newErrors)
-  }, [schema, values])
+    setIsValidating(false)
+  }, [schema, values, isValidating])
 
   // Loading state
   if (isLoading) {
@@ -186,7 +193,7 @@ export function ParametersPage() {
     )
   }
 
-  // Empty state — no schema loaded yet (pre-integration)
+  // Empty state — schema not yet available
   if (!schema?.parameters || groups.length === 0) {
     return (
       <div className="space-y-4">
@@ -239,10 +246,11 @@ export function ParametersPage() {
         </div>
         <button
           type="button"
-          onClick={handleValidate}
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:bg-blue-500 dark:hover:bg-blue-600"
+          onClick={() => { void handleValidate() }}
+          disabled={isValidating}
+          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-blue-500 dark:hover:bg-blue-600"
         >
-          Validate
+          {isValidating ? 'Validating…' : 'Validate'}
         </button>
       </div>
 
