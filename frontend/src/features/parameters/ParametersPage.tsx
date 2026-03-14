@@ -154,7 +154,7 @@ export function ParametersPage() {
         for (const errMsg of result.errors) {
           // Extract parameter name from messages like "Parameter 'FOO' ..."
           const match = /Parameter '(\w+)'/.exec(errMsg)
-          if (match) {
+          if (match?.[1]) {
             const paramName = match[1]
             // Prefer the more specific server error message
             newErrors[paramName] = errMsg

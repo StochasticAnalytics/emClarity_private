@@ -1,0 +1,27 @@
+Developer: Completed 2026-03-14
+  Task: TASK-008 - Frontend project manager component
+  - Implemented full ProjectPage.tsx with three views: home, create, and dashboard
+  - Create New Project form with fields for name, directory, PIXEL_SIZE, Cs, VOLTAGE, AMPCONT
+  - Zod v4 schema validation (z.number().positive() etc.) with react-hook-form zodResolver
+  - Form prevents submission without required fields; inline error display per field
+  - On successful POST /api/v1/projects, navigates to project status dashboard
+  - Dashboard fetches GET /api/v1/projects/{id} (state, cycle) and
+    GET /api/v1/projects/{id}/tilt-series (per-tilt-series list with aligned/CTF flags)
+  - Load Existing Project panel for opening projects by ID
+  - Fixed pre-existing TS2538 in ParametersPage.tsx (undefined index guard on match[1])
+  - TypeScript compiles without errors (tsc --noEmit exits 0)
+  - All 35 backend pytest tests pass
+
+Developer: Completed 2026-03-14
+  Task: TASK-007 - Frontend parameter editor component
+  - Updated ParametersPage.tsx to fetch parameter schema from GET /api/v1/parameters/schema
+    on mount using useApiQuery (react-query) instead of static bundled JSON
+  - Validate button now calls POST /api/v1/parameters/validate via validateParameters()
+    API function; server-side errors are merged with client-side validation errors
+  - Added isValidating state to disable button and show "Validating…" text during
+    API call
+  - All other acceptance criteria were already met by prior implementation:
+    tabbed categories, correct input widgets per type, required fields marked with *,
+    inline validation error display
+  - TypeScript compiles without errors (tsc --noEmit exits 0)
+  - All 35 backend pytest tests pass
