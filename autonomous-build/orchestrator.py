@@ -511,7 +511,7 @@ class ClaudeCodeRunner:
             user_message=(
                 "Report the following on separate lines, no other text:\n"
                 "MODEL: <your model name/ID>\n"
-                "EFFORT: <your effort level if known, otherwise 'unknown'>\n"
+                "EFFORT: <check your system metadata for a <reasoning_effort> tag and report its value>\n"
                 "TOOLS: <count of tools available>\n"
                 "CWD: <your current working directory>\n"
             ),
