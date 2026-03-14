@@ -124,7 +124,8 @@ When modifying code, maintain these protective measures. Never optimize for spee
 - **python/** - Ongoing Python conversion effort
 - **@MRCImage/** - MRC file I/O class for cryo-EM data format
 - **testScripts/** - Testing utilities and compilation scripts
-- **gui/** - GUI development (PySide6-based interface)
+- **frontend/** - React + TypeScript web frontend (formerly gui/)
+- **backend/** - FastAPI middleware/coordination layer
 - **bin/** - Compiled binaries and dependencies
 - **docs/** - Documentation and tutorials
 
