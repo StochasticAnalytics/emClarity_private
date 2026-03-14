@@ -641,6 +641,53 @@ class TaskManager:
                 return count
         return 0
 
+    def set_checkpoint(self, task_id: str, stage: str, retry: int, baseline_tag: str):
+        """Record that a pipeline stage completed for a specific retry attempt.
+
+        Uses the task's baseline bookmark tag (autobuild/{task_id}/start) as
+        the anchor — not HEAD, which drifts when the user commits alongside
+        the orchestrator.  The checkpoint is only valid when both the retry
+        count AND the baseline tag SHA match.
+        """
+        for task in self.prd["tasks"]:
+            if task["id"] == task_id:
+                task["_checkpoint"] = {
+                    "stage": stage,
+                    "retry": retry,
+                    "baseline_tag": baseline_tag,
+                    "timestamp": datetime.now().isoformat(),
+                }
+                self.save()
+                return
+        logger.warning("set_checkpoint: task %s not found", task_id)
+
+    def get_checkpoint(self, task_id: str, retry: int, baseline_tag: str) -> Optional[str]:
+        """Get the last completed stage if checkpoint matches current state.
+
+        Returns the stage name (e.g. "dev", "qa", "oracle") if the checkpoint
+        is valid for this retry attempt and baseline tag. Returns None if no
+        checkpoint exists or if the retry/tag don't match.
+        """
+        for task in self.prd["tasks"]:
+            if task["id"] == task_id:
+                cp = task.get("_checkpoint")
+                if not cp:
+                    return None
+                if cp.get("retry") != retry:
+                    return None
+                if cp.get("baseline_tag") != baseline_tag:
+                    return None
+                return cp.get("stage")
+        return None
+
+    def clear_checkpoint(self, task_id: str):
+        """Remove checkpoint after task completes or is reset."""
+        for task in self.prd["tasks"]:
+            if task["id"] == task_id:
+                task.pop("_checkpoint", None)
+                self.save()
+                return
+
     def get_retry_count(self, task_id: str) -> int:
         """Get current retry count"""
         for task in self.prd["tasks"]:
@@ -732,13 +779,16 @@ class Orchestrator:
         logger.info("Received %s — checkpointing and shutting down", sig_name)
 
         if self._current_task_id:
-            self.task_mgr.mark_pending(self._current_task_id)
+            # Leave task as in_progress — the checkpoint (if any) tells
+            # the next run where to resume.  get_next_task() prioritises
+            # in_progress tasks, so it will be picked up first.
             self.progress.log(
-                f"Interrupted by {sig_name} — reset to pending",
+                f"Interrupted by {sig_name} — left in_progress with checkpoint",
                 self._current_task_id,
             )
             logger.info(
-                "Task %s reset to pending for next run", self._current_task_id
+                "Task %s left in_progress for checkpoint resume",
+                self._current_task_id,
             )
 
         self._generate_report()
@@ -798,7 +848,14 @@ class Orchestrator:
     # -- pipeline ----------------------------------------------------------
 
     def _execute_task(self, task: Dict) -> bool:
-        """Execute single task through Dev -> QA -> Oracle pipeline"""
+        """Execute single task through Dev -> QA -> Oracle pipeline.
+
+        Checkpoints after each stage so a crash/restart can resume
+        without re-running completed stages.  A checkpoint is only
+        valid when the retry count AND HEAD SHA both match — this
+        prevents stale checkpoints from accidentally skipping stages
+        after the repo state has changed.
+        """
         task_start = time.time()
         tid = task["id"]
 
@@ -807,161 +864,202 @@ class Orchestrator:
         retry_count = self.task_mgr.get_retry_count(tid)
         logger.info("  Task %s retry_count=%d", tid, retry_count)
 
-        # Bookmark the starting point for traceability
+        # Bookmark the starting point for traceability.
+        # The tag is idempotent (git tag -f), so re-tagging on resume is safe.
         baseline_sha = self._git_head_sha()
+        start_tag = f"autobuild/{tid}/start"
         self._git_bookmark(tid, "start")
 
+        # Resolve the tag SHA — this is stable even if HEAD moves
+        # (e.g., user commits alongside orchestrator).
+        tag_sha = self._git_resolve_ref(start_tag)
+
+        # Check for a valid checkpoint from a prior interrupted run
+        checkpoint = self.task_mgr.get_checkpoint(tid, retry_count, tag_sha)
+        if checkpoint:
+            logger.info(
+                "  [RESUME] Found valid checkpoint for %s: stage=%s (retry=%d, tag=%s)",
+                tid, checkpoint, retry_count, tag_sha[:8],
+            )
+            self.progress.log(f"Resuming from checkpoint: stage={checkpoint}", tid)
+
         # ── 1. Developer ─────────────────────────────────────────────
-        dev_start = time.time()
-        logger.info("  [DEV] Starting developer agent for %s ...", tid)
-        dev_result = self._launch_developer(task)
-        dev_elapsed = time.time() - dev_start
+        context_pct = 0.0
+        diff = ""
 
-        if not dev_result or not dev_result.get("success", False):
-            fail_reason = (dev_result or {}).get("text", "unknown")[:300]
-            self.progress.log(
-                f"Developer FAILED ({dev_elapsed:.0f}s): {fail_reason}", tid
-            )
-            logger.warning(
-                "[DEV] %s failed after %.0fs — %s", tid, dev_elapsed, fail_reason
-            )
-            return False
-
-        context_pct = dev_result.get("context_usage", 0.0)
-        in_tok = dev_result.get("input_tokens", 0)
-        out_tok = dev_result.get("output_tokens", 0)
-        cost = dev_result.get("cost_usd", 0.0)
-        commit_sha = dev_result.get("commit_sha", "?")[:8]
-        diff_len = len(dev_result.get("diff", ""))
-
-        logger.info(
-            "[DEV] %s done in %.0fs — tokens=%d/%d ctx=%.0f%% "
-            "cost=$%.4f commit=%s diff=%d chars",
-            tid, dev_elapsed, in_tok, out_tok,
-            context_pct * 100, cost, commit_sha, diff_len,
-        )
-        self.progress.log(
-            f"Developer done ({dev_elapsed:.0f}s) "
-            f"tokens={in_tok}/{out_tok} ctx={context_pct:.0%} "
-            f"cost=${cost:.4f} commit={commit_sha} diff={diff_len}ch",
-            tid,
-        )
-
-        # Context limits managed by the CLI itself
-
-        # ── 2. QA Review ─────────────────────────────────────────────
-        qa_start = time.time()
-        logger.info("  [QA] Starting QA agent for %s ...", tid)
-        qa_result = self._launch_qa(task, dev_result.get("diff", ""))
-        qa_elapsed = time.time() - qa_start
-
-        qa_in_tok = 0
-        qa_out_tok = 0
-
-        if not qa_result:
-            # QA session completely failed — fall through to oracle
-            self.progress.log(
-                f"QA session FAILED ({qa_elapsed:.0f}s) — deferring to oracle",
-                tid,
-            )
-            logger.warning(
-                "[QA] %s session failed after %.0fs — deferring to oracle",
-                tid, qa_elapsed,
-            )
+        if checkpoint in ("dev", "qa", "oracle"):
+            logger.info("  [DEV] Skipping — checkpoint=%s", checkpoint)
+            # Recapture diff from git for QA (if needed)
+            diff = self._git_diff()
         else:
-            verdict = qa_result.get("verdict", "BLOCKED")
-            verdict_parsed = qa_result.get("verdict_parsed", True)
-            defects = qa_result.get("defects", [])
-            qa_round = qa_result.get("round", 1)
+            dev_start = time.time()
+            logger.info("  [DEV] Starting developer agent for %s ...", tid)
+            dev_result = self._launch_developer(task)
+            dev_elapsed = time.time() - dev_start
+
+            if not dev_result or not dev_result.get("success", False):
+                fail_reason = (dev_result or {}).get("text", "unknown")[:300]
+                self.progress.log(
+                    f"Developer FAILED ({dev_elapsed:.0f}s): {fail_reason}", tid
+                )
+                logger.warning(
+                    "[DEV] %s failed after %.0fs — %s", tid, dev_elapsed, fail_reason
+                )
+                return False
+
+            context_pct = dev_result.get("context_usage", 0.0)
+            in_tok = dev_result.get("input_tokens", 0)
+            out_tok = dev_result.get("output_tokens", 0)
+            cost = dev_result.get("cost_usd", 0.0)
+            commit_sha = dev_result.get("commit_sha", "?")[:8]
+            diff = dev_result.get("diff", "")
 
             logger.info(
-                "[QA] %s verdict=%s parsed=%s round=%d defects=%d (%.0fs)",
-                tid, verdict, verdict_parsed, qa_round, len(defects), qa_elapsed,
+                "[DEV] %s done in %.0fs — tokens=%d/%d ctx=%.0f%% "
+                "cost=$%.4f commit=%s diff=%d chars",
+                tid, dev_elapsed, in_tok, out_tok,
+                context_pct * 100, cost, commit_sha, len(diff),
             )
             self.progress.log(
-                f"QA verdict={verdict} parsed={verdict_parsed} "
-                f"round={qa_round} defects={len(defects)} ({qa_elapsed:.0f}s)",
+                f"Developer done ({dev_elapsed:.0f}s) "
+                f"tokens={in_tok}/{out_tok} ctx={context_pct:.0%} "
+                f"cost=${cost:.4f} commit={commit_sha} diff={len(diff)}ch",
                 tid,
             )
 
-            if verdict == "UNPARSEABLE":
-                # QA infra issue — log warning and fall through to oracle
+            # Checkpoint: dev stage complete
+            self.task_mgr.set_checkpoint(
+                tid, "dev", retry_count, tag_sha,
+            )
+
+        # ── 2. QA Review ─────────────────────────────────────────────
+        if checkpoint in ("qa", "oracle"):
+            logger.info("  [QA] Skipping — checkpoint=%s", checkpoint)
+        else:
+            qa_start = time.time()
+            logger.info("  [QA] Starting QA agent for %s ...", tid)
+            qa_result = self._launch_qa(task, diff)
+            qa_elapsed = time.time() - qa_start
+
+            if not qa_result:
+                # QA session completely failed — fall through to oracle
+                self.progress.log(
+                    f"QA session FAILED ({qa_elapsed:.0f}s) — deferring to oracle",
+                    tid,
+                )
                 logger.warning(
-                    "[QA] %s output unparseable — deferring to oracle. "
-                    "Review orchestrator.log for raw QA output.", tid,
+                    "[QA] %s session failed after %.0fs — deferring to oracle",
+                    tid, qa_elapsed,
+                )
+            else:
+                verdict = qa_result.get("verdict", "BLOCKED")
+                verdict_parsed = qa_result.get("verdict_parsed", True)
+                defects = qa_result.get("defects", [])
+                qa_round = qa_result.get("round", 1)
+
+                logger.info(
+                    "[QA] %s verdict=%s parsed=%s round=%d defects=%d (%.0fs)",
+                    tid, verdict, verdict_parsed, qa_round, len(defects), qa_elapsed,
                 )
                 self.progress.log(
-                    "QA output unparseable — deferring to oracle", tid,
+                    f"QA verdict={verdict} parsed={verdict_parsed} "
+                    f"round={qa_round} defects={len(defects)} ({qa_elapsed:.0f}s)",
+                    tid,
                 )
-            elif verdict == "PASS":
-                logger.info("[QA] %s PASSED QA review", tid)
-            else:
-                # QA found real issues (NEEDS_WORK or BLOCKED)
-                for defect in defects:
-                    self.progress.log(f"  DEFECT: {defect}", tid)
-                    logger.info("[QA] %s defect: %s", tid, defect)
 
-                # Soft rollback: revert dev commits so next retry starts clean
+                if verdict == "UNPARSEABLE":
+                    logger.warning(
+                        "[QA] %s output unparseable — deferring to oracle. "
+                        "Review orchestrator.log for raw QA output.", tid,
+                    )
+                    self.progress.log(
+                        "QA output unparseable — deferring to oracle", tid,
+                    )
+                elif verdict == "PASS":
+                    logger.info("[QA] %s PASSED QA review", tid)
+                else:
+                    # QA found real issues (NEEDS_WORK or BLOCKED)
+                    for defect in defects:
+                        self.progress.log(f"  DEFECT: {defect}", tid)
+                        logger.info("[QA] %s defect: %s", tid, defect)
+
+                    # Soft rollback: revert dev commits so next retry starts clean
+                    self._git_soft_rollback(tid, baseline_sha)
+                    self.task_mgr.clear_checkpoint(tid)
+
+                    if context_pct > self.config.context_split_threshold or retry_count >= 3:
+                        logger.info(
+                            "[QA] Splitting %s (context=%.0f%%, retries=%d)",
+                            tid, context_pct * 100, retry_count,
+                        )
+                        self._split_task(task)
+                        self._log_task_summary(tid, task_start, "SPLIT")
+                        return False
+                    else:
+                        new_retry = self.task_mgr.increment_retry(tid)
+                        self.progress.log(
+                            f"Retry {new_retry} scheduled (QA: {verdict})", tid,
+                        )
+                        logger.info(
+                            "[QA] %s scheduling retry %d", tid, new_retry,
+                        )
+                        self._log_task_summary(tid, task_start, f"RETRY({verdict})")
+                        return False
+
+            # Checkpoint: qa stage complete
+            self.task_mgr.set_checkpoint(
+                tid, "qa", retry_count, tag_sha,
+            )
+
+        # ── 3. Oracle Validation ──────────────────────────────────────
+        if checkpoint == "oracle":
+            logger.info("  [ORACLE] Skipping — checkpoint=%s", checkpoint)
+        else:
+            oracle_start = time.time()
+            logger.info("  [ORACLE] Running oracle for %s ...", tid)
+            oracle_passed = self._run_oracle(tid)
+            oracle_elapsed = time.time() - oracle_start
+
+            logger.info(
+                "[ORACLE] %s result=%s (%.0fs)",
+                tid, "PASS" if oracle_passed else "FAIL", oracle_elapsed,
+            )
+            self.progress.log(
+                f"Oracle {'PASSED' if oracle_passed else 'FAILED'} ({oracle_elapsed:.0f}s)",
+                tid,
+            )
+
+            if not oracle_passed:
+                # Soft rollback before retry
                 self._git_soft_rollback(tid, baseline_sha)
+                self.task_mgr.clear_checkpoint(tid)
 
                 if context_pct > self.config.context_split_threshold or retry_count >= 3:
                     logger.info(
-                        "[QA] Splitting %s (context=%.0f%%, retries=%d)",
+                        "[ORACLE] Splitting %s after oracle failure "
+                        "(context=%.0f%%, retries=%d)",
                         tid, context_pct * 100, retry_count,
                     )
                     self._split_task(task)
-                    self._log_task_summary(tid, task_start, "SPLIT")
-                    return False
+                    self._log_task_summary(tid, task_start, "SPLIT(oracle)")
                 else:
                     new_retry = self.task_mgr.increment_retry(tid)
-                    self.progress.log(
-                        f"Retry {new_retry} scheduled (QA: {verdict})", tid,
-                    )
                     logger.info(
-                        "[QA] %s scheduling retry %d", tid, new_retry,
+                        "[ORACLE] %s scheduling retry %d", tid, new_retry,
                     )
-                    self._log_task_summary(tid, task_start, f"RETRY({verdict})")
-                    return False
+                    self._log_task_summary(tid, task_start, "RETRY(oracle)")
 
-        # ── 3. Oracle Validation ──────────────────────────────────────
-        oracle_start = time.time()
-        logger.info("  [ORACLE] Running oracle for %s ...", tid)
-        oracle_passed = self._run_oracle(tid)
-        oracle_elapsed = time.time() - oracle_start
+                return False
 
-        logger.info(
-            "[ORACLE] %s result=%s (%.0fs)",
-            tid, "PASS" if oracle_passed else "FAIL", oracle_elapsed,
-        )
-        self.progress.log(
-            f"Oracle {'PASSED' if oracle_passed else 'FAILED'} ({oracle_elapsed:.0fs})",
-            tid,
-        )
+            # Checkpoint: oracle stage complete
+            self.task_mgr.set_checkpoint(
+                tid, "oracle", retry_count, tag_sha,
+            )
 
-        if not oracle_passed:
-            # Soft rollback before retry
-            self._git_soft_rollback(tid, baseline_sha)
-
-            if context_pct > self.config.context_split_threshold or retry_count >= 3:
-                logger.info(
-                    "[ORACLE] Splitting %s after oracle failure "
-                    "(context=%.0f%%, retries=%d)",
-                    tid, context_pct * 100, retry_count,
-                )
-                self._split_task(task)
-                self._log_task_summary(tid, task_start, "SPLIT(oracle)")
-            else:
-                new_retry = self.task_mgr.increment_retry(tid)
-                logger.info(
-                    "[ORACLE] %s scheduling retry %d", tid, new_retry,
-                )
-                self._log_task_summary(tid, task_start, "RETRY(oracle)")
-
-            return False
-
-        # Success — run Historian to clean up git history, then bookmark
+        # ── 4. Success — Historian + completion ───────────────────────
         self._run_historian(tid)
         self._git_bookmark(tid, "verified")
+        self.task_mgr.clear_checkpoint(tid)
         self._log_task_summary(tid, task_start, "COMPLETE")
         return True
 
@@ -1409,6 +1507,20 @@ class Orchestrator:
                 cwd=str(self.config.project_root),
             )
             return result.stdout.strip()
+        except Exception:
+            return ""
+
+    def _git_resolve_ref(self, ref: str) -> str:
+        """Resolve a git ref (tag, branch, SHA) to its commit SHA."""
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "--verify", ref],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                cwd=str(self.config.project_root),
+            )
+            return result.stdout.strip() if result.returncode == 0 else ""
         except Exception:
             return ""
 
