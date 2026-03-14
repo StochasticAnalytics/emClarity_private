@@ -12,6 +12,7 @@ A project is a directory on disk that follows the emClarity convention:
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from backend.models.project import Project, ProjectState, TiltSeries
@@ -66,6 +67,8 @@ class ProjectService:
         state = self._detect_state(project_dir)
         cycle = self._detect_cycle(project_dir)
         tilt_series = self._discover_tilt_series(project_dir)
+        particle_count = self._count_particles(project_dir)
+        best_resolution = self._detect_best_resolution(project_dir)
 
         # Try to find the parameter file
         param_file = None
@@ -80,6 +83,8 @@ class ProjectService:
             current_cycle=cycle,
             tilt_series=tilt_series,
             parameter_file=param_file,
+            particle_count=particle_count,
+            best_resolution_angstrom=best_resolution,
         )
 
     def list_tilt_series(self, path: str) -> list[TiltSeries]:
@@ -167,3 +172,95 @@ class ProjectService:
                 )
 
         return tilt_series
+
+    @staticmethod
+    def _count_particles(project_dir: Path) -> int:
+        """Count the number of particles found during template search.
+
+        emClarity writes one .mrc file per tilt-series into convmap/ for
+        each picked particle set.  We count the number of coordinate/map
+        files present as a proxy for total particle count.
+
+        Files named like ``<tsname>_convmap.mrc`` or ``<tsname>_pts.txt``
+        are considered.  If plain coordinate text files exist, each line
+        (excluding blank lines) counts as one particle.  Otherwise we fall
+        back to counting .mrc files as a rough proxy.
+        """
+        convmap_dir = project_dir / "convmap"
+        if not convmap_dir.exists():
+            return 0
+
+        total = 0
+
+        # Prefer coordinate text files (*.txt) — each non-blank line is one
+        # particle position.
+        txt_files = list(convmap_dir.glob("*.txt"))
+        if txt_files:
+            for txt_file in txt_files:
+                try:
+                    lines = txt_file.read_text(encoding="utf-8").splitlines()
+                    total += sum(1 for line in lines if line.strip())
+                except OSError:
+                    continue
+            return total
+
+        # Fall back to counting .mrc map files as a rough proxy.
+        return sum(1 for _ in convmap_dir.glob("*.mrc"))
+
+    @staticmethod
+    def _detect_best_resolution(project_dir: Path) -> float | None:
+        """Return the best (lowest) resolution in Ångströms from the FSC directory.
+
+        emClarity writes FSC curve files into ``FSC/``.  Two naming
+        conventions are supported:
+
+        1. Filenames that embed the resolution, e.g.
+           ``fsc_2.8A_cycle4.txt`` — the numeric portion before 'A' is
+           extracted.
+        2. Plain text FSC tables where the last non-blank line contains a
+           resolution value as its first whitespace-separated column (in
+           Ångströms).
+
+        The *minimum* (best) resolution value found across all files is
+        returned.  Returns ``None`` if the FSC directory is empty or no
+        parseable resolution is found.
+        """
+        fsc_dir = project_dir / "FSC"
+        if not fsc_dir.exists():
+            return None
+
+        best: float | None = None
+
+        # Pattern: digits (and optional decimal) followed by 'A' or 'Ang' or
+        # 'angstrom' in the filename, case-insensitive.
+        fname_pattern = re.compile(r"(\d+(?:\.\d+)?)\s*[Aa]", re.IGNORECASE)
+
+        for fsc_file in fsc_dir.iterdir():
+            if not fsc_file.is_file():
+                continue
+
+            # 1. Try to extract resolution from the filename.
+            match = fname_pattern.search(fsc_file.name)
+            if match:
+                try:
+                    value = float(match.group(1))
+                    if value > 0 and (best is None or value < best):
+                        best = value
+                    continue
+                except ValueError:
+                    pass
+
+            # 2. Try to parse the last non-blank line of plain-text FSC files.
+            if fsc_file.suffix in {".txt", ".fsc", ".dat", ".csv"}:
+                try:
+                    text = fsc_file.read_text(encoding="utf-8")
+                    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+                    if lines:
+                        first_col = lines[-1].split()[0]
+                        value = float(first_col)
+                        if value > 0 and (best is None or value < best):
+                            best = value
+                except (OSError, ValueError, IndexError):
+                    continue
+
+        return best

@@ -63,6 +63,8 @@ class ProjectResponse(BaseModel):
     state: str
     parameters: dict[str, Any]
     current_cycle: int = 0
+    particle_count: int = 0
+    best_resolution_angstrom: float | None = None
 
 
 class TiltSeriesListResponse(BaseModel):
@@ -106,6 +108,8 @@ async def load_project_by_directory(request: LoadProjectByDirectoryRequest) -> P
                 state=record.state.value,
                 parameters=record.parameters,
                 current_cycle=record.current_cycle,
+                particle_count=record.particle_count,
+                best_resolution_angstrom=record.best_resolution_angstrom,
             )
 
     # Try to load from disk
@@ -125,6 +129,8 @@ async def load_project_by_directory(request: LoadProjectByDirectoryRequest) -> P
         state=project.state,
         parameters={},
         current_cycle=project.current_cycle,
+        particle_count=project.particle_count,
+        best_resolution_angstrom=project.best_resolution_angstrom,
     )
     _projects[project_id] = record
 
@@ -135,6 +141,8 @@ async def load_project_by_directory(request: LoadProjectByDirectoryRequest) -> P
         state=record.state.value,
         parameters=record.parameters,
         current_cycle=record.current_cycle,
+        particle_count=record.particle_count,
+        best_resolution_angstrom=record.best_resolution_angstrom,
     )
 
 
@@ -166,6 +174,8 @@ async def create_project(request: CreateProjectRequest) -> ProjectResponse:
         state=record.state.value,
         parameters=record.parameters,
         current_cycle=record.current_cycle,
+        particle_count=record.particle_count,
+        best_resolution_angstrom=record.best_resolution_angstrom,
     )
 
 
@@ -186,6 +196,8 @@ async def get_project(project_id: str) -> ProjectResponse:
         state=record.state.value,
         parameters=record.parameters,
         current_cycle=record.current_cycle,
+        particle_count=record.particle_count,
+        best_resolution_angstrom=record.best_resolution_angstrom,
     )
 
 
