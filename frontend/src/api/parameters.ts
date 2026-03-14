@@ -157,13 +157,15 @@ export function parseMatlabContent(
     const match = /^(\w+)\s*=\s*(.+?)(?:;\s*(?:%.*)?)?$/.exec(line)
     if (!match) continue
 
-    const rawName = match[1]
-    const rawValue = match[2].trim().replace(/;$/, '').trim()
+    const rawName = match[1] ?? ''
+    const rawValue = (match[2] ?? '').trim().replace(/;$/, '').trim()
     const parsed = parseMatlabValue(rawValue)
 
     // Translate deprecated names to canonical form.
     const canonical = deprecatedLookup.get(rawName) ?? rawName
-    values[canonical] = parsed
+    if (canonical) {
+      values[canonical] = parsed
+    }
   }
 
   return values

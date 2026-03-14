@@ -11,12 +11,13 @@
  *  - GET /api/v1/projects/{id}
  *  - GET /api/v1/projects/{id}/tilt-series
  */
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { apiClient, ApiError } from '@/api/client.ts'
 import { useApiQuery } from '@/hooks/useApi.ts'
+import { useProject } from '@/context/ProjectContext.tsx'
 
 // ---------------------------------------------------------------------------
 // Types mirroring the backend response models
@@ -283,6 +284,8 @@ interface ProjectDashboardProps {
 }
 
 function ProjectDashboard({ projectId, onBack }: ProjectDashboardProps) {
+  const { setActiveProject } = useProject()
+
   const {
     data: project,
     isLoading: projectLoading,
@@ -297,6 +300,14 @@ function ProjectDashboard({ projectId, onBack }: ProjectDashboardProps) {
     ['project-tilt-series', projectId],
     `/api/v1/projects/${projectId}/tilt-series`,
   )
+
+  // Broadcast loaded project info to the shared context so the Header can
+  // display the project name and state badge.
+  useEffect(() => {
+    if (project) {
+      setActiveProject({ id: project.id, name: project.name, state: project.state })
+    }
+  }, [project, setActiveProject])
 
   if (projectLoading || tiltsLoading) {
     return (
@@ -527,10 +538,12 @@ type View = 'home' | 'create' | 'dashboard'
 export function ProjectPage() {
   const [view, setView] = useState<View>('home')
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
+  const { clearActiveProject } = useProject()
 
   const handleProjectCreated = useCallback((projectId: string) => {
     setActiveProjectId(projectId)
     setView('dashboard')
+    // Project name / state will be broadcast once the dashboard fetches the data
   }, [])
 
   const handleProjectLoaded = useCallback((projectId: string) => {
@@ -541,7 +554,8 @@ export function ProjectPage() {
   const handleBack = useCallback(() => {
     setView('home')
     setActiveProjectId(null)
-  }, [])
+    clearActiveProject()
+  }, [clearActiveProject])
 
   // Dashboard view
   if (view === 'dashboard' && activeProjectId) {
