@@ -4,7 +4,7 @@ Tracks all tools, components, and infrastructure added to the project during bas
 
 ## Baseline Setup (2026-03-13)
 
-### Frontend (gui/)
+### Frontend (frontend/)
 
 **Framework:** React 19 + TypeScript 5 + Vite 8
 

@@ -139,10 +139,10 @@ class OracleValidator:
         return results
 
     def _check_typescript(self) -> Dict:
-        """Validate TypeScript compilation from the gui/ subdirectory."""
+        """Validate TypeScript compilation from the frontend/ subdirectory."""
         start = time.time()
 
-        gui_cwd = str(Path(self.cwd or ".") / "gui")
+        gui_cwd = str(Path(self.cwd or ".") / "frontend")
 
         try:
             result = subprocess.run(

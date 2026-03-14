@@ -527,7 +527,7 @@ The master metadata file is a MATLAB struct with these key fields:
 ### 6.1 Current State Assessment
 
 **Established infrastructure (as of Phase 0 baseline):**
-- **React 19 + TypeScript 5 + Vite 8** scaffold at `gui/`
+- **React 19 + TypeScript 5 + Vite 8** scaffold at `frontend/`
 - **FastAPI + Pydantic v2** backend at `backend/`
 - **E2E test suite** at `tests/` (35 tests defining API contract)
 - **Backend unit tests** at `backend/tests/` (27 tests)
@@ -571,7 +571,7 @@ The master metadata file is a MATLAB struct with these key fields:
 ### 6.3 Module Structure
 
 ```
-gui/                              -- React + TypeScript frontend
+frontend/                         -- React + TypeScript frontend
   src/
     main.tsx                      -- Entry point (React Query provider, BrowserRouter)
     App.tsx                       -- Root component with routes

@@ -19,6 +19,7 @@ This file is the persistent master. The home-dir MEMORY.md (`/home/cisTEMdev/.cl
 | [claude_cli_patterns.md](claude_cli_patterns.md) | reference | CLI flags, output formats, subprocess patterns |
 | [orchestrator_tuning.md](orchestrator_tuning.md) | project | Streaming fix, QA parser, config lessons |
 | [phase_0_notes.md](phase_0_notes.md) | project | Developer/QA agent observations, self-correction on oversight |
+| [three_phase_architecture.md](three_phase_architecture.md) | project | Three-phase roadmap (emClarity → cisTEM → CryoPrior), portable autonomous-build |
 
 ## Environment
 
@@ -28,10 +29,11 @@ This file is the persistent master. The home-dir MEMORY.md (`/home/cisTEMdev/.cl
 
 ## Project Structure
 
-- **Frontend**: React 19 + TypeScript 5 + Vite 8 at `gui/`
-- **Backend**: FastAPI + Pydantic v2 at `backend/`
+- **Frontend**: React 19 + TypeScript 5 + Vite 8 at `frontend/`
+- **Backend / Middle Layer**: FastAPI + Pydantic v2 at `backend/`
 - **E2E Tests**: 35 tests at `tests/` (LOCKED, chmod 444/555)
 - **Backend Tests**: 27 tests at `backend/tests/`
+- **Historian prompt**: `autonomous-build/prompts/historian-prompt.md`
 - **Phase 0 artifacts**: `autonomous-build/templates/phase0-artifacts/`
   - `parameter_schema.json` — 160 params from BH_parseParameterFile.m
   - `workflow_map.md` — 28 commands, pipeline order, dependencies

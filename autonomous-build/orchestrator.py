@@ -106,15 +106,11 @@ class OrchestratorConfig:
 
     @property
     def model(self) -> str:
-        return self.config.get("model", "claude-sonnet-4-20250514")
+        return self.config.get("model", "sonnet")
 
     @property
-    def max_context_tokens(self) -> int:
-        return self.config.get("max_context_tokens", 200000)
-
-    @property
-    def context_warning_threshold(self) -> float:
-        return self.config.get("context_warning_threshold", 0.70)
+    def effort(self) -> str:
+        return self.config.get("effort", "medium")
 
     @property
     def context_split_threshold(self) -> float:
@@ -148,10 +144,11 @@ class OrchestratorConfig:
 class ClaudeCodeRunner:
     """Launches Claude Code CLI sessions and parses structured output."""
 
-    def __init__(self, project_root: Path, max_context_tokens: int, stream_output: bool = False):
+    def __init__(self, project_root: Path, stream_output: bool = False, model: str = "", effort: str = "medium"):
         self.project_root = project_root
-        self.max_context_tokens = max_context_tokens
         self.stream_output = stream_output
+        self.model = model
+        self.effort = effort
 
     def run(
         self,
@@ -159,6 +156,8 @@ class ClaudeCodeRunner:
         user_message: str,
         max_turns: int = 50,
         timeout: int = 600,
+        agent_label: str = "",
+        task_id: str = "",
     ) -> Dict[str, Any]:
         """Run a Claude Code CLI session and return structured results.
 
@@ -167,7 +166,7 @@ class ClaudeCodeRunner:
             text (str): Full conversation text from the model
             input_tokens (int): Tokens consumed by input
             output_tokens (int): Tokens produced as output
-            context_usage (float): Fraction of max_context_tokens used
+            context_usage (float): Reserved (context managed by CLI)
             cost_usd (float): Session cost in USD (if reported)
             raw (dict | None): Full parsed JSON from CLI
         """
@@ -183,19 +182,22 @@ class ClaudeCodeRunner:
             "--output-format", output_fmt,
             "--dangerously-skip-permissions",
             "--chrome",
-            "--effort", "high",
+            "--effort", self.effort,
             "--verbose",
             "--max-turns", str(max_turns),
         ]
 
+        if self.model:
+            cmd.extend(["--model", self.model])
+
         if system_prompt:
             cmd.extend(["--system-prompt", system_prompt])
 
-        logger.debug("ClaudeCodeRunner cmd: %s (format=%s)", " ".join(cmd[:6]) + " ...", output_fmt)
+        logger.debug("ClaudeCodeRunner cmd: %s (format=%s model=%s)", " ".join(cmd[:6]) + " ...", output_fmt, self.model or "default")
         logger.debug("ClaudeCodeRunner cwd: %s", self.project_root)
 
         if self.stream_output:
-            return self._run_streaming(cmd, user_message, timeout)
+            return self._run_streaming(cmd, user_message, timeout, agent_label, task_id)
 
         try:
             result = subprocess.run(
@@ -216,7 +218,8 @@ class ClaudeCodeRunner:
         return self._parse_result(result)
 
     def _run_streaming(
-        self, cmd: List[str], user_message: str, timeout: int
+        self, cmd: List[str], user_message: str, timeout: int,
+        agent_label: str = "", task_id: str = "",
     ) -> Dict[str, Any]:
         """Run CLI with ``--output-format stream-json`` for real-time output.
 
@@ -294,7 +297,7 @@ class ClaudeCodeRunner:
                 etype = event.get("type", "?")
 
                 # Display events to console for real-time visibility
-                self._display_stream_event(event, elapsed)
+                self._display_stream_event(event, elapsed, agent_label, task_id)
 
                 # Capture the final result event
                 if etype == "result":
@@ -332,13 +335,22 @@ class ClaudeCodeRunner:
         return self._parse_result(result)
 
     @staticmethod
-    def _display_stream_event(event: Dict, elapsed: float):
+    def _display_stream_event(
+        event: Dict, elapsed: float, agent_label: str = "", task_id: str = "",
+    ):
         """Display a stream-json event to stderr for user visibility."""
         etype = event.get("type", "?")
 
+        # Build prefix: e.g. "[DEV ] [TASK-002c] "
+        tag = ""
+        if agent_label:
+            tag += f"[{agent_label:<4s}] "
+        if task_id:
+            tag += f"[{task_id}] "
+
         if etype == "system":
             sid = event.get("session_id", "?")[:8]
-            sys.stderr.write(f"  [{elapsed:6.1f}s] [INIT] session={sid}\n")
+            sys.stderr.write(f"  [{elapsed:6.1f}s] {tag}[INIT] session={sid}\n")
 
         elif etype == "assistant":
             msg = event.get("message", {})
@@ -350,18 +362,18 @@ class ClaudeCodeRunner:
                     text = block.get("text", "")
                     # Show first 150 chars of text output
                     preview = text[:150] + ("..." if len(text) > 150 else "")
-                    sys.stderr.write(f"  [{elapsed:6.1f}s] [TEXT] {preview}\n")
+                    sys.stderr.write(f"  [{elapsed:6.1f}s] {tag}[TEXT] {preview}\n")
                 elif btype == "tool_use":
                     name = block.get("name", "?")
                     inp = str(block.get("input", ""))[:80]
-                    sys.stderr.write(f"  [{elapsed:6.1f}s] [TOOL] {name}({inp})\n")
+                    sys.stderr.write(f"  [{elapsed:6.1f}s] {tag}[TOOL] {name}({inp})\n")
 
         elif etype == "result":
             result_text = event.get("result", "")[:100]
             cost = event.get("total_cost_usd", 0)
             turns = event.get("num_turns", "?")
             sys.stderr.write(
-                f"  [{elapsed:6.1f}s] [DONE] turns={turns} "
+                f"  [{elapsed:6.1f}s] {tag}[DONE] turns={turns} "
                 f"cost=${cost:.4f} result='{result_text}'\n"
             )
 
@@ -424,22 +436,42 @@ class ClaudeCodeRunner:
             parsed["output_tokens"] = usage.get("output_tokens", 0)
             parsed["cost_usd"] = raw.get("cost_usd", 0.0)
         elif isinstance(raw, list):
-            # Array of messages — concatenate assistant text
-            texts = []
+            # Verbose mode: array of event objects with "type" field.
+            # Look for the "result" event first (has final text),
+            # fall back to extracting from "assistant" events.
             for msg in raw:
-                if isinstance(msg, dict) and msg.get("role") == "assistant":
-                    content = msg.get("content", "")
-                    if isinstance(content, str):
-                        texts.append(content)
-                    elif isinstance(content, list):
-                        for block in content:
-                            if isinstance(block, dict) and block.get("type") == "text":
-                                texts.append(block.get("text", ""))
-            parsed["text"] = "\n".join(texts)
+                if isinstance(msg, dict) and msg.get("type") == "result":
+                    parsed["text"] = msg.get("result", "")
+                    usage = msg.get("usage", {})
+                    parsed["input_tokens"] = usage.get("input_tokens", 0)
+                    parsed["output_tokens"] = usage.get("output_tokens", 0)
+                    parsed["cost_usd"] = msg.get("total_cost_usd", 0.0)
+                    break
+            else:
+                # No result event — concatenate assistant text blocks
+                texts = []
+                for msg in raw:
+                    if not isinstance(msg, dict):
+                        continue
+                    # Verbose format: type=assistant, content in msg["message"]["content"]
+                    if msg.get("type") == "assistant":
+                        content = msg.get("message", {}).get("content", [])
+                        if isinstance(content, list):
+                            for block in content:
+                                if isinstance(block, dict) and block.get("type") == "text":
+                                    texts.append(block.get("text", ""))
+                    # Legacy format: role=assistant, content at top level
+                    elif msg.get("role") == "assistant":
+                        content = msg.get("content", "")
+                        if isinstance(content, str):
+                            texts.append(content)
+                        elif isinstance(content, list):
+                            for block in content:
+                                if isinstance(block, dict) and block.get("type") == "text":
+                                    texts.append(block.get("text", ""))
+                parsed["text"] = "\n".join(texts)
 
-        total_tokens = parsed["input_tokens"] + parsed["output_tokens"]
-        if self.max_context_tokens > 0 and total_tokens > 0:
-            parsed["context_usage"] = total_tokens / self.max_context_tokens
+        # context_usage left at 0.0 — context limits managed by the CLI itself
 
         return parsed
 
@@ -454,6 +486,55 @@ class ClaudeCodeRunner:
             "cost_usd": 0.0,
             "raw": None,
         }
+
+    def preflight(self) -> bool:
+        """Run a minimal CLI invocation to verify config is correct.
+
+        Prints orchestrator config, then asks the agent to report its
+        model, effort level, and what context/tools it can see.
+        """
+        # Print local config
+        sys.stderr.write("\n")
+        sys.stderr.write("=" * 60 + "\n")
+        sys.stderr.write("  Orchestrator Preflight\n")
+        sys.stderr.write("=" * 60 + "\n")
+        sys.stderr.write(f"  model:   {self.model}\n")
+        sys.stderr.write(f"  effort:  {self.effort}\n")
+        sys.stderr.write(f"  cwd:     {self.project_root}\n")
+        sys.stderr.write(f"  stream:  {self.stream_output}\n")
+        sys.stderr.write("-" * 60 + "\n")
+        sys.stderr.write("  Asking agent to confirm...\n")
+        sys.stderr.flush()
+
+        result = self.run(
+            system_prompt="",
+            user_message=(
+                "Report the following on separate lines, no other text:\n"
+                "MODEL: <your model name/ID>\n"
+                "EFFORT: <your effort level if known, otherwise 'unknown'>\n"
+                "TOOLS: <count of tools available>\n"
+                "CWD: <your current working directory>\n"
+            ),
+            max_turns=1,
+            timeout=30,
+            agent_label="PRE",
+        )
+        text = result.get("text", "")
+        success = result.get("success", False)
+
+        if success and text.strip():
+            sys.stderr.write("  Agent reports:\n")
+            for line in text.strip().splitlines():
+                sys.stderr.write(f"    {line}\n")
+        else:
+            sys.stderr.write(f"  Agent failed (success={success}, text={len(text)} chars)\n")
+
+        sys.stderr.write("=" * 60 + "\n\n")
+        sys.stderr.flush()
+
+        if not success:
+            logger.error("[PREFLIGHT] CLI invocation failed — check model and auth")
+        return success
 
 
 # ---------------------------------------------------------------------------
@@ -624,8 +705,9 @@ class Orchestrator:
         self.splitter = TaskSplitter()
         self.runner = ClaudeCodeRunner(
             project_root=config.project_root,
-            max_context_tokens=config.max_context_tokens,
             stream_output=stream,
+            model=config.model,
+            effort=config.effort,
         )
         self.iteration = 0
         self._current_task_id: Optional[str] = None
@@ -667,6 +749,11 @@ class Orchestrator:
     def run(self, max_iterations: int, resume: bool = False):
         """Execute orchestration loop"""
         self._install_signal_handlers()
+
+        # Preflight: verify CLI works before committing to a long run
+        if not self.runner.preflight():
+            logger.error("Preflight failed — aborting")
+            sys.exit(1)
 
         if not resume:
             self.progress.log("=== ORCHESTRATOR RUN STARTED ===")
@@ -720,6 +807,10 @@ class Orchestrator:
         retry_count = self.task_mgr.get_retry_count(tid)
         logger.info("  Task %s retry_count=%d", tid, retry_count)
 
+        # Bookmark the starting point for traceability
+        baseline_sha = self._git_head_sha()
+        self._git_bookmark(tid, "start")
+
         # ── 1. Developer ─────────────────────────────────────────────
         dev_start = time.time()
         logger.info("  [DEV] Starting developer agent for %s ...", tid)
@@ -756,10 +847,7 @@ class Orchestrator:
             tid,
         )
 
-        if context_pct > self.config.context_warning_threshold:
-            logger.warning(
-                "  Context usage %.0f%% — approaching limit", context_pct * 100
-            )
+        # Context limits managed by the CLI itself
 
         # ── 2. QA Review ─────────────────────────────────────────────
         qa_start = time.time()
@@ -813,6 +901,9 @@ class Orchestrator:
                     self.progress.log(f"  DEFECT: {defect}", tid)
                     logger.info("[QA] %s defect: %s", tid, defect)
 
+                # Soft rollback: revert dev commits so next retry starts clean
+                self._git_soft_rollback(tid, baseline_sha)
+
                 if context_pct > self.config.context_split_threshold or retry_count >= 3:
                     logger.info(
                         "[QA] Splitting %s (context=%.0f%%, retries=%d)",
@@ -848,6 +939,9 @@ class Orchestrator:
         )
 
         if not oracle_passed:
+            # Soft rollback before retry
+            self._git_soft_rollback(tid, baseline_sha)
+
             if context_pct > self.config.context_split_threshold or retry_count >= 3:
                 logger.info(
                     "[ORACLE] Splitting %s after oracle failure "
@@ -865,6 +959,9 @@ class Orchestrator:
 
             return False
 
+        # Success — run Historian to clean up git history, then bookmark
+        self._run_historian(tid)
+        self._git_bookmark(tid, "verified")
         self._log_task_summary(tid, task_start, "COMPLETE")
         return True
 
@@ -906,6 +1003,8 @@ class Orchestrator:
             user_message=user_message,
             max_turns=50,
             timeout=600,
+            agent_label="DEV",
+            task_id=task["id"],
         )
 
         logger.debug(
@@ -966,6 +1065,8 @@ class Orchestrator:
             user_message=user_message,
             max_turns=30,
             timeout=600,
+            agent_label="QA",
+            task_id=task["id"],
         )
 
         logger.debug(
@@ -1143,6 +1244,70 @@ class Orchestrator:
             "verdict_parsed": verdict_parsed,
         }
 
+    # -- historian ---------------------------------------------------------
+
+    def _run_historian(self, task_id: str):
+        """Run the Historian agent to clean up git history for a completed task.
+
+        The Historian reviews commits since the task's start tag, squashes
+        revert+fix pairs, ensures meaningful commit messages, and maintains
+        a minimum of one commit per sub-agent per task.
+        """
+        start_tag = f"autobuild/{task_id}/start"
+
+        # Check if the start tag exists
+        tag_check = subprocess.run(
+            ["git", "rev-parse", "--verify", f"refs/tags/{start_tag}"],
+            capture_output=True, text=True, timeout=10,
+            cwd=str(self.config.project_root),
+        )
+        if tag_check.returncode != 0:
+            logger.info("[HIST] No start tag found for %s — skipping historian", task_id)
+            return
+
+        # Load historian prompt
+        prompt_path = Path("prompts/historian-prompt.md")
+        try:
+            system_prompt = prompt_path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            logger.warning("[HIST] Historian prompt not found: %s — skipping", prompt_path)
+            return
+
+        user_message = (
+            f"Clean up the git history for task {task_id}.\n\n"
+            f"Start reference: tag '{start_tag}'\n"
+            f"Current HEAD: {self._git_head_sha()[:12]}\n\n"
+            f"Review the commits between the start tag and HEAD. "
+            f"Squash revert+fix pairs, ensure meaningful commit messages "
+            f"with format '[{task_id}] <what and why>', and maintain "
+            f"minimum 1 commit for dev work + 1 for QA fixes (if any). "
+            f"Do NOT squash across task boundaries. Preserve commits from "
+            f"other agents or the user."
+        )
+
+        hist_start = time.time()
+        logger.info("  [HIST] Starting historian for %s ...", task_id)
+
+        result = self.runner.run(
+            system_prompt=system_prompt,
+            user_message=user_message,
+            max_turns=10,
+            timeout=120,
+            agent_label="HIST",
+            task_id=task_id,
+        )
+
+        hist_elapsed = time.time() - hist_start
+        success = result.get("success", False)
+        logger.info(
+            "[HIST] %s done in %.0fs — success=%s",
+            task_id, hist_elapsed, success,
+        )
+        if not success:
+            logger.warning(
+                "[HIST] Historian failed for %s — history left as-is", task_id,
+            )
+
     # -- oracle ------------------------------------------------------------
 
     def _run_oracle(self, task_id: str) -> bool:
@@ -1246,6 +1411,81 @@ class Orchestrator:
             return result.stdout.strip()
         except Exception:
             return ""
+
+    def _git_bookmark(self, task_id: str, suffix: str):
+        """Create a lightweight bookmark tag for traceability.
+
+        Tags are informational only — never used as reset targets.
+        Examples: autobuild/TASK-002c/start, autobuild/TASK-002c/verified
+        """
+        tag_name = f"autobuild/{task_id}/{suffix}"
+        try:
+            subprocess.run(
+                ["git", "tag", "-f", tag_name],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                cwd=str(self.config.project_root),
+            )
+            logger.info("[GIT] Tagged HEAD as %s", tag_name)
+        except Exception as exc:
+            logger.warning("[GIT] Failed to create tag %s: %s", tag_name, exc)
+
+    def _git_soft_rollback(self, task_id: str, baseline_sha: str):
+        """Revert commits since baseline via git revert (non-destructive).
+
+        Creates a new revert commit instead of using git reset --hard.
+        Safe to use in a shared working tree.
+        """
+        head_sha = self._git_head_sha()
+        if not head_sha or head_sha == baseline_sha:
+            logger.info("[GIT] Nothing to revert for %s", task_id)
+            return
+
+        cwd = str(self.config.project_root)
+
+        try:
+            # Revert all commits between baseline and HEAD (staged, not committed)
+            revert_result = subprocess.run(
+                ["git", "revert", "--no-commit", f"{baseline_sha}..HEAD"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                cwd=cwd,
+            )
+            if revert_result.returncode != 0:
+                logger.warning(
+                    "[GIT] git revert failed (rc=%d): %s",
+                    revert_result.returncode,
+                    revert_result.stderr[:300],
+                )
+                # Fall back to leaving the commits in place — safer than forcing
+                return
+
+            # Commit the revert
+            commit_result = subprocess.run(
+                [
+                    "git", "commit", "-m",
+                    f"[{task_id}] Revert failed attempt (QA: NEEDS_WORK)\n\n"
+                    f"Reverted commits {baseline_sha[:8]}..{head_sha[:8]}",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                cwd=cwd,
+            )
+            if commit_result.returncode == 0:
+                logger.info(
+                    "[GIT] Soft rollback: reverted %s..%s for %s",
+                    baseline_sha[:8], head_sha[:8], task_id,
+                )
+            else:
+                logger.warning(
+                    "[GIT] Revert commit failed: %s",
+                    commit_result.stderr[:300],
+                )
+        except Exception as exc:
+            logger.warning("[GIT] Soft rollback failed for %s: %s", task_id, exc)
 
     # -- reporting ---------------------------------------------------------
 

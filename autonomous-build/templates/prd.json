@@ -2,14 +2,14 @@
   "_metadata": {
     "phase": "0",
     "created": "2026-03-11T12:00:00Z",
-    "last_updated": "2026-03-14T08:46:15.043141"
+    "last_updated": "2026-03-14T10:17:31.113716"
   },
-  "_current_task_id": "TASK-002a",
+  "_current_task_id": null,
   "tasks": [
     {
       "id": "TASK-001",
       "title": "Project scaffold setup",
-      "description": "Initialize React + TypeScript + Vite project at gui/ with FastAPI backend at backend/. Scaffold includes Tailwind CSS, react-router, react-query, react-hook-form, zod, recharts, @tanstack/react-table, lucide-react. Backend includes FastAPI with CORS, Pydantic models, and API router structure. E2E tests at tests/ define the API contract.",
+      "description": "Initialize React + TypeScript + Vite project at frontend/ with FastAPI backend at backend/. Scaffold includes Tailwind CSS, react-router, react-query, react-hook-form, zod, recharts, @tanstack/react-table, lucide-react. Backend includes FastAPI with CORS, Pydantic models, and API router structure. E2E tests at tests/ define the API contract.",
       "type": "infrastructure",
       "status": "complete",
       "depends_on": [],
@@ -19,7 +19,7 @@
         "Vite dev server starts on port 5173",
         "FastAPI server starts on port 8000",
         "Backend unit tests pass (pytest backend/tests/ -v)",
-        "gui/src directory structure has features/, components/, hooks/, types/, lib/, api/"
+        "frontend/src directory structure has features/, components/, hooks/, types/, lib/, api/"
       ],
       "completed_at": "2026-03-13T18:00:00Z",
       "retry_count": 0
@@ -57,24 +57,27 @@
       "title": "Parameter schema API endpoint - UI component only",
       "description": "Implement frontend UI for: Implement GET /api/v1/parameters/schema endpoint that loads parameter_schema.json and serves it to the frontend. Response must be a JSON object with a 'parameters' key containing an array of parameter definitions. Each parameter must have: name, type, required, description, category fields. Parameter types must match the golden schema: 'numeric', 'numeric_array', 'string', 'boolean'. Categories must include: microscope, hardware, ctf, alignment, classification. Required parameters (PIXEL_SIZE, Cs, VOLTAGE, AMPCONT, nGPUs, nCpuCores, symmetry) must be marked required=true. Ranges must be [min, max] with min<=max.. No backend integration yet.",
       "type": "frontend",
-      "status": "in_progress",
+      "status": "complete",
       "depends_on": [
         "TASK-001"
       ],
       "reference": "autonomous-build/templates/phase0-artifacts/parameter_schema.json",
-      "last_attempt": "2026-03-14T08:46:15.043127",
-      "retry_count": 1
+      "last_attempt": "2026-03-14T09:14:44.842403",
+      "retry_count": 1,
+      "completed_at": "2026-03-14T09:22:31.303441"
     },
     {
       "id": "TASK-002b",
       "title": "Parameter schema API endpoint - Backend endpoint",
       "description": "Implement backend logic for: Implement GET /api/v1/parameters/schema endpoint that loads parameter_schema.json and serves it to the frontend. Response must be a JSON object with a 'parameters' key containing an array of parameter definitions. Each parameter must have: name, type, required, description, category fields. Parameter types must match the golden schema: 'numeric', 'numeric_array', 'string', 'boolean'. Categories must include: microscope, hardware, ctf, alignment, classification. Required parameters (PIXEL_SIZE, Cs, VOLTAGE, AMPCONT, nGPUs, nCpuCores, symmetry) must be marked required=true. Ranges must be [min, max] with min<=max.",
       "type": "backend",
-      "status": "pending",
+      "status": "complete",
       "depends_on": [
         "TASK-001"
       ],
-      "reference": "autonomous-build/templates/phase0-artifacts/parameter_schema.json"
+      "reference": "autonomous-build/templates/phase0-artifacts/parameter_schema.json",
+      "last_attempt": "2026-03-14T09:39:47.786140",
+      "completed_at": "2026-03-14T09:46:22.217129"
     },
     {
       "id": "TASK-002c",
@@ -86,7 +89,9 @@
         "TASK-002a",
         "TASK-002b"
       ],
-      "reference": "autonomous-build/templates/phase0-artifacts/parameter_schema.json"
+      "reference": "autonomous-build/templates/phase0-artifacts/parameter_schema.json",
+      "last_attempt": "2026-03-14T10:15:45.128907",
+      "retry_count": 1
     },
     {
       "id": "TASK-003",
@@ -181,7 +186,7 @@
     {
       "id": "TASK-007",
       "title": "Frontend parameter editor component",
-      "description": "Build the ParametersPage component at gui/src/features/parameters/. Must fetch parameter schema from /api/v1/parameters/schema via react-query and render a tabbed form grouped by parameter category. Each category (microscope, hardware, ctf, alignment, classification, etc.) gets its own tab. Parameters render appropriate input widgets: numeric inputs for type 'numeric', text inputs for 'string', checkboxes for 'boolean', multi-value inputs for 'numeric_array'. Required parameters marked with asterisk. Validation errors shown inline via react-hook-form + zod. Submit button triggers POST /api/v1/parameters/validate.",
+      "description": "Build the ParametersPage component at frontend/src/features/parameters/. Must fetch parameter schema from /api/v1/parameters/schema via react-query and render a tabbed form grouped by parameter category. Each category (microscope, hardware, ctf, alignment, classification, etc.) gets its own tab. Parameters render appropriate input widgets: numeric inputs for type 'numeric', text inputs for 'string', checkboxes for 'boolean', multi-value inputs for 'numeric_array'. Required parameters marked with asterisk. Validation errors shown inline via react-hook-form + zod. Submit button triggers POST /api/v1/parameters/validate.",
       "type": "frontend",
       "status": "pending",
       "depends_on": [
@@ -203,7 +208,7 @@
     {
       "id": "TASK-008",
       "title": "Frontend project manager component",
-      "description": "Build the ProjectPage component at gui/src/features/project/. Must include: (1) Create New Project form with fields for name, directory path, and microscope parameters (PIXEL_SIZE, Cs, VOLTAGE, AMPCONT). Form validation via zod schemas. Submit calls POST /api/v1/projects. (2) Project status dashboard showing current state, cycle number, and per-tilt-series completion. Fetches from GET /api/v1/projects/{id}. (3) Navigation to load existing projects.",
+      "description": "Build the ProjectPage component at frontend/src/features/project/. Must include: (1) Create New Project form with fields for name, directory path, and microscope parameters (PIXEL_SIZE, Cs, VOLTAGE, AMPCONT). Form validation via zod schemas. Submit calls POST /api/v1/projects. (2) Project status dashboard showing current state, cycle number, and per-tilt-series completion. Fetches from GET /api/v1/projects/{id}. (3) Navigation to load existing projects.",
       "type": "frontend",
       "status": "pending",
       "depends_on": [
@@ -223,7 +228,7 @@
     {
       "id": "TASK-009",
       "title": "Frontend workflow runner component",
-      "description": "Build the WorkflowPage component at gui/src/features/workflow/. Must display the pipeline state machine as a visual diagram/stepper showing all states (UNINITIALIZED through DONE). Current state highlighted. Available commands shown as enabled buttons, unavailable commands grayed out with tooltip explaining prerequisite. Clicking a command button opens a configuration dialog then calls POST /api/v1/workflow/{project_id}/run. State refreshes after command execution.",
+      "description": "Build the WorkflowPage component at frontend/src/features/workflow/. Must display the pipeline state machine as a visual diagram/stepper showing all states (UNINITIALIZED through DONE). Current state highlighted. Available commands shown as enabled buttons, unavailable commands grayed out with tooltip explaining prerequisite. Clicking a command button opens a configuration dialog then calls POST /api/v1/workflow/{project_id}/run. State refreshes after command execution.",
       "type": "frontend",
       "status": "pending",
       "depends_on": [
@@ -244,7 +249,7 @@
     {
       "id": "TASK-010",
       "title": "Frontend tilt-series manager component",
-      "description": "Build the TiltSeriesPage component at gui/src/features/tilt-series/. Must use @tanstack/react-table to display a sortable, filterable table of tilt series with columns: name, status (aligned/CTF estimated/reconstructed), file path. Status indicators use color-coded badges. Batch operations toolbar for running autoAlign and ctf estimate on selected tilt series. Empty state message when no tilt series available.",
+      "description": "Build the TiltSeriesPage component at frontend/src/features/tilt-series/. Must use @tanstack/react-table to display a sortable, filterable table of tilt series with columns: name, status (aligned/CTF estimated/reconstructed), file path. Status indicators use color-coded badges. Batch operations toolbar for running autoAlign and ctf estimate on selected tilt series. Empty state message when no tilt series available.",
       "type": "frontend",
       "status": "pending",
       "depends_on": [
@@ -264,7 +269,7 @@
     {
       "id": "TASK-011",
       "title": "Frontend job monitor component",
-      "description": "Build the JobsPage component at gui/src/features/jobs/. Must display running/completed jobs in a table with columns: command, status, start time, duration. Status uses color-coded badges (RUNNING=blue, COMPLETED=green, FAILED=red, CANCELLED=gray). Log viewer panel shows real-time log output for selected job (poll GET /api/v1/jobs/{id}/log). Cancel button for running jobs (DELETE /api/v1/jobs/{id}). Auto-refresh job list every 5 seconds.",
+      "description": "Build the JobsPage component at frontend/src/features/jobs/. Must display running/completed jobs in a table with columns: command, status, start time, duration. Status uses color-coded badges (RUNNING=blue, COMPLETED=green, FAILED=red, CANCELLED=gray). Log viewer panel shows real-time log output for selected job (poll GET /api/v1/jobs/{id}/log). Cancel button for running jobs (DELETE /api/v1/jobs/{id}). Auto-refresh job list every 5 seconds.",
       "type": "frontend",
       "status": "pending",
       "depends_on": [
@@ -284,7 +289,7 @@
     {
       "id": "TASK-012",
       "title": "Frontend results viewer component",
-      "description": "Build the ResultsPage component at gui/src/features/results/. Must include: (1) FSC curve plotter using recharts - fetches FSC data and renders resolution curves with 0.143 threshold line marked. (2) Particle statistics panel showing count, class distribution, CCC score histogram. (3) System info panel showing GPU status from GET /api/v1/system/info.",
+      "description": "Build the ResultsPage component at frontend/src/features/results/. Must include: (1) FSC curve plotter using recharts - fetches FSC data and renders resolution curves with 0.143 threshold line marked. (2) Particle statistics panel showing count, class distribution, CCC score histogram. (3) System info panel showing GPU status from GET /api/v1/system/info.",
       "type": "frontend",
       "status": "pending",
       "depends_on": [
@@ -304,7 +309,7 @@
     {
       "id": "TASK-013",
       "title": "Frontend utilities panel component",
-      "description": "Build the UtilitiesPage component at gui/src/features/utilities/. Must include cards/sections for: (1) Mask Creator - form for emClarity mask command parameters. (2) Volume Rescaler - form for emClarity rescale parameters. (3) Geometry Operations - dropdown for geometry operations (RemoveClasses, RemoveFraction, etc.). (4) System Check - button that calls emClarity check and displays results.",
+      "description": "Build the UtilitiesPage component at frontend/src/features/utilities/. Must include cards/sections for: (1) Mask Creator - form for emClarity mask command parameters. (2) Volume Rescaler - form for emClarity rescale parameters. (3) Geometry Operations - dropdown for geometry operations (RemoveClasses, RemoveFraction, etc.). (4) System Check - button that calls emClarity check and displays results.",
       "type": "frontend",
       "status": "pending",
       "depends_on": [
