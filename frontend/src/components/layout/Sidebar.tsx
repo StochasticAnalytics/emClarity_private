@@ -8,7 +8,7 @@
  * - Collapsed mode: icon-only rail (40px wide) with tooltip on hover
  * - Expanded mode: icon + label (224px wide) — default
  * - Toggle button at the bottom of the rail
- * - Disabled placeholders when no project is loaded
+ * - Always-navigable items using a 'demo' sentinel when no project is loaded
  * - Active highlight on the current route
  *
  * Navigation items (matching cisTEM MenuBook order):
