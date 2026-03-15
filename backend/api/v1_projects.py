@@ -226,6 +226,7 @@ def _detect_best_resolution(project_dir: Path) -> float | None:
         # The FSC=0.143 threshold marks the resolution limit.
         # We find the last line where FSC > 0.143 (or the highest freq where FSC≥0.143).
         resolution_freq: float | None = None
+        implausible_warned = False  # emit at most one warning per file
         for line in lines:
             line = line.strip()
             if not line or line.startswith("#"):
@@ -245,22 +246,27 @@ def _detect_best_resolution(project_dir: Path) -> float | None:
             if freq <= 0 or freq > 1.0:
                 continue
             if fsc_val >= 0.143:
-                resolution_freq = freq
+                angstrom = 1.0 / freq
+                # Accept physically meaningful cryo-EM resolutions up to 200 Å.
+                # No lower bound: sub-2 Å results are valid for high-resolution structures.
+                # Guard is applied per-line so one implausible line cannot silently
+                # discard an otherwise valid resolution result from the same file.
+                if angstrom <= 200.0:
+                    resolution_freq = freq
+                elif not implausible_warned:
+                    log.warning(
+                        "Discarding implausible resolution(s) from %s "
+                        "(first offender: %.2f Å exceeds 200 Å upper bound; "
+                        "likely a unit mismatch).",
+                        fsc_file,
+                        angstrom,
+                    )
+                    implausible_warned = True
 
         if resolution_freq is not None:
             angstrom = 1.0 / resolution_freq
-            # Accept physically meaningful cryo-EM resolutions up to 200 Å.
-            # No lower bound: sub-2 Å results are valid for high-resolution structures.
-            if angstrom <= 200.0:
-                if best_angstrom is None or angstrom < best_angstrom:
-                    best_angstrom = angstrom
-            else:
-                log.warning(
-                    "Discarding implausible resolution %.2f Å from %s "
-                    "(exceeds 200 Å upper bound; likely a unit mismatch).",
-                    angstrom,
-                    fsc_file,
-                )
+            if best_angstrom is None or angstrom < best_angstrom:
+                best_angstrom = angstrom
 
     return round(best_angstrom, 2) if best_angstrom is not None else None
 
