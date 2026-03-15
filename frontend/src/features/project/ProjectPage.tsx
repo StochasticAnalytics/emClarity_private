@@ -2,9 +2,10 @@
  * Project manager page (landing page / welcome screen).
  *
  * Provides two workflows:
- *  1. Create New Project – form with name, directory, and microscope parameters;
- *     submits to POST /api/v1/projects then navigates to /project/:id/overview.
- *  2. Load Existing Project – enter a project ID to open its overview.
+ *  1. Create New Project – wizard dialog with name, directory, and microscope
+ *     parameters; submits to POST /api/v1/projects then navigates to overview.
+ *  2. Open Existing Project – enter a directory path and call
+ *     POST /api/v1/projects/load to open it.
  *
  * Also shows recent projects from localStorage (with Zod-validated entries).
  * Stale entries (backend returns 404) are automatically removed.
@@ -262,44 +263,48 @@ interface LoadProjectPanelProps {
 }
 
 function LoadProjectPanel({ onLoaded }: LoadProjectPanelProps) {
-  const [projectId, setProjectId] = useState('')
+  const [directory, setDirectory] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
   const handleLoad = useCallback(async () => {
-    const trimmed = projectId.trim()
+    const trimmed = directory.trim()
     if (!trimmed) {
-      setError('Project ID is required')
+      setError('Directory path is required')
       return
     }
     setError(null)
     setIsLoading(true)
     try {
-      const project = await apiClient.get<ProjectResponse>(`/api/v1/projects/${trimmed}`)
-      onLoaded(trimmed, project.name, project.directory)
+      const project = await apiClient.post<ProjectResponse>('/api/v1/projects/load', {
+        directory: trimmed,
+      })
+      onLoaded(project.id, project.name, project.directory)
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
-        setError('Project not found. The project may have been deleted or the ID is incorrect.')
+        setError('Directory not found. Check that the path exists and is an emClarity project.')
+      } else if (err instanceof ApiError && err.status === 400) {
+        setError(`Invalid path: ${err.message}`)
       } else {
-        setError('Failed to load project. Check the ID and ensure the backend is running.')
+        setError('Failed to load project. Check the path and ensure the backend is running.')
       }
     } finally {
       setIsLoading(false)
     }
-  }, [projectId, onLoaded])
+  }, [directory, onLoaded])
 
   return (
     <div className="space-y-2">
       <div className="flex gap-2">
         <input
           type="text"
-          value={projectId}
+          value={directory}
           onChange={(e) => {
-            setProjectId(e.target.value)
+            setDirectory(e.target.value)
             setError(null)
           }}
-          placeholder="Enter project ID…"
-          aria-label="Project ID"
+          placeholder="/path/to/existing/project"
+          aria-label="Project directory path"
           className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
@@ -315,7 +320,7 @@ function LoadProjectPanel({ onLoaded }: LoadProjectPanelProps) {
           disabled={isLoading}
           className="rounded-md bg-gray-700 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-gray-600 dark:hover:bg-gray-500"
         >
-          {isLoading ? 'Loading…' : 'Load'}
+          {isLoading ? 'Opening…' : 'Open'}
         </button>
       </div>
       {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
@@ -418,18 +423,73 @@ function RecentProjectsList({ projects, onOpen, onRemove }: RecentProjectsListPr
 }
 
 // ---------------------------------------------------------------------------
+// NewProjectDialog – modal wizard wrapping NewProjectForm
+// ---------------------------------------------------------------------------
+
+interface NewProjectDialogProps {
+  isOpen: boolean
+  onClose: () => void
+  onCreated: (projectId: string, name: string, directory: string) => void
+}
+
+function NewProjectDialog({ isOpen, onClose, onCreated }: NewProjectDialogProps) {
+  if (!isOpen) return null
+
+  return (
+    /* Backdrop */
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="new-project-dialog-title"
+      onClick={(e) => {
+        // Close when clicking the backdrop (not the dialog itself)
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
+      {/* Dialog panel */}
+      <div className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
+        {/* Dialog header */}
+        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-700">
+          <h2
+            id="new-project-dialog-title"
+            className="text-lg font-semibold text-gray-900 dark:text-gray-100"
+          >
+            New Project
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close dialog"
+            className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Dialog body */}
+        <div className="px-6 py-4">
+          <NewProjectForm onCreated={onCreated} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // ProjectPage – main exported component
 // ---------------------------------------------------------------------------
 
-type View = 'home' | 'create'
-
 export function ProjectPage() {
-  const [view, setView] = useState<View>('home')
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const navigate = useNavigate()
   const { projects: recentProjects, addProject, removeProject } = useRecentProjects()
 
   const handleProjectCreated = useCallback(
     (projectId: string, name: string, directory: string) => {
+      setIsCreateDialogOpen(false)
       addProject({ id: projectId, name, directory })
       void navigate(`/project/${projectId}/overview`)
     },
@@ -444,81 +504,64 @@ export function ProjectPage() {
     [navigate, addProject],
   )
 
-  const handleBack = useCallback(() => {
-    setView('home')
-  }, [])
-
-  // Create project view
-  if (view === 'create') {
-    return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={handleBack}
-            className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-          >
-            ← Back
-          </button>
-          <h2 className="text-2xl font-semibold">New Project</h2>
-        </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
-          <NewProjectForm onCreated={handleProjectCreated} />
-        </div>
-      </div>
-    )
-  }
-
-  // Home / welcome view
   return (
-    <div className="space-y-8">
-      {/* Branding header */}
-      <div className="text-center py-6">
-        <h1 className="text-4xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
-          emClarity
-        </h1>
-        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-          Sub-tomogram averaging for cryo-electron tomography · v1.5.3.10
-        </p>
-      </div>
-
-      {/* Action cards */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Create new project card */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
-          <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">
-            Create New Project
-          </h3>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Set up a new emClarity processing directory with initial microscope parameters.
-          </p>
-          <button
-            type="button"
-            onClick={() => setView('create')}
-            className="mt-4 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:bg-blue-500 dark:hover:bg-blue-600"
-          >
-            Create Project
-          </button>
-        </div>
-
-        {/* Load existing project card */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
-          <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">
-            Open Existing Project
-          </h3>
-          <p className="mt-1 mb-4 text-sm text-gray-500 dark:text-gray-400">
-            Open a previously created project by its ID.
-          </p>
-          <LoadProjectPanel onLoaded={handleProjectLoaded} />
-        </div>
-      </div>
-
-      {/* Recent projects */}
-      <RecentProjectsList
-        projects={recentProjects}
-        onOpen={handleProjectLoaded}
-        onRemove={removeProject}
+    <>
+      {/* New project wizard dialog */}
+      <NewProjectDialog
+        isOpen={isCreateDialogOpen}
+        onClose={() => setIsCreateDialogOpen(false)}
+        onCreated={handleProjectCreated}
       />
-    </div>
+
+      <div className="space-y-8">
+        {/* Branding header */}
+        <div className="text-center py-6">
+          <h1 className="text-4xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
+            emClarity
+          </h1>
+          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+            Sub-tomogram averaging for cryo-electron tomography · v1.5.3.10
+          </p>
+        </div>
+
+        {/* Action cards */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {/* Create new project card */}
+          <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
+            <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">
+              Create New Project
+            </h3>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              Set up a new emClarity processing directory with initial microscope parameters.
+            </p>
+            <button
+              type="button"
+              onClick={() => setIsCreateDialogOpen(true)}
+              className="mt-4 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:bg-blue-500 dark:hover:bg-blue-600"
+            >
+              Create Project
+            </button>
+          </div>
+
+          {/* Load existing project card */}
+          <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
+            <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">
+              Open Existing Project
+            </h3>
+            <p className="mt-1 mb-4 text-sm text-gray-500 dark:text-gray-400">
+              Open a previously created project by its directory path.
+            </p>
+            <LoadProjectPanel onLoaded={handleProjectLoaded} />
+          </div>
+        </div>
+
+        {/* Recent projects */}
+        <RecentProjectsList
+          projects={recentProjects}
+          onOpen={handleProjectLoaded}
+          onRemove={removeProject}
+        />
+      </div>
+    </>
   )
 }
