@@ -246,8 +246,12 @@ def _detect_best_resolution(project_dir: Path) -> float | None:
 
         if resolution_freq is not None and resolution_freq > 0:
             angstrom = 1.0 / resolution_freq
-            if best_angstrom is None or angstrom < best_angstrom:
-                best_angstrom = angstrom
+            # Only accept resolutions in a physically meaningful cryo-EM range.
+            # Values outside 2–200 Å most likely indicate misinterpreted units
+            # (e.g. normalised vs. absolute frequencies) and are discarded.
+            if 2.0 <= angstrom <= 200.0:
+                if best_angstrom is None or angstrom < best_angstrom:
+                    best_angstrom = angstrom
 
     return round(best_angstrom, 2) if best_angstrom is not None else None
 
