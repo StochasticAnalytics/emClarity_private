@@ -202,7 +202,7 @@ export function useDirectoryNavigation(
           : browseDirectory(undefined, signal);
 
       // ── Handle success ────────────────────────────────────────────────────
-      promise.then(
+      void promise.then(
         (response: FilesystemBrowseResponse) => {
           // AC5: abort guard before ANY setState call.
           if (signal.aborted) return;
@@ -241,10 +241,14 @@ export function useDirectoryNavigation(
           }
         },
         (error: unknown) => {
-          // AC4: AbortError → silently ignore, no state transition.
+          // AC4: Some environments surface abort as an Error with name 'AbortError';
+          // handle that case first as a fast path.
           if (error instanceof Error && error.name === 'AbortError') return;
 
-          // AC5: abort guard — also catches any late-settling promises.
+          // AC5: signal.aborted is the reliable abort-silencing backstop for all
+          // environments — including those that reject with a non-AbortError value
+          // or a plain object.  Any rejection that reaches here after the controller
+          // was aborted is silently dropped; only genuine network/API errors proceed.
           if (signal.aborted) return;
 
           // Navigation failure: set error, preserve lastGoodData (AC6).
@@ -310,8 +314,10 @@ export function useDirectoryNavigation(
 
     const storedRetryPath = retryPathRef.current;
 
-    // Apply the same whitespace guard as navigate (AC6).
-    if (storedRetryPath !== null && storedRetryPath.trim() === '') return;
+    // retryPathRef is written by doNavigate as either null or a trimmed non-empty
+    // string (navigate() maps whitespace-only → null before calling doNavigate,
+    // and the mount effect uses null for the empty-path case).  A whitespace-only
+    // value can never be stored, so no additional whitespace guard is needed here.
 
     doNavigate(storedRetryPath, true);
   }, [doNavigate]);
