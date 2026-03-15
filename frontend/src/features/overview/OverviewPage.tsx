@@ -246,11 +246,21 @@ function getActiveCycleStepId(jobs: Job[]): string {
 
 function commandToStepId(command: string): string {
   switch (command) {
+    // Pre-cycle linear steps
+    case 'autoAlign': return 'align-ts'
+    case 'ctf estimate': return 'ctf-est'
+    case 'segment': return 'sub-regions'
+    case 'templateSearch': return 'pick'
+    case 'init': return 'init'
+    case 'ctf 3d': return 'recon'
+    // Iterative cycle steps
     case 'avg': return 'avg'
     case 'alignRaw': return 'align'
     case 'tomoCPR': return 'tomocpr'
     case 'pca':
     case 'cluster': return 'classify'
+    // Post-cycle step
+    case 'reconstruct': return 'final'
     default: return 'avg'
   }
 }
@@ -699,7 +709,7 @@ export function OverviewPage() {
             <StatCard
               label="Particles"
               value={particleCount !== null && particleCount !== undefined ? String(particleCount) : '—'}
-              sub={particleCount === null ? 'Available after picking' : undefined}
+              sub={statistics !== undefined && particleCount === null ? 'Available after picking' : undefined}
             />
             <StatCard
               label="Resolution"
