@@ -17,6 +17,7 @@
 
 import { useState, useMemo, useCallback } from 'react'
 import { useParams, Navigate, useNavigate } from 'react-router-dom'
+import { DEMO_PROJECT_ID } from '@/components/layout/ProjectLayout'
 import { ChevronDown, ChevronRight, Settings2, Play, BookOpen, Info, ExternalLink } from 'lucide-react'
 import rawSchema from '@/data/parameter-schema.json'
 import type { ParameterDefinition } from '@/types/parameters'
@@ -1077,7 +1078,7 @@ function RunBar({ command, onRun, isRunning, runMessage }: RunBarProps) {
   const { profiles, selectedId, select } = useRunProfiles()
   const navigate = useNavigate()
   const { projectId } = useParams<{ projectId: string }>()
-  const isDemo = projectId === 'demo'
+  const isDemo = projectId === DEMO_PROJECT_ID
 
   return (
     <div className="flex items-center gap-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3">
@@ -1106,7 +1107,7 @@ function RunBar({ command, onRun, isRunning, runMessage }: RunBarProps) {
         <button
           type="button"
           title="Manage run profiles in Settings"
-          onClick={() => navigate(`/project/${projectId}/settings`)}
+          onClick={() => projectId != null && navigate(`/project/${projectId}/settings`)}
           className="rounded p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
           aria-label="Open Settings to manage run profiles"
         >
@@ -1266,7 +1267,7 @@ function ActionTabContent({
 
 export function ActionsPage() {
   const { projectId } = useParams<{ projectId: string }>()
-  const isDemo = projectId === 'demo'
+  const isDemo = projectId === DEMO_PROJECT_ID
 
   // Active tab
   const [activeTabId, setActiveTabId] = useState<string>(ACTION_TABS[0].id)
@@ -1342,6 +1343,30 @@ export function ActionsPage() {
         className="flex overflow-x-auto border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shrink-0"
         role="tablist"
         aria-label="Processing steps"
+        onKeyDown={(e) => {
+          // WAI-ARIA APG: roving tabindex requires arrow-key navigation between tabs.
+          const tabEls = Array.from(
+            e.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]'),
+          )
+          const currentIndex = tabEls.indexOf(document.activeElement as HTMLElement)
+          if (currentIndex === -1) return
+
+          let newIndex = currentIndex
+          if (e.key === 'ArrowRight') {
+            newIndex = (currentIndex + 1) % tabEls.length
+          } else if (e.key === 'ArrowLeft') {
+            newIndex = (currentIndex - 1 + tabEls.length) % tabEls.length
+          } else if (e.key === 'Home') {
+            newIndex = 0
+          } else if (e.key === 'End') {
+            newIndex = tabEls.length - 1
+          } else {
+            return
+          }
+          e.preventDefault()
+          tabEls[newIndex].focus()
+          tabEls[newIndex].click()
+        }}
       >
         {ACTION_TABS.map((tab) => {
           const isActive = tab.id === activeTabId

@@ -15,6 +15,7 @@ import { useState, useCallback, useEffect } from 'react'
 import { useParams, Navigate } from 'react-router-dom'
 import { apiClient, ApiError } from '@/api/client.ts'
 import { useApiQuery } from '@/hooks/useApi.ts'
+import { DEMO_PROJECT_ID } from '@/components/layout/ProjectLayout'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -725,7 +726,7 @@ function WorkflowContent({ projectId, stateMachine }: WorkflowContentProps) {
 export function WorkflowPage() {
   // Project ID comes from the URL (/project/:projectId/actions)
   const { projectId } = useParams<{ projectId: string }>()
-  const isDemo = projectId === 'demo'
+  const isDemo = projectId === DEMO_PROJECT_ID
 
   // Fetch state machine once – it's static
   const {

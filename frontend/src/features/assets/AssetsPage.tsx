@@ -19,6 +19,7 @@
  */
 import { useState, useCallback, useMemo } from 'react'
 import { useParams, Navigate } from 'react-router-dom'
+import { DEMO_PROJECT_ID } from '@/components/layout/ProjectLayout'
 import {
   useReactTable,
   getCoreRowModel,
@@ -1190,7 +1191,7 @@ function NotificationBanner({
 
 export function AssetsPage() {
   const { projectId } = useParams<{ projectId: string }>()
-  const isDemo = projectId === 'demo'
+  const isDemo = projectId === DEMO_PROJECT_ID
   const [activeTab, setActiveTab] = useState<AssetTabId>('tilt-series')
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
 

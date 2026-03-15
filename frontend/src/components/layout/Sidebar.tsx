@@ -16,6 +16,7 @@
  */
 import { useState, useRef } from 'react'
 import { NavLink, useMatch, useLocation, Link } from 'react-router-dom'
+import { DEMO_PROJECT_ID } from './ProjectLayout'
 import {
   LayoutDashboard,
   Database,
@@ -57,7 +58,7 @@ interface NavItemProps {
 function NavItem({ path, label, icon: Icon, projectId, collapsed }: NavItemProps) {
   // Use 'demo' as a sentinel project ID when no real project is loaded,
   // so all nav items are always navigable.
-  const effectiveProjectId = projectId ?? 'demo'
+  const effectiveProjectId = projectId ?? DEMO_PROJECT_ID
   const targetPath = `/project/${effectiveProjectId}/${path}`
   const location = useLocation()
 
@@ -79,9 +80,10 @@ function NavItem({ path, label, icon: Icon, projectId, collapsed }: NavItemProps
           return
         }
         // Deduplicate rapid double-clicks to the same target before React
-        // re-renders (300 ms window covers typical double-click timing).
+        // re-renders (50 ms window covers typical double-click timing without
+        // suppressing a legitimate second navigation shortly after the first).
         const now = Date.now()
-        if (lastNavRef.current?.path === targetPath && now - lastNavRef.current.time < 300) {
+        if (lastNavRef.current?.path === targetPath && now - lastNavRef.current.time < 50) {
           e.preventDefault()
           return
         }

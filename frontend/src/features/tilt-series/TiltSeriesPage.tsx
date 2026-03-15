@@ -16,6 +16,7 @@
  */
 import { useState, useCallback, useMemo } from 'react'
 import { useParams, Navigate } from 'react-router-dom'
+import { DEMO_PROJECT_ID } from '@/components/layout/ProjectLayout'
 import {
   useReactTable,
   getCoreRowModel,
@@ -715,7 +716,7 @@ function TiltSeriesContent({ projectId }: TiltSeriesContentProps) {
 export function TiltSeriesPage() {
   // Project ID comes from the URL (/project/:projectId/assets)
   const { projectId } = useParams<{ projectId: string }>()
-  const isDemo = projectId === 'demo'
+  const isDemo = projectId === DEMO_PROJECT_ID
 
   // Guard: redirect to root if projectId is missing (shouldn't happen with nested routing)
   if (!projectId) {

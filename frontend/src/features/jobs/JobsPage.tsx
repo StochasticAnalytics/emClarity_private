@@ -14,6 +14,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { apiClient, ApiError } from '@/api/client.ts'
+import { DEMO_PROJECT_ID } from '@/components/layout/ProjectLayout'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -487,11 +488,20 @@ const REFRESH_INTERVAL_MS = 5000
 
 export function JobsPage() {
   const { projectId } = useParams<{ projectId: string }>()
-  const isDemo = projectId === 'demo'
+  const isDemo = projectId === DEMO_PROJECT_ID
 
   const [jobs, setJobs] = useState<JobV1[]>([])
   const [isLoading, setIsLoading] = useState(!isDemo)
   const [fetchError, setFetchError] = useState<string | null>(null)
+
+  // useState(!isDemo) only captures the initial render value, so when navigating
+  // from /project/demo/jobs to a real project's jobs page the loading indicator
+  // is never shown.  Reset it whenever the project changes.
+  useEffect(() => {
+    if (!isDemo) {
+      setIsLoading(true)
+    }
+  }, [projectId, isDemo])
   const [selectedJob, setSelectedJob] = useState<JobV1 | null>(null)
   const [isCancelling, setIsCancelling] = useState(false)
   const [notification, setNotification] = useState<{

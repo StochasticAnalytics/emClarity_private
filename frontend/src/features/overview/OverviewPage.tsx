@@ -17,6 +17,7 @@ import { useParams, Link } from 'react-router-dom'
 import { useProject } from '@/context/ProjectContext.tsx'
 import { useApiQuery } from '@/hooks/useApi.ts'
 import { useRecentProjects } from '@/hooks/useRecentProjects.ts'
+import { DEMO_PROJECT_ID } from '@/components/layout/ProjectLayout'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -598,7 +599,7 @@ export function OverviewPage() {
   const { projectId } = useParams<{ projectId: string }>()
   const { activeProject } = useProject()
   const { addProject } = useRecentProjects()
-  const isDemo = projectId === 'demo'
+  const isDemo = projectId === DEMO_PROJECT_ID
 
   // Jobs state for stepper (populated by RecentJobsSection)
   const [allJobs, setAllJobs] = useState<Job[]>([])
