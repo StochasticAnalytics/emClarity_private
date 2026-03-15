@@ -33,11 +33,11 @@ export function DirectoryPickerActions({
   onSelect: _onSelect,
   onClose,
   currentPath: _currentPath,
-  isLoading,
+  isLoading: _isLoading,
 }: DirectoryPickerActionsProps) {
   return (
     <div>
-      <button type="button" onClick={onClose} disabled={isLoading}>
+      <button type="button" onClick={onClose}>
         Cancel
       </button>
       {/* Select button — enabled and wired to onSelect in TASK-002b-Ab */}
