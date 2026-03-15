@@ -1,15 +1,22 @@
 /**
- * Results viewer page.
+ * Results viewer page — six-tab panel organized by tutorial output types.
  *
- * Displays:
- *   1. FSC (Fourier Shell Correlation) curve with 0.143 gold-standard threshold
- *   2. Particle statistics: count, class distribution, CCC score histogram
- *   3. System info panel: CPU, RAM, GPU status
+ * Tabs:
+ *   1. Alignment Quality  — tutorial 5.2.3: fixedStacks/<prefix>_3dfind.ali
+ *   2. CTF Diagnostics    — tutorial 6.4: _psRadial_1.pdf, _ccFIT.pdf
+ *   3. Particle Picks     — tutorial 8.4: convmap/*.mrc + .mod overlays
+ *   4. FSC Curves         — tutorial 11.4: FSC/*_fsc_GLD.pdf, per-cycle resolution
+ *   5. Averages           — tutorial 11.4: _REF_ODD.mrc, _REF_EVE.mrc half-maps
+ *   6. Particle Stats     — tutorial 14.4.2: CCC scores, class populations
+ *
+ * Layout pattern (cisTEM Results_panel.md):
+ *   [Tab Bar]
+ *   [Left Panel — item list] | [Right Panel — visualization]
+ *   [Bottom — Prev / Next navigation]
  *
  * API calls:
- *   GET /api/v1/results/fsc          – FSC curve data (returns 404 if not available)
- *   GET /api/v1/results/particles    – Particle statistics (returns 404 if not available)
- *   GET /api/v1/system/info          – System hardware information
+ *   GET /api/v1/results/fsc        — FSC curve data (returns 404 if not available)
+ *   GET /api/v1/results/particles  — Particle statistics (returns 404 if not available)
  */
 
 import { useState, useEffect, useCallback } from 'react'
@@ -29,27 +36,15 @@ import {
 import { apiClient, ApiError } from '@/api/client.ts'
 
 // ---------------------------------------------------------------------------
-// Types
+// Shared types
 // ---------------------------------------------------------------------------
 
-interface GpuInfo {
-  index: number
-  name: string
-  memory_total_mb: number
-  memory_used_mb: number
-  memory_free_mb: number
-  driver_version: string
-  cuda_version: string
-}
-
-interface SystemInfo {
-  cpu_count: number
-  cpu_count_physical: number
-  memory_total_gb: number
-  memory_available_gb: number
-  hostname: string
-  gpus: GpuInfo[]
-}
+type FetchState<T> =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'not_available' }
+  | { status: 'error'; message: string }
+  | { status: 'success'; data: T }
 
 interface FscPoint {
   /** Spatial frequency in 1/Å */
@@ -59,9 +54,7 @@ interface FscPoint {
 }
 
 interface FscData {
-  /** FSC curve between the two half-datasets */
   half1_half2: FscPoint[]
-  /** Estimated resolution in Ångströms at the 0.143 criterion */
   resolution_angstroms: number | null
 }
 
@@ -83,30 +76,392 @@ interface ParticleStats {
 }
 
 // ---------------------------------------------------------------------------
-// Fetch helpers
+// Tab definitions
 // ---------------------------------------------------------------------------
 
-type FetchState<T> =
-  | { status: 'idle' }
-  | { status: 'loading' }
-  | { status: 'not_available' }
-  | { status: 'error'; message: string }
-  | { status: 'success'; data: T }
+type TabId = 'alignment' | 'ctf' | 'particles' | 'fsc' | 'averages' | 'stats'
+
+interface TabDef {
+  id: TabId
+  label: string
+}
+
+const TABS: TabDef[] = [
+  { id: 'alignment', label: 'Alignment Quality' },
+  { id: 'ctf', label: 'CTF Diagnostics' },
+  { id: 'particles', label: 'Particle Picks' },
+  { id: 'fsc', label: 'FSC Curves' },
+  { id: 'averages', label: 'Averages' },
+  { id: 'stats', label: 'Particle Stats' },
+]
 
 // ---------------------------------------------------------------------------
-// FSC Curve Section
+// Three-panel layout shell
+// ---------------------------------------------------------------------------
+
+interface ThreePanelLayoutProps {
+  listItems: string[]
+  selectedIndex: number
+  onSelect: (index: number) => void
+  listLabel: string
+  /** Selected indices for multi-select (optional) */
+  selectedIndices?: Set<number>
+  onToggleIndex?: (index: number) => void
+  children: React.ReactNode
+}
+
+function ThreePanelLayout({
+  listItems,
+  selectedIndex,
+  onSelect,
+  listLabel,
+  selectedIndices,
+  onToggleIndex,
+  children,
+}: ThreePanelLayoutProps) {
+  const total = listItems.length
+  const canGoPrev = selectedIndex > 0
+  const canGoNext = selectedIndex < total - 1
+
+  return (
+    <div className="flex flex-col h-full min-h-0">
+      {/* Main area: left list + right visualization */}
+      <div className="flex flex-1 min-h-0 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
+        {/* Left panel — item list */}
+        <div className="w-56 shrink-0 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+          <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              {listLabel}
+            </p>
+          </div>
+          <ul role="listbox" aria-label={listLabel} className="flex-1 overflow-y-auto py-1">
+            {listItems.length === 0 ? (
+              <li className="px-3 py-3 text-xs text-gray-400 dark:text-gray-500 italic">
+                No items available
+              </li>
+            ) : (
+              listItems.map((item, i) => {
+                const isSelected = i === selectedIndex
+                const isChecked = selectedIndices ? selectedIndices.has(i) : false
+                return (
+                  <li key={item}>
+                    <button
+                      role="option"
+                      aria-selected={isSelected}
+                      type="button"
+                      className={
+                        'w-full flex items-center gap-2 text-left px-3 py-2 text-sm transition-colors ' +
+                        (isSelected
+                          ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium'
+                          : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800')
+                      }
+                      onClick={() => onSelect(i)}
+                    >
+                      {onToggleIndex && (
+                        <input
+                          type="checkbox"
+                          className="shrink-0 h-3.5 w-3.5 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            e.stopPropagation()
+                            onToggleIndex(i)
+                          }}
+                          aria-label={`Include ${item} in comparison`}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      )}
+                      <span className="truncate font-mono text-xs">{item}</span>
+                    </button>
+                  </li>
+                )
+              })
+            )}
+          </ul>
+        </div>
+
+        {/* Right panel — visualization */}
+        <div className="flex-1 min-w-0 overflow-y-auto p-5">{children}</div>
+      </div>
+
+      {/* Bottom navigation */}
+      <div className="flex items-center justify-between px-4 py-2.5 mt-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
+        <button
+          type="button"
+          disabled={!canGoPrev}
+          onClick={() => onSelect(selectedIndex - 1)}
+          className={
+            'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border ' +
+            'transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ' +
+            (canGoPrev
+              ? 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700'
+              : 'border-gray-200 dark:border-gray-700 text-gray-300 dark:text-gray-600 bg-white dark:bg-gray-900 cursor-not-allowed')
+          }
+        >
+          <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path
+              fillRule="evenodd"
+              d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z"
+              clipRule="evenodd"
+            />
+          </svg>
+          Previous
+        </button>
+
+        <span className="text-xs text-gray-400 dark:text-gray-500">
+          {total === 0 ? 'No items' : `${selectedIndex + 1} / ${total}`}
+        </span>
+
+        <button
+          type="button"
+          disabled={!canGoNext}
+          onClick={() => onSelect(selectedIndex + 1)}
+          className={
+            'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border ' +
+            'transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ' +
+            (canGoNext
+              ? 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700'
+              : 'border-gray-200 dark:border-gray-700 text-gray-300 dark:text-gray-600 bg-white dark:bg-gray-900 cursor-not-allowed')
+          }
+        >
+          Next
+          <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path
+              fillRule="evenodd"
+              d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
+              clipRule="evenodd"
+            />
+          </svg>
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Shared placeholder for empty tabs
+// ---------------------------------------------------------------------------
+
+interface PlaceholderContentProps {
+  icon?: React.ReactNode
+  title: string
+  description: string
+  outputFiles?: string[]
+  tutorialRef?: string
+}
+
+function PlaceholderContent({
+  icon,
+  title,
+  description,
+  outputFiles,
+  tutorialRef,
+}: PlaceholderContentProps) {
+  return (
+    <div className="flex flex-col items-center justify-center h-full min-h-[240px] text-center px-4">
+      {icon ?? (
+        <svg
+          className="w-12 h-12 text-gray-300 dark:text-gray-600 mb-3"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.5}
+          aria-hidden="true"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"
+          />
+        </svg>
+      )}
+      <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{title}</h4>
+      <p className="text-sm text-gray-500 dark:text-gray-400 max-w-sm">{description}</p>
+      {outputFiles && outputFiles.length > 0 && (
+        <div className="mt-4 text-left">
+          <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+            Output files to check:
+          </p>
+          <ul className="space-y-0.5">
+            {outputFiles.map((f) => (
+              <li key={f}>
+                <code className="text-xs font-mono text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded">
+                  {f}
+                </code>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {tutorialRef && (
+        <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
+          Tutorial reference: §{tutorialRef}
+        </p>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Tab: Alignment Quality (tutorial 5.2.3)
+// ---------------------------------------------------------------------------
+
+const ALIGNMENT_TILT_SERIES = [
+  'TS_001', 'TS_002', 'TS_003', 'TS_004', 'TS_005',
+]
+
+function AlignmentQualityTab() {
+  const [selectedIndex, setSelectedIndex] = useState(0)
+
+  return (
+    <ThreePanelLayout
+      listItems={ALIGNMENT_TILT_SERIES}
+      selectedIndex={selectedIndex}
+      onSelect={setSelectedIndex}
+      listLabel="Tilt Series"
+    >
+      <PlaceholderContent
+        title="Alignment Quality — No data available"
+        description={
+          `After running Align Tilt-Series (autoAlign), alignment diagnostics for ` +
+          `${ALIGNMENT_TILT_SERIES[selectedIndex]} will be displayed here. ` +
+          `Check that fiducial tracks are correctly identified and residuals are low.`
+        }
+        outputFiles={[
+          `fixedStacks/<prefix>_3dfind.ali`,
+          `fixedStacks/<prefix>_3dfind.xf`,
+          `fixedStacks/<prefix>_3dfind.tlt`,
+        ]}
+        tutorialRef="5.2.3"
+      />
+    </ThreePanelLayout>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Tab: CTF Diagnostics (tutorial 6.4)
+// ---------------------------------------------------------------------------
+
+const CTF_TILT_SERIES = [
+  'TS_001', 'TS_002', 'TS_003', 'TS_004', 'TS_005',
+]
+
+function CTFDiagnosticsTab() {
+  const [selectedIndex, setSelectedIndex] = useState(0)
+
+  return (
+    <ThreePanelLayout
+      listItems={CTF_TILT_SERIES}
+      selectedIndex={selectedIndex}
+      onSelect={setSelectedIndex}
+      listLabel="Tilt Series"
+    >
+      <PlaceholderContent
+        icon={
+          <svg
+            className="w-12 h-12 text-gray-300 dark:text-gray-600 mb-3"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.5}
+            aria-hidden="true"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5"
+            />
+          </svg>
+        }
+        title="CTF Diagnostics — No data available"
+        description={
+          `After running Estimate CTF (ctf estimate), power spectrum and defocus fit ` +
+          `diagnostics for ${CTF_TILT_SERIES[selectedIndex]} will appear here. ` +
+          `Verify the CTF rings match the fitted model across all tilts.`
+        }
+        outputFiles={[
+          `fixedStacks/<prefix>_psRadial_1.pdf`,
+          `fixedStacks/<prefix>_ccFIT.pdf`,
+          `fixedStacks/<prefix>_ctf.tlt`,
+        ]}
+        tutorialRef="6.4"
+      />
+    </ThreePanelLayout>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Tab: Particle Picks (tutorial 8.4)
+// ---------------------------------------------------------------------------
+
+const PARTICLE_PICK_ITEMS = [
+  'TS_001 sub-region 1',
+  'TS_001 sub-region 2',
+  'TS_002 sub-region 1',
+  'TS_002 sub-region 2',
+  'TS_003 sub-region 1',
+]
+
+function ParticlePicksTab() {
+  const [selectedIndex, setSelectedIndex] = useState(0)
+
+  return (
+    <ThreePanelLayout
+      listItems={PARTICLE_PICK_ITEMS}
+      selectedIndex={selectedIndex}
+      onSelect={setSelectedIndex}
+      listLabel="Sub-regions"
+    >
+      <PlaceholderContent
+        icon={
+          <svg
+            className="w-12 h-12 text-gray-300 dark:text-gray-600 mb-3"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.5}
+            aria-hidden="true"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25"
+            />
+          </svg>
+        }
+        title="Particle Picks — No data available"
+        description={
+          `After running Pick Particles (templateSearch), convolution maps and ` +
+          `particle picks for ${PARTICLE_PICK_ITEMS[selectedIndex]} will be displayed here ` +
+          `with .mod overlay showing pick locations.`
+        }
+        outputFiles={[
+          `convmap/<prefix>_convmap.mrc`,
+          `convmap/<prefix>.mod`,
+          `convmap/<prefix>_convmap_peak.txt`,
+        ]}
+        tutorialRef="8.4"
+      />
+    </ThreePanelLayout>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Tab: FSC Curves (tutorial 11.4) — recharts LineChart with 0.143 threshold
 // ---------------------------------------------------------------------------
 
 const FSC_THRESHOLD = 0.143
 const FSC_THRESHOLD_LABEL = '0.143 criterion'
 
+/** Placeholder cycle list — real data would come from the backend */
+const PLACEHOLDER_CYCLES = ['cycle000', 'cycle001', 'cycle002', 'cycle003']
+
 interface FscChartProps {
-  data: FscPoint[]
-  resolutionAngstroms: number | null
+  curves: Array<{ cycleLabel: string; data: FscPoint[]; resolution: number | null }>
 }
 
-function FscChart({ data, resolutionAngstroms }: FscChartProps) {
-  // Format spatial frequency as resolution in Å for tooltip
+const CYCLE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4']
+
+function FscMultiChart({ curves }: FscChartProps) {
   const formatFrequency = (value: number): string => {
     if (value === 0) return '∞'
     return `${(1 / value).toFixed(1)} Å`
@@ -114,19 +469,44 @@ function FscChart({ data, resolutionAngstroms }: FscChartProps) {
 
   const formatFsc = (value: number): string => value.toFixed(3)
 
+  // Merge all curves onto a common x-axis by spatial frequency key
+  const mergedData = (() => {
+    const map = new Map<number, Record<string, number>>()
+    curves.forEach(({ cycleLabel, data }) => {
+      data.forEach(({ spatial_frequency, fsc }) => {
+        if (!map.has(spatial_frequency)) map.set(spatial_frequency, { spatial_frequency })
+        const row = map.get(spatial_frequency)!
+        row[cycleLabel] = fsc
+      })
+    })
+    return Array.from(map.values()).sort((a, b) => a.spatial_frequency - b.spatial_frequency)
+  })()
+
   return (
     <div className="space-y-3">
-      {resolutionAngstroms !== null && (
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-600 dark:text-gray-400">Estimated resolution:</span>
-          <span className="text-sm font-semibold text-blue-600 dark:text-blue-400">
-            {resolutionAngstroms.toFixed(2)} Å
-          </span>
-          <span className="text-xs text-gray-400 dark:text-gray-500">(at FSC = 0.143)</span>
+      {/* Resolution badges */}
+      {curves.some((c) => c.resolution !== null) && (
+        <div className="flex flex-wrap gap-2">
+          {curves.map(({ cycleLabel, resolution }, i) =>
+            resolution !== null ? (
+              <span
+                key={cycleLabel}
+                className="inline-flex items-center gap-1.5 text-xs rounded-full px-2.5 py-0.5 font-medium"
+                style={{ backgroundColor: `${CYCLE_COLORS[i % CYCLE_COLORS.length]}22`, color: CYCLE_COLORS[i % CYCLE_COLORS.length] }}
+              >
+                <span
+                  className="inline-block w-2 h-2 rounded-full"
+                  style={{ backgroundColor: CYCLE_COLORS[i % CYCLE_COLORS.length] }}
+                />
+                {cycleLabel}: {resolution.toFixed(2)} Å
+              </span>
+            ) : null
+          )}
         </div>
       )}
-      <ResponsiveContainer width="100%" height={280}>
-        <LineChart data={data} margin={{ top: 8, right: 16, bottom: 24, left: 8 }}>
+
+      <ResponsiveContainer width="100%" height={300}>
+        <LineChart data={mergedData} margin={{ top: 8, right: 80, bottom: 28, left: 8 }}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
           <XAxis
             dataKey="spatial_frequency"
@@ -160,7 +540,7 @@ function FscChart({ data, resolutionAngstroms }: FscChartProps) {
             }
             contentStyle={{ fontSize: 12 }}
           />
-          <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+          <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
           {/* Gold-standard 0.143 threshold line */}
           <ReferenceLine
             y={FSC_THRESHOLD}
@@ -173,39 +553,42 @@ function FscChart({ data, resolutionAngstroms }: FscChartProps) {
               style: { fontSize: 11, fill: '#f59e0b' },
             }}
           />
-          <Line
-            type="monotone"
-            dataKey="fsc"
-            name="FSC (half1 / half2)"
-            stroke="#3b82f6"
-            strokeWidth={2}
-            dot={false}
-            activeDot={{ r: 4 }}
-          />
+          {curves.map(({ cycleLabel }, i) => (
+            <Line
+              key={cycleLabel}
+              type="monotone"
+              dataKey={cycleLabel}
+              name={cycleLabel}
+              stroke={CYCLE_COLORS[i % CYCLE_COLORS.length]}
+              strokeWidth={2}
+              dot={false}
+              activeDot={{ r: 4 }}
+            />
+          ))}
         </LineChart>
       </ResponsiveContainer>
     </div>
   )
 }
 
-function FscSection() {
-  const [state, setState] = useState<FetchState<FscData>>({ status: 'loading' })
+function FscCurvesTab() {
+  const [selectedIndex, setSelectedIndex] = useState(0)
+  const [checkedIndices, setCheckedIndices] = useState<Set<number>>(new Set([0]))
+  const [fscState, setFscState] = useState<FetchState<FscData>>({ status: 'loading' })
 
   const fetchFsc = useCallback(async () => {
-    // Note: callers are responsible for setting { status: 'loading' } before invoking this.
-    // setState is only called here after async operations to avoid react-hooks/set-state-in-effect.
     try {
       const data = await apiClient.get<FscData>('/api/v1/results/fsc')
-      setState({ status: 'success', data })
+      setFscState({ status: 'success', data })
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
-        setState({ status: 'not_available' })
+        setFscState({ status: 'not_available' })
       } else {
         const message =
           err instanceof ApiError
             ? `Failed to load FSC data (${err.status}): ${err.statusText}`
             : 'Failed to load FSC data.'
-        setState({ status: 'error', message })
+        setFscState({ status: 'error', message })
       }
     }
   }, [])
@@ -215,56 +598,98 @@ function FscSection() {
     void fetchFsc()
   }, [fetchFsc])
 
-  return (
-    <section
-      className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden"
-      aria-labelledby="fsc-heading"
-    >
-      <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-        <div>
-          <h3 id="fsc-heading" className="text-base font-semibold text-gray-900 dark:text-gray-100">
-            FSC Curve
-          </h3>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-            Fourier Shell Correlation between independent half-datasets
-          </p>
-        </div>
-        <button
-          type="button"
-          disabled={state.status === 'loading'}
-          aria-label="Refresh FSC data"
-          className={
-            'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium ' +
-            'border border-gray-300 dark:border-gray-600 ' +
-            'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 ' +
-            'hover:bg-gray-50 dark:hover:bg-gray-700 ' +
-            'focus:outline-none focus:ring-2 focus:ring-blue-500 ' +
-            'transition-colors disabled:opacity-50'
-          }
-          onClick={() => {
-            setState({ status: 'loading' })
-            void fetchFsc()
-          }}
-        >
-          <svg
-            className={`w-3.5 h-3.5 ${state.status === 'loading' ? 'animate-spin' : ''}`}
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            aria-hidden="true"
-          >
-            <path
-              fillRule="evenodd"
-              d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H3.989a.75.75 0 00-.75.75v4.242a.75.75 0 001.5 0v-2.43l.31.31a7 7 0 0011.712-3.138.75.75 0 00-1.449-.39zm1.23-3.723a.75.75 0 00.219-.53V2.929a.75.75 0 00-1.5 0V5.36l-.31-.31A7 7 0 003.239 8.188a.75.75 0 101.448.389A5.5 5.5 0 0113.89 6.11l.311.31h-2.432a.75.75 0 000 1.5h4.243a.75.75 0 00.53-.219z"
-              clipRule="evenodd"
-            />
-          </svg>
-          Refresh
-        </button>
-      </div>
+  const handleToggle = (index: number) => {
+    setCheckedIndices((prev) => {
+      const next = new Set(prev)
+      if (next.has(index)) {
+        // Always keep at least one selected
+        if (next.size > 1) next.delete(index)
+      } else {
+        next.add(index)
+      }
+      return next
+    })
+  }
 
-      <div className="p-5">
-        {state.status === 'loading' && (
-          <div className="flex items-center justify-center py-12">
+  // Build the curves array for multi-cycle comparison
+  const curves: FscChartProps['curves'] = Array.from(checkedIndices)
+    .sort()
+    .map((i) => {
+      const label = PLACEHOLDER_CYCLES[i] ?? `cycle${String(i).padStart(3, '0')}`
+      // Only cycle000 (index 0) has real data from the API (when available)
+      if (i === 0 && fscState.status === 'success') {
+        return {
+          cycleLabel: label,
+          data: fscState.data.half1_half2,
+          resolution: fscState.data.resolution_angstroms,
+        }
+      }
+      return { cycleLabel: label, data: [], resolution: null }
+    })
+
+  return (
+    <ThreePanelLayout
+      listItems={PLACEHOLDER_CYCLES}
+      selectedIndex={selectedIndex}
+      onSelect={(i) => {
+        setSelectedIndex(i)
+        // Auto-select the clicked cycle for viewing
+        setCheckedIndices((prev) => {
+          if (prev.has(i)) return prev
+          return new Set([...prev, i])
+        })
+      }}
+      listLabel="Cycles"
+      selectedIndices={checkedIndices}
+      onToggleIndex={handleToggle}
+    >
+      <div className="space-y-4">
+        {/* Header with refresh */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+              Fourier Shell Correlation
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              FSC between independent half-datasets — check cycles using checkboxes for comparison
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={fscState.status === 'loading'}
+            aria-label="Refresh FSC data"
+            className={
+              'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium ' +
+              'border border-gray-300 dark:border-gray-600 ' +
+              'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 ' +
+              'hover:bg-gray-50 dark:hover:bg-gray-700 ' +
+              'focus:outline-none focus:ring-2 focus:ring-blue-500 ' +
+              'transition-colors disabled:opacity-50'
+            }
+            onClick={() => {
+              setFscState({ status: 'loading' })
+              void fetchFsc()
+            }}
+          >
+            <svg
+              className={`w-3.5 h-3.5 ${fscState.status === 'loading' ? 'animate-spin' : ''}`}
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                fillRule="evenodd"
+                d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H3.989a.75.75 0 00-.75.75v4.242a.75.75 0 001.5 0v-2.43l.31.31a7 7 0 0011.712-3.138.75.75 0 00-1.449-.39zm1.23-3.723a.75.75 0 00.219-.53V2.929a.75.75 0 00-1.5 0V5.36l-.31-.31A7 7 0 003.239 8.188a.75.75 0 101.448.389A5.5 5.5 0 0113.89 6.11l.311.31h-2.432a.75.75 0 000 1.5h4.243a.75.75 0 00.53-.219z"
+                clipRule="evenodd"
+              />
+            </svg>
+            Refresh
+          </button>
+        </div>
+
+        {/* Chart area */}
+        {fscState.status === 'loading' && (
+          <div className="flex items-center justify-center py-20">
             <svg
               className="w-5 h-5 animate-spin text-blue-500"
               viewBox="0 0 24 24"
@@ -278,17 +703,13 @@ function FscSection() {
           </div>
         )}
 
-        {state.status === 'not_available' && (
-          <FscPlaceholder />
-        )}
-
-        {state.status === 'error' && (
+        {fscState.status === 'error' && (
           <div className="rounded-md bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4">
-            <p className="text-sm text-red-700 dark:text-red-400">{state.message}</p>
+            <p className="text-sm text-red-700 dark:text-red-400">{fscState.message}</p>
             <button
               type="button"
               onClick={() => {
-                setState({ status: 'loading' })
+                setFscState({ status: 'loading' })
                 void fetchFsc()
               }}
               className="mt-2 text-sm text-red-600 dark:text-red-400 underline hover:no-underline"
@@ -298,153 +719,108 @@ function FscSection() {
           </div>
         )}
 
-        {state.status === 'success' && (
-          <FscChart
-            data={state.data.half1_half2}
-            resolutionAngstroms={state.data.resolution_angstroms}
-          />
+        {(fscState.status === 'not_available' || fscState.status === 'success') && (
+          <>
+            {curves.some((c) => c.data.length > 0) ? (
+              <FscMultiChart curves={curves.filter((c) => c.data.length > 0)} />
+            ) : (
+              <PlaceholderContent
+                icon={
+                  <svg
+                    className="w-12 h-12 text-gray-300 dark:text-gray-600 mb-3"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"
+                    />
+                  </svg>
+                }
+                title="No FSC data available"
+                description="FSC curves will appear here after running the avg step. Select cycles on the left to compare resolution across processing iterations."
+                outputFiles={['FSC/<prefix>_fsc_GLD.pdf', 'FSC/<prefix>_GLD.mrc']}
+                tutorialRef="11.4"
+              />
+            )}
+          </>
         )}
       </div>
-    </section>
-  )
-}
-
-function FscPlaceholder() {
-  return (
-    <div className="flex flex-col items-center justify-center py-14 text-center">
-      <svg
-        className="w-12 h-12 text-gray-300 dark:text-gray-600 mb-3"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={1.5}
-        aria-hidden="true"
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"
-        />
-      </svg>
-      <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
-        No FSC data available
-      </h4>
-      <p className="text-sm text-gray-500 dark:text-gray-400 max-w-xs">
-        FSC curves will appear here after running the <code className="font-mono text-xs">avg</code> step in the
-        workflow. The 0.143 gold-standard threshold will be shown on the plot.
-      </p>
-    </div>
+    </ThreePanelLayout>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Particle Statistics Section
+// Tab: Averages (tutorial 11.4)
 // ---------------------------------------------------------------------------
 
-function ParticleStatsSection() {
-  const [state, setState] = useState<FetchState<ParticleStats>>({ status: 'loading' })
+const AVERAGE_CYCLES = ['cycle000', 'cycle001', 'cycle002', 'cycle003']
 
-  const fetchStats = useCallback(async () => {
-    // Note: callers are responsible for setting { status: 'loading' } before invoking this.
-    // setState is only called here after async operations to avoid react-hooks/set-state-in-effect.
-    try {
-      const data = await apiClient.get<ParticleStats>('/api/v1/results/particles')
-      setState({ status: 'success', data })
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 404) {
-        setState({ status: 'not_available' })
-      } else {
-        const message =
-          err instanceof ApiError
-            ? `Failed to load particle statistics (${err.status}): ${err.statusText}`
-            : 'Failed to load particle statistics.'
-        setState({ status: 'error', message })
-      }
-    }
-  }, [])
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void fetchStats()
-  }, [fetchStats])
+function AveragesTab() {
+  const [selectedIndex, setSelectedIndex] = useState(0)
 
   return (
-    <section
-      className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden"
-      aria-labelledby="particle-stats-heading"
+    <ThreePanelLayout
+      listItems={AVERAGE_CYCLES}
+      selectedIndex={selectedIndex}
+      onSelect={setSelectedIndex}
+      listLabel="Cycles"
     >
-      <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700">
-        <h3
-          id="particle-stats-heading"
-          className="text-base font-semibold text-gray-900 dark:text-gray-100"
-        >
-          Particle Statistics
-        </h3>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-          Particle counts, class distribution, and cross-correlation scores
-        </p>
-      </div>
-
-      <div className="p-5">
-        {state.status === 'loading' && (
-          <div className="flex items-center justify-center py-12">
-            <svg
-              className="w-5 h-5 animate-spin text-blue-500"
-              viewBox="0 0 24 24"
-              fill="none"
-              aria-hidden="true"
-            >
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-            <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">
-              Loading particle statistics…
-            </span>
-          </div>
-        )}
-
-        {state.status === 'not_available' && <ParticleStatsPlaceholder />}
-
-        {state.status === 'error' && (
-          <div className="rounded-md bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4">
-            <p className="text-sm text-red-700 dark:text-red-400">{state.message}</p>
-            <button
-              type="button"
-              onClick={() => {
-                setState({ status: 'loading' })
-                void fetchStats()
-              }}
-              className="mt-2 text-sm text-red-600 dark:text-red-400 underline hover:no-underline"
-            >
-              Retry
-            </button>
-          </div>
-        )}
-
-        {state.status === 'success' && <ParticleStatsContent stats={state.data} />}
-      </div>
-    </section>
+      <PlaceholderContent
+        icon={
+          <svg
+            className="w-12 h-12 text-gray-300 dark:text-gray-600 mb-3"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.5}
+            aria-hidden="true"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M21 7.5l-2.25-1.313M21 7.5v2.25m0-2.25l-2.25 1.313M3 7.5l2.25-1.313M3 7.5l2.25 1.313M3 7.5v2.25m9 3l2.25-1.313M12 12.75l-2.25-1.313M12 12.75V15m0 6.75l2.25-1.313M12 21.75V19.5m0 2.25l-2.25-1.313m0-16.875L12 2.25l2.25 1.313M21 14.25v2.25l-9 5.25-9-5.25v-2.25l9-5.25 9 5.25z"
+            />
+          </svg>
+        }
+        title="Averages — No data available"
+        description={
+          `After running Subtomogram Averaging (avg), the half-map volumes for ` +
+          `${AVERAGE_CYCLES[selectedIndex]} will be available for inspection here. ` +
+          `Inspect both half-maps and the filtered final map.`
+        }
+        outputFiles={[
+          `cycle${String(selectedIndex).padStart(3, '0')}_REF_ODD.mrc`,
+          `cycle${String(selectedIndex).padStart(3, '0')}_REF_EVE.mrc`,
+          `cycle${String(selectedIndex).padStart(3, '0')}_REF_FLT.mrc`,
+        ]}
+        tutorialRef="11.4"
+      />
+    </ThreePanelLayout>
   )
 }
 
-function ParticleStatsContent({ stats }: { stats: ParticleStats }) {
+// ---------------------------------------------------------------------------
+// Tab: Particle Stats (tutorial 14.4.2)
+// ---------------------------------------------------------------------------
+
+interface ParticleStatsContentProps {
+  stats: ParticleStats
+}
+
+function ParticleStatsContent({ stats }: ParticleStatsContentProps) {
   return (
     <div className="space-y-6">
       {/* Summary stat cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-        <StatCard
-          label="Total Particles"
-          value={stats.total_count.toLocaleString()}
-        />
-        <StatCard
-          label="Classes"
-          value={stats.class_distribution.length.toString()}
-        />
+        <StatCard label="Total Particles" value={stats.total_count.toLocaleString()} />
+        <StatCard label="Classes" value={stats.class_distribution.length.toString()} />
         {stats.mean_ccc !== null && (
-          <StatCard
-            label="Mean CCC Score"
-            value={stats.mean_ccc.toFixed(4)}
-          />
+          <StatCard label="Mean CCC Score" value={stats.mean_ccc.toFixed(4)} />
         )}
       </div>
 
@@ -478,7 +854,7 @@ function ParticleStatsContent({ stats }: { stats: ParticleStats }) {
           <ResponsiveContainer width="100%" height={180}>
             <BarChart
               data={stats.ccc_histogram}
-              margin={{ top: 4, right: 16, bottom: 8, left: 8 }}
+              margin={{ top: 4, right: 16, bottom: 24, left: 8 }}
             >
               <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
               <XAxis
@@ -488,7 +864,7 @@ function ParticleStatsContent({ stats }: { stats: ParticleStats }) {
                 label={{
                   value: 'CCC Score',
                   position: 'insideBottom',
-                  offset: -4,
+                  offset: -12,
                   style: { fontSize: 11, fill: 'currentColor' },
                 }}
               />
@@ -509,115 +885,53 @@ function ParticleStatsContent({ stats }: { stats: ParticleStats }) {
   )
 }
 
-function ParticleStatsPlaceholder() {
-  return (
-    <div className="flex flex-col items-center justify-center py-14 text-center">
-      <svg
-        className="w-12 h-12 text-gray-300 dark:text-gray-600 mb-3"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={1.5}
-        aria-hidden="true"
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25"
-        />
-      </svg>
-      <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
-        No particle statistics available
-      </h4>
-      <p className="text-sm text-gray-500 dark:text-gray-400 max-w-xs">
-        Particle statistics will appear here after running particle alignment (
-        <code className="font-mono text-xs">alignRaw</code>) or averaging (
-        <code className="font-mono text-xs">avg</code>).
-      </p>
-    </div>
-  )
-}
+const PARTICLE_STATS_CYCLES = ['cycle000', 'cycle001', 'cycle002', 'cycle003']
 
-// ---------------------------------------------------------------------------
-// System Info Section
-// ---------------------------------------------------------------------------
+function ParticleStatsTab() {
+  const [selectedIndex, setSelectedIndex] = useState(0)
+  const [state, setState] = useState<FetchState<ParticleStats>>({ status: 'loading' })
 
-function SystemInfoSection() {
-  const [state, setState] = useState<FetchState<SystemInfo>>({ status: 'loading' })
-
-  const fetchSystemInfo = useCallback(async () => {
-    // Note: callers are responsible for setting { status: 'loading' } before invoking this.
-    // setState is only called here after async operations to avoid react-hooks/set-state-in-effect.
+  const fetchStats = useCallback(async () => {
     try {
-      const data = await apiClient.get<SystemInfo>('/api/v1/system/info')
+      const data = await apiClient.get<ParticleStats>('/api/v1/results/particles')
       setState({ status: 'success', data })
     } catch (err) {
-      const message =
-        err instanceof ApiError
-          ? `Failed to load system information (${err.status}): ${err.statusText}`
-          : 'Failed to load system information.'
-      setState({ status: 'error', message })
+      if (err instanceof ApiError && err.status === 404) {
+        setState({ status: 'not_available' })
+      } else {
+        const message =
+          err instanceof ApiError
+            ? `Failed to load particle statistics (${err.status}): ${err.statusText}`
+            : 'Failed to load particle statistics.'
+        setState({ status: 'error', message })
+      }
     }
   }, [])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void fetchSystemInfo()
-  }, [fetchSystemInfo])
+    void fetchStats()
+  }, [fetchStats])
 
   return (
-    <section
-      className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden"
-      aria-labelledby="system-info-heading"
+    <ThreePanelLayout
+      listItems={PARTICLE_STATS_CYCLES}
+      selectedIndex={selectedIndex}
+      onSelect={setSelectedIndex}
+      listLabel="Cycles"
     >
-      <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+      <div className="space-y-4">
         <div>
-          <h3
-            id="system-info-heading"
-            className="text-base font-semibold text-gray-900 dark:text-gray-100"
-          >
-            System Info
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+            Particle Statistics — {PARTICLE_STATS_CYCLES[selectedIndex]}
           </h3>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-            CPU, memory, and GPU availability
+            CCC score distributions and class population counts (tutorial §14.4.2)
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            setState({ status: 'loading' })
-            void fetchSystemInfo()
-          }}
-          disabled={state.status === 'loading'}
-          aria-label="Refresh system info"
-          className={
-            'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium ' +
-            'border border-gray-300 dark:border-gray-600 ' +
-            'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 ' +
-            'hover:bg-gray-50 dark:hover:bg-gray-700 ' +
-            'focus:outline-none focus:ring-2 focus:ring-blue-500 ' +
-            'transition-colors disabled:opacity-50'
-          }
-        >
-          <svg
-            className={`w-3.5 h-3.5 ${state.status === 'loading' ? 'animate-spin' : ''}`}
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            aria-hidden="true"
-          >
-            <path
-              fillRule="evenodd"
-              d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H3.989a.75.75 0 00-.75.75v4.242a.75.75 0 001.5 0v-2.43l.31.31a7 7 0 0011.712-3.138.75.75 0 00-1.449-.39zm1.23-3.723a.75.75 0 00.219-.53V2.929a.75.75 0 00-1.5 0V5.36l-.31-.31A7 7 0 003.239 8.188a.75.75 0 101.448.389A5.5 5.5 0 0113.89 6.11l.311.31h-2.432a.75.75 0 000 1.5h4.243a.75.75 0 00.53-.219z"
-              clipRule="evenodd"
-            />
-          </svg>
-          Refresh
-        </button>
-      </div>
 
-      <div className="p-5">
         {state.status === 'loading' && (
-          <div className="flex items-center justify-center py-8">
+          <div className="flex items-center justify-center py-20">
             <svg
               className="w-5 h-5 animate-spin text-blue-500"
               viewBox="0 0 24 24"
@@ -627,9 +941,7 @@ function SystemInfoSection() {
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
             </svg>
-            <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">
-              Loading system info…
-            </span>
+            <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">Loading particle statistics…</span>
           </div>
         )}
 
@@ -640,7 +952,7 @@ function SystemInfoSection() {
               type="button"
               onClick={() => {
                 setState({ status: 'loading' })
-                void fetchSystemInfo()
+                void fetchStats()
               }}
               className="mt-2 text-sm text-red-600 dark:text-red-400 underline hover:no-underline"
             >
@@ -649,158 +961,21 @@ function SystemInfoSection() {
           </div>
         )}
 
-        {state.status === 'success' && <SystemInfoContent info={state.data} />}
-      </div>
-    </section>
-  )
-}
-
-function SystemInfoContent({ info }: { info: SystemInfo }) {
-  const hasGpus = info.gpus.length > 0
-
-  return (
-    <div className="space-y-5">
-      {/* Host */}
-      {info.hostname && (
-        <div className="flex items-center gap-2">
-          <svg
-            className="w-4 h-4 text-gray-400 dark:text-gray-500 shrink-0"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            aria-hidden="true"
-          >
-            <path
-              fillRule="evenodd"
-              d="M2 5a2 2 0 012-2h12a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V5zm3.293 1.293a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 01-1.414-1.414L7.586 10 5.293 7.707a1 1 0 010-1.414zM11 12a1 1 0 100 2h3a1 1 0 100-2h-3z"
-              clipRule="evenodd"
-            />
-          </svg>
-          <span className="text-sm text-gray-600 dark:text-gray-400">Host:</span>
-          <span className="text-sm font-mono font-medium text-gray-900 dark:text-gray-100">
-            {info.hostname}
-          </span>
-        </div>
-      )}
-
-      {/* CPU + RAM summary */}
-      <div className="grid grid-cols-2 gap-4">
-        <StatCard
-          label="CPU Cores"
-          value={`${info.cpu_count_physical} / ${info.cpu_count}`}
-          sub="physical / logical"
-        />
-        <StatCard
-          label="System RAM"
-          value={`${info.memory_total_gb.toFixed(0)} GB`}
-          sub={`${info.memory_available_gb.toFixed(0)} GB available`}
-        />
-      </div>
-
-      {/* GPU section */}
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">GPUs</h4>
-          {hasGpus ? (
-            <span
-              className={
-                'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ' +
-                'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
-              }
-            >
-              {info.gpus.length} detected
-            </span>
-          ) : (
-            <span
-              className={
-                'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ' +
-                'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400'
-              }
-            >
-              None detected
-            </span>
-          )}
-        </div>
-
-        {hasGpus ? (
-          <div className="space-y-3">
-            {info.gpus.map((gpu) => (
-              <GpuCard key={gpu.index} gpu={gpu} />
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-md px-4 py-3 border border-amber-200 dark:border-amber-800">
-            No NVIDIA GPU detected. emClarity requires a CUDA-capable GPU for processing.
-            Ensure the NVIDIA driver and <code className="font-mono text-xs">nvidia-smi</code> are
-            installed.
-          </p>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function GpuCard({ gpu }: { gpu: GpuInfo }) {
-  const usedPercent = gpu.memory_total_mb > 0
-    ? Math.round((gpu.memory_used_mb / gpu.memory_total_mb) * 100)
-    : 0
-
-  const formatMb = (mb: number): string => {
-    if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GB`
-    return `${mb} MB`
-  }
-
-  return (
-    <div className="rounded-md border border-gray-200 dark:border-gray-700 p-3 space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <span
-            className={
-              'shrink-0 inline-flex items-center rounded px-1.5 py-0.5 text-xs font-mono font-medium ' +
-              'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
-            }
-          >
-            GPU {gpu.index}
-          </span>
-          <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-            {gpu.name}
-          </span>
-        </div>
-        {gpu.cuda_version && (
-          <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">
-            CUDA {gpu.cuda_version}
-          </span>
-        )}
-      </div>
-
-      {/* Memory bar */}
-      <div>
-        <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
-          <span>VRAM</span>
-          <span>
-            {formatMb(gpu.memory_used_mb)} / {formatMb(gpu.memory_total_mb)} ({usedPercent}%)
-          </span>
-        </div>
-        <div className="h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all ${
-              usedPercent > 80
-                ? 'bg-red-500'
-                : usedPercent > 60
-                ? 'bg-amber-500'
-                : 'bg-blue-500'
-            }`}
-            style={{ width: `${usedPercent}%` }}
-            aria-label={`GPU ${gpu.index} memory: ${usedPercent}% used`}
+        {state.status === 'not_available' && (
+          <PlaceholderContent
+            title="No particle statistics available"
+            description="Particle statistics will appear here after running particle alignment (alignRaw) or classification (pca / cluster)."
+            outputFiles={[
+              '<prefix>_ClassIDX.txt',
+              'FSC/<prefix>_fsc_GLD.pdf',
+            ]}
+            tutorialRef="14.4.2"
           />
-        </div>
-      </div>
+        )}
 
-      {gpu.driver_version && (
-        <p className="text-xs text-gray-400 dark:text-gray-500">
-          Driver: {gpu.driver_version}
-        </p>
-      )}
-    </div>
+        {state.status === 'success' && <ParticleStatsContent stats={state.data} />}
+      </div>
+    </ThreePanelLayout>
   )
 }
 
@@ -821,43 +996,74 @@ function StatCard({ label, value, sub }: StatCardProps) {
         {label}
       </p>
       <p className="mt-1 text-xl font-semibold text-gray-900 dark:text-gray-100">{value}</p>
-      {sub && (
-        <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{sub}</p>
-      )}
+      {sub && <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{sub}</p>}
     </div>
   )
 }
 
 // ---------------------------------------------------------------------------
-// ResultsPage – exported page component
+// ResultsPage — exported page component
 // ---------------------------------------------------------------------------
 
 export function ResultsPage() {
+  const [activeTab, setActiveTab] = useState<TabId>('alignment')
+
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col h-full space-y-4">
       {/* Page header */}
       <div>
         <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Results</h2>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          View FSC curves, resolution metrics, particle statistics, and system status.
+          Review processing outputs organized by tutorial stage. Check each tab after running the corresponding pipeline step.
         </p>
       </div>
 
-      {/* Main content: 2-column layout on large screens */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left column: FSC curve (spans 2 cols) */}
-        <div className="lg:col-span-2">
-          <FscSection />
-        </div>
-
-        {/* Right column: System info */}
-        <div className="lg:col-span-1">
-          <SystemInfoSection />
-        </div>
+      {/* Tab bar */}
+      <div
+        role="tablist"
+        aria-label="Result types"
+        className="flex gap-0 border-b border-gray-200 dark:border-gray-700 overflow-x-auto"
+      >
+        {TABS.map((tab) => {
+          const isActive = tab.id === activeTab
+          return (
+            <button
+              key={tab.id}
+              role="tab"
+              type="button"
+              aria-selected={isActive}
+              aria-controls={`tabpanel-${tab.id}`}
+              id={`tab-${tab.id}`}
+              onClick={() => setActiveTab(tab.id)}
+              className={
+                'whitespace-nowrap px-4 py-2.5 text-sm font-medium border-b-2 transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500 ' +
+                (isActive
+                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600')
+              }
+            >
+              {tab.label}
+            </button>
+          )
+        })}
       </div>
 
-      {/* Particle statistics (full width) */}
-      <ParticleStatsSection />
+      {/* Tab panels */}
+      <div className="flex-1 min-h-0">
+        <div
+          role="tabpanel"
+          id={`tabpanel-${activeTab}`}
+          aria-labelledby={`tab-${activeTab}`}
+          className="h-full"
+        >
+          {activeTab === 'alignment' && <AlignmentQualityTab />}
+          {activeTab === 'ctf' && <CTFDiagnosticsTab />}
+          {activeTab === 'particles' && <ParticlePicksTab />}
+          {activeTab === 'fsc' && <FscCurvesTab />}
+          {activeTab === 'averages' && <AveragesTab />}
+          {activeTab === 'stats' && <ParticleStatsTab />}
+        </div>
+      </div>
     </div>
   )
 }
