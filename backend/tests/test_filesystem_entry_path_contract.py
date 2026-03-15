@@ -19,13 +19,6 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.main import app
-
-
-@pytest.fixture
-def client() -> TestClient:
-    return TestClient(app)
-
 
 class TestEntryPathContract:
     """Entry path values must always equal response.path + "/" + entry.name."""

@@ -251,7 +251,7 @@ def browse_filesystem(
                 try:
                     name: str = entry.name
                     name.encode("utf-8")
-                except (UnicodeEncodeError, UnicodeDecodeError):
+                except UnicodeEncodeError:
                     log.debug("Skipping non-UTF-8 directory entry in %s", real_path)
                     continue
 

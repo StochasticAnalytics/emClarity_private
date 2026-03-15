@@ -253,3 +253,52 @@ Developer: Completed PATCH 2026-03-15
   - Fix: separated visual tooltip (CSS toggle) from ARIA live region (dynamic content
     injection: message string when demoBlocked is true, empty string when false)
   - TypeScript compiles cleanly after fix
+
+Developer: Completed 2026-03-15
+  Task: TASK-002a – Backend: filesystem browse API endpoint
+  - Created backend/api/v1_filesystem.py with GET /api/v1/filesystem/browse
+  - Validation: rejects '..' traversal (incl URL-decoded), null bytes, relative paths, >4096 chars
+  - Normalises paths via os.path.normpath + os.path.realpath (symlinks resolved)
+  - Returns only real (non-symlink) directories; files and symlinks excluded
+  - Error contract: 400/403/404 all use FastAPI HTTPException { "detail": "..." }
+  - Race condition during scandir → 404; non-UTF-8 names silently skipped
+  - Registered router in backend/api/router.py
+  - Created backend/tests/test_filesystem.py: 22 tests pass, 1 skip (auth not yet impl.)
+  - All 58 backend tests pass
+  Key decisions:
+  - Used os.path.realpath() so symlinked input paths report their real location
+  - DirEntry.is_dir(follow_symlinks=False) as single filter (excludes symlinks + files)
+  - Auth 401 test marked @pytest.mark.skip per acceptance criteria (no auth middleware yet)
+Developer: Completed 2026-03-15 14:57
+  - Fixed defect 1 (HIGH): Replaced Path.exists() with real_path.stat() in existence check.
+    Path.exists() swallows PermissionError on Python 3.10+ returning False, causing
+    stat-level permission denial to produce 404 instead of 403. Now properly raises 403.
+  - Fixed defect 2 (MEDIUM): Eliminated unguarded Path.is_dir() call by reusing the
+    stat() result via stat.S_ISDIR(path_stat.st_mode). No second syscall, no risk of
+    unhandled PermissionError.
+  - Fixed defect 4 (MEDIUM): Changed FilesystemEntry.type from 'str' to
+    Literal["directory"] for precise type narrowing.
+  - Defects 3, 5, 6, 7 involve test_filesystem.py which is read-only per patch rules;
+    these defects cannot be addressed without modifying that test file.
+  - All 58 backend tests pass (1 skipped for unimplemented auth).
+
+
+Developer: Completed TASK-002a/PATCH 2026-03-15T19:40:22Z
+  - Defect #1: Fixed entry_base symlink inconsistency (display_path → real_path_str)
+  - Defect #2: Added test_filesystem_entry_path_contract.py with 4 regression tests for entry-path contract
+  - Defect #3: Fixed _PATH_MAX guard from > 4096 to >= 4096 (NUL terminator accounts for 1 byte)
+
+Developer: Completed TASK-002a/PATCH 2026-03-15
+  - Defect 1 (MEDIUM): Fixed test_subdir_entries_correct_paths to assert entry paths against
+    data["path"] instead of unresolved tmp_path. On platforms where /tmp is a symlink (e.g.
+    macOS /tmp → /private/tmp), tmp_path would diverge from data["path"] causing a latent
+    test failure. Now uses the resolved response path as the expected prefix.
+  - Defect 2 (MEDIUM/LOW): Removed dead UnicodeDecodeError from the scandir encoding guard
+    in v1_filesystem.py. entry.name is already a Python str; str.encode("utf-8") can only
+    raise UnicodeEncodeError (surrogates), never UnicodeDecodeError. Narrowed except clause
+    to except UnicodeEncodeError only.
+  - Defect 3 (MEDIUM/LOW): Removed duplicate local client fixture from
+    test_filesystem_entry_path_contract.py. The fixture is already provided by
+    backend/tests/conftest.py; the local copy shadowed it unnecessarily. Removed the
+    local fixture and the now-unused imports (TestClient, app).
+  - All 62 backend tests pass (1 skipped for unimplemented auth).

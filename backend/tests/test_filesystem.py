@@ -111,7 +111,7 @@ class TestValidPaths:
         names = {e["name"] for e in data["entries"]}
         assert names == {"alpha", "beta"}
         for entry in data["entries"]:
-            expected = f"{tmp_path}/{entry['name']}"
+            expected = f"{data['path']}/{entry['name']}"
             assert entry["path"] == expected
 
     def test_only_directories_in_entries(
