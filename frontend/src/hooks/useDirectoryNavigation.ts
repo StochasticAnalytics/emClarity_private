@@ -150,17 +150,17 @@ export function useDirectoryNavigation(
   const errorMessageRef = useRef<string | null>(null);
 
   // retryPath is written before every browseDirectory call (AC6):
-  //   null  → the call was made with no argument (mirrors empty/absent path)
+  //   null  → the call was made with no explicit path (browseDirectory(undefined, signal))
   //   string → the trimmed path argument passed to the call
-  const retryPathRef = useRef<string | null>(
-    resolvedInitialPath !== '' ? resolvedInitialPath : null,
-  );
+  // Initialised to null; doNavigate unconditionally overwrites this before any
+  // consumer (retry) can observe it, so the initial value is never read.
+  const retryPathRef = useRef<string | null>(null);
 
   // ── Core navigation dispatcher ───────────────────────────────────────────
   // Called by both navigate() and retry().  All AbortController bookkeeping
   // and state transitions live here.
   //
-  // pathArg: null  → call browseDirectory() with no argument
+  // pathArg: null  → call browseDirectory(undefined, signal)  (no explicit path)
   //          string → call browseDirectory(pathArg, signal)
   // isRetry: false → regular navigation (transitions to branch 1 or similar)
   //          true  → retry (transitions to branch 5)
