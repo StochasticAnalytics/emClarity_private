@@ -1077,6 +1077,7 @@ function RunBar({ command, onRun, isRunning, runMessage }: RunBarProps) {
   const { profiles, selectedId, select } = useRunProfiles()
   const navigate = useNavigate()
   const { projectId } = useParams<{ projectId: string }>()
+  const isDemo = projectId === 'demo'
 
   return (
     <div className="flex items-center gap-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3">
@@ -1122,7 +1123,8 @@ function RunBar({ command, onRun, isRunning, runMessage }: RunBarProps) {
       <button
         type="button"
         onClick={onRun}
-        disabled={isRunning}
+        disabled={isRunning || isDemo}
+        title={isDemo ? 'Commands cannot be run in demo mode' : undefined}
         className="flex items-center gap-2 rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-blue-500 dark:hover:bg-blue-600 transition-colors"
       >
         <Play className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1264,6 +1266,7 @@ function ActionTabContent({
 
 export function ActionsPage() {
   const { projectId } = useParams<{ projectId: string }>()
+  const isDemo = projectId === 'demo'
 
   // Active tab
   const [activeTabId, setActiveTabId] = useState<string>(ACTION_TABS[0].id)
@@ -1345,9 +1348,11 @@ export function ActionsPage() {
           return (
             <button
               key={tab.id}
+              id={`tab-${tab.id}`}
               role="tab"
               aria-selected={isActive}
               aria-controls={`tabpanel-${tab.id}`}
+              tabIndex={isActive ? 0 : -1}
               onClick={() => setActiveTabId(tab.id)}
               className={[
                 'flex flex-col items-center px-3 py-2.5 text-xs font-medium whitespace-nowrap transition-colors border-b-2 min-w-[72px]',
@@ -1365,24 +1370,34 @@ export function ActionsPage() {
         })}
       </div>
 
-      {/* Tab panel */}
-      <div
-        id={`tabpanel-${activeTab.id}`}
-        role="tabpanel"
-        aria-label={activeTab.label}
-        className="flex-1 overflow-hidden"
-      >
-        <ActionTabContent
-          tab={activeTab}
-          values={currentValues}
-          showExpert={currentExpert}
-          onValueChange={handleValueChange}
-          onToggleExpert={handleToggleExpert}
-          onRun={handleRun}
-          isRunning={currentRun.running}
-          runMessage={currentRun.message}
-        />
-      </div>
+      {/* Tab panels — all rendered in DOM so aria-controls IDs are always valid;
+          inactive panels are hidden with the HTML hidden attribute. */}
+      {ACTION_TABS.map((tab) => {
+        const isActive = tab.id === activeTabId
+        return (
+          <div
+            key={tab.id}
+            id={`tabpanel-${tab.id}`}
+            role="tabpanel"
+            aria-labelledby={`tab-${tab.id}`}
+            hidden={!isActive}
+            className="flex-1 overflow-hidden"
+          >
+            {isActive && (
+              <ActionTabContent
+                tab={tab}
+                values={currentValues}
+                showExpert={currentExpert}
+                onValueChange={handleValueChange}
+                onToggleExpert={handleToggleExpert}
+                onRun={handleRun}
+                isRunning={currentRun.running}
+                runMessage={currentRun.message}
+              />
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }

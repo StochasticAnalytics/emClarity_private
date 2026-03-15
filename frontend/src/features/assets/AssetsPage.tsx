@@ -688,11 +688,12 @@ function TiltSeriesBatchBar({
 
 interface TiltSeriesTabContentProps {
   projectId: string
+  isDemo: boolean
   onSuccess: (msg: string) => void
   onError: (msg: string) => void
 }
 
-function TiltSeriesTabContent({ projectId, onSuccess, onError }: TiltSeriesTabContentProps) {
+function TiltSeriesTabContent({ projectId, isDemo, onSuccess, onError }: TiltSeriesTabContentProps) {
   const [activeGroup, setActiveGroup] = useState('all')
   const [selectedNames, setSelectedNames] = useState<string[]>([])
 
@@ -743,7 +744,7 @@ function TiltSeriesTabContent({ projectId, onSuccess, onError }: TiltSeriesTabCo
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      {selectedNames.length > 0 && (
+      {selectedNames.length > 0 && !isDemo && (
         <TiltSeriesBatchBar
           projectId={projectId}
           selectedNames={selectedNames}
@@ -1189,6 +1190,7 @@ function NotificationBanner({
 
 export function AssetsPage() {
   const { projectId } = useParams<{ projectId: string }>()
+  const isDemo = projectId === 'demo'
   const [activeTab, setActiveTab] = useState<AssetTabId>('tilt-series')
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
 
@@ -1237,6 +1239,7 @@ export function AssetsPage() {
           {activeTab === 'tilt-series' && (
             <TiltSeriesTabContent
               projectId={projectId}
+              isDemo={isDemo}
               onSuccess={handleSuccess}
               onError={handleError}
             />

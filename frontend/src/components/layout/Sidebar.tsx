@@ -14,7 +14,7 @@
  * Navigation items (matching cisTEM MenuBook order):
  *   Overview · Assets · Actions · Results · Settings · Jobs · Expert
  */
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { NavLink, useMatch, useLocation, Link } from 'react-router-dom'
 import {
   LayoutDashboard,
@@ -61,17 +61,31 @@ function NavItem({ path, label, icon: Icon, projectId, collapsed }: NavItemProps
   const targetPath = `/project/${effectiveProjectId}/${path}`
   const location = useLocation()
 
+  // Track last navigation to deduplicate rapid clicks (e.g. double-click) even
+  // when navigating FROM a different page. In that case both click events fire
+  // synchronously before React re-renders, so location.pathname still reflects
+  // the origin path on both events and the pathname check alone would miss it.
+  const lastNavRef = useRef<{ path: string; time: number } | null>(null)
+
   return (
     <NavLink
       to={targetPath}
       title={collapsed ? label : undefined}
       aria-label={collapsed ? label : undefined}
       onClick={(e) => {
-        // Prevent pushing a duplicate history entry when already on this page
-        // (e.g. double-click), which would require two Back presses to leave.
+        // Prevent pushing a duplicate history entry when already on this page.
         if (location.pathname === targetPath) {
           e.preventDefault()
+          return
         }
+        // Deduplicate rapid double-clicks to the same target before React
+        // re-renders (300 ms window covers typical double-click timing).
+        const now = Date.now()
+        if (lastNavRef.current?.path === targetPath && now - lastNavRef.current.time < 300) {
+          e.preventDefault()
+          return
+        }
+        lastNavRef.current = { path: targetPath, time: now }
       }}
       className={({ isActive }) =>
         [

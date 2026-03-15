@@ -403,7 +403,7 @@ interface JobTableProps {
 function JobTable({ jobs, selectedJobId, onSelectJob }: JobTableProps) {
   return (
     <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-      <table role="grid" className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+      <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
         <thead className="bg-gray-50 dark:bg-gray-800">
           <tr>
             {['Command', 'Status', 'Start Time', 'Duration', 'Project'].map((col) => (
@@ -591,7 +591,8 @@ export function JobsPage() {
         <div>
           <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Jobs</h2>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Monitor active and completed processing jobs. Auto-refreshes every 5 seconds.
+            Monitor active and completed processing jobs.
+            {!isDemo && ' Auto-refreshes every 5 seconds.'}
           </p>
         </div>
 
@@ -605,7 +606,7 @@ export function JobsPage() {
           <button
             type="button"
             onClick={() => void fetchJobs()}
-            disabled={isLoading}
+            disabled={isLoading || isDemo}
             aria-label="Refresh job list"
             className={
               'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium ' +
