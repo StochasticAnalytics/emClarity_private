@@ -210,3 +210,38 @@ Developer: Verified 2026-03-15 (TASK-001/PATCH QA Leader intervention — consol
   5. ActionsPage tab keyDown: calls setActiveTabId() directly, not tabEls[n].click()
   Validation: tsc --noEmit → 0 errors; pytest backend/ → 36/36; pytest tests/ → 35/35
 
+
+Developer: Completed 2026-03-15 (QA Leader Intervention - Round 7)
+  Task: TASK-001/PATCH - Enable sidebar navigation without project (consolidated fix)
+  Addressed all 6 Round-7 defects per QA Leader directive:
+  1. ProjectLayout.tsx: moved DEMO_PROJECT_ID import to top of file with other imports;
+     removed dead `export { DEMO_PROJECT_ID }` re-export (zero consumers). Fixes
+     oscillating mid-file import defect (rounds 2, 4, 6).
+  2. JobsPage.tsx: moved selectedJob useState declaration before demo-reset useEffect;
+     added setSelectedJob(null) in isDemo branch to clear stale LogViewer on demo
+     navigation; added synchronous `displayedJobs = isDemo ? [] : jobs` guard in render
+     to prevent one-frame stale job rows before reset effect fires.
+  3. ActionsPage.tsx: added null guard for ACTION_TABS[newIndex] before accessing .id
+     in the tab keyboard handler; prevents TypeError on DOM/array length mismatch.
+  4. ActionsPage.tsx: added title="Commands cannot be run in demo mode" directly on the
+     aria-disabled button element so sighted keyboard users see tooltip. Fixes oscillating
+     keyboard-only feedback gap (rounds 3, 5).
+  5. Sidebar.tsx: updated NavItem comment to remove stale "disabled states" reference.
+  Validation: tsc --noEmit → 0 errors; pytest tests/ → 35/35 passed
+
+Developer: Completed 2026-03-15 [TASK-001/PATCH Round 9 — QA Leader Intervention]
+  - ActionsPage.tsx (RunBar): removed hover:bg-blue-700/dark:hover:bg-blue-600 when
+    button is aria-disabled (isRunning or isDemo); contradictory "cursor=stop, color=go"
+    signal that oscillated between Rounds 6–8 is now resolved by conditionally applying
+    hover styles only when the button is interactive.
+  - ActionsPage.tsx (RunBar): added onKeyDown handler intercepting Enter/Space in demo
+    mode; calls showDemoBlocked() to briefly flip the sr-only tooltip to a visible
+    positioned callout (1500 ms); sighted keyboard-only users now receive the same
+    "Commands cannot be run in demo mode" feedback that mouse users get on hover.
+    Oscillating since Round 3 — now properly resolved.
+  - ActionsPage.tsx (RunBar): added demoBlocked state + demoBlockedTimerRef with cleanup
+    useEffect to avoid memory leaks from the timer; added useRef and useEffect to imports.
+  - JobsPage.tsx: moved isCancelling/notification useState and notificationTimerRef useRef
+    declarations above the first useEffect block, restoring the all-hooks-before-effects
+    convention used throughout the codebase (raised Round 6, structurally still present).
+  Validation: tsc --noEmit → 0 errors; pytest backend/ → 36/36 passed; commit c149e92
