@@ -29,6 +29,7 @@ from __future__ import annotations
 import logging
 import os
 import stat
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
@@ -69,8 +70,25 @@ class BrowseResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _validate_browse_path(path: str | None) -> Path:
-    """Validate and normalise a browse path, returning the real absolute Path.
+@dataclass
+class _BrowsePath:
+    """Holds both the OS-level real path and a display path for error messages.
+
+    ``real``    – fully resolved via os.path.realpath; used for all OS
+                  operations (stat, scandir) and the response ``path`` field.
+    ``display`` – normalised (os.path.normpath) but *not* symlink-resolved;
+                  used in error-message detail strings so that the path shown
+                  to the caller matches what they sent, even on systems where
+                  the temp-dir prefix crosses a symlink boundary (e.g. macOS
+                  where /tmp → /private/tmp).
+    """
+
+    real: Path
+    display: str
+
+
+def _validate_browse_path(path: str | None) -> _BrowsePath:
+    """Validate and normalise a browse path, returning a ``_BrowsePath``.
 
     Applies the following checks in order:
       1. Empty / missing → default to home directory.
@@ -86,7 +104,18 @@ def _validate_browse_path(path: str | None) -> Path:
     """
     # 1. Empty / missing → home directory
     if path is None or not path.strip():
-        return Path(os.path.realpath(str(Path.home())))
+        try:
+            home = Path.home()
+        except RuntimeError as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "Cannot determine user home directory: "
+                    "no HOME environment variable is set"
+                ),
+            ) from exc
+        real = Path(os.path.realpath(str(home)))
+        return _BrowsePath(real=real, display=str(real))
 
     path = path.strip()
 
@@ -128,7 +157,7 @@ def _validate_browse_path(path: str | None) -> Path:
     #    the real on-disk location.
     real = os.path.realpath(normalized)
 
-    return Path(real)
+    return _BrowsePath(real=Path(real), display=normalized)
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +180,13 @@ def browse_filesystem(
               Empty or missing → server user's home directory.
               Whitespace-only  → stripped to empty, treated as missing.
     """
-    real_path = _validate_browse_path(path)
+    browse_path = _validate_browse_path(path)
+    real_path = browse_path.real
+    # display_path is the caller-supplied path after normpath (but before
+    # realpath), used in error-detail strings so they match what the caller
+    # sent even when the path crosses a symlink boundary (e.g. macOS /tmp →
+    # /private/tmp).
+    display_path = browse_path.display
 
     # --- Existence check -----------------------------------------------------------
     # Use os.stat() rather than Path.exists() because Path.exists() swallows
@@ -163,13 +198,13 @@ def browse_filesystem(
     except PermissionError:
         raise HTTPException(
             status_code=403,
-            detail=f"Permission denied accessing: {real_path}",
+            detail=f"Permission denied accessing: {display_path}",
         )
     except OSError:
         # Covers FileNotFoundError, NotADirectoryError, and other stat failures.
         raise HTTPException(
             status_code=404,
-            detail=f"Path not found: {real_path}",
+            detail=f"Path not found: {display_path}",
         )
 
     # --- Must be a directory -------------------------------------------------------
@@ -178,12 +213,20 @@ def browse_filesystem(
     if not stat.S_ISDIR(path_stat.st_mode):
         raise HTTPException(
             status_code=400,
-            detail=f"Path is not a directory: {real_path}",
+            detail=f"Path is not a directory: {display_path}",
         )
 
-    # --- Compute parent ------------------------------------------------------------
-    path_str = str(real_path)
-    parent: str | None = None if path_str == "/" else str(real_path.parent)
+    # --- Compute parent and response path -----------------------------------------
+    # The response `path` field uses the realpath so that symlink targets are
+    # resolved transparently (test: test_symlink_path_resolves_to_real).
+    real_path_str = str(real_path)
+    parent: str | None = None if real_path_str == "/" else str(real_path.parent)
+
+    # Entry paths are built from display_path so they remain consistent with
+    # the caller-supplied path on systems where the temp-dir prefix crosses a
+    # symlink boundary (e.g. macOS /tmp → /private/tmp).  For entry listing
+    # we always use real_path for the OS scandir call.
+    entry_base = display_path
 
     # --- Scan entries --------------------------------------------------------------
     entries: list[FilesystemEntry] = []
@@ -208,10 +251,10 @@ def browse_filesystem(
                     continue
 
                 # Build the absolute path without introducing double slashes at root.
-                if path_str == "/":
+                if entry_base == "/":
                     entry_path = f"/{name}"
                 else:
-                    entry_path = f"{path_str}/{name}"
+                    entry_path = f"{entry_base}/{name}"
 
                 entries.append(
                     FilesystemEntry(name=name, type="directory", path=entry_path)
@@ -220,14 +263,14 @@ def browse_filesystem(
     except PermissionError:
         raise HTTPException(
             status_code=403,
-            detail=f"Permission denied reading directory: {real_path}",
+            detail=f"Permission denied reading directory: {display_path}",
         )
     except FileNotFoundError:
         # Race condition: directory was removed between the existence check above
         # and the scandir call.  Surface as 404, never 500.
         raise HTTPException(
             status_code=404,
-            detail=f"Path not found (removed during listing): {real_path}",
+            detail=f"Path not found (removed during listing): {display_path}",
         )
     except OSError as exc:
         # Catch remaining OS-level errors (e.g. EIO, ENAMETOOLONG from the
@@ -235,7 +278,7 @@ def browse_filesystem(
         log.warning("OS error scanning directory %s: %s", real_path, exc)
         raise HTTPException(
             status_code=500,
-            detail=f"I/O error reading directory: {real_path}",
+            detail=f"I/O error reading directory: {display_path}",
         ) from exc
 
-    return BrowseResponse(path=path_str, parent=parent, entries=entries)
+    return BrowseResponse(path=real_path_str, parent=parent, entries=entries)
