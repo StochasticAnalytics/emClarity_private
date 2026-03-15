@@ -1191,7 +1191,6 @@ function RunBar({ command, onRun, isRunning, runMessage }: RunBarProps) {
           <span
             id="run-demo-tooltip"
             role="tooltip"
-            aria-live="polite"
             className={
               demoBlocked
                 ? 'absolute right-0 top-full z-10 mt-1 whitespace-nowrap rounded bg-gray-800 px-2 py-1 text-xs text-white shadow-lg dark:bg-gray-700'
@@ -1201,6 +1200,12 @@ function RunBar({ command, onRun, isRunning, runMessage }: RunBarProps) {
             Commands cannot be run in demo mode
           </span>
         )}
+        {/* Separate live region: content changes on keyboard activation so screen readers
+            actually announce the message. aria-live on static text (CSS-toggled only)
+            never fires — the DOM content must change for the announcement to trigger. */}
+        <span aria-live="polite" className="sr-only">
+          {demoBlocked ? 'Commands cannot be run in demo mode' : ''}
+        </span>
       </span>
     </div>
   )
