@@ -1,3 +1,19 @@
+Developer: Completed 2026-03-15
+  Task: TASK-002b-Aa-2b-i - DirectoryPickerModal structural layer
+  - Created DirectoryPickerModal.tsx: React portal to document.body with null-body guard
+  - ARIA dialog shell: role='dialog', aria-modal='true', aria-labelledby via useId()
+  - data-testid='modal-current-path' with '/' fallback for all falsy currentPath values
+  - Three always-in-DOM live-region containers (role='status', role='alert', role='status')
+  - aria-busy={!!isLoading} on listing container; all interactive elements disabled during load
+  - Up button: DOM-absent when parent is null/empty/whitespace-only (isValidParent type guard)
+  - Directory entries as <button> with key={name-index}; file entries as <div aria-disabled>
+  - Unicode-aware whitespace filter (INVISIBLE_ONLY_RE + typeof guard) on entry names
+  - 'No subdirectories' fallback; entry paths computed from basePath + name
+  - Retry button: always in DOM, always disabled, no onClick (scaffold only per task scope)
+  - onSelect threaded exclusively to <DirectoryPickerActions>; never called directly
+  - Created DirectoryPickerActions.tsx: minimal stub with Cancel + disabled Select buttons
+  - TypeScript strict mode compliant (noUncheckedIndexedAccess, verbatimModuleSyntax, etc.)
+
 Developer: Completed 2026-03-14
   Task: TASK-008 - Frontend project manager component
   - Implemented full ProjectPage.tsx with three views: home, create, and dashboard
@@ -328,6 +344,15 @@ Developer: Completed 2026-03-15
   - Re-exports FilesystemBrowseResponse so Aa-2b can type props without re-declaring shape (AC10)
   - navigate/retry wrapped in useCallback with correct dependency arrays (AC11)
   - TypeScript compiles without errors (tsc --noEmit exits 0)
+
+Developer: Completed 2026-03-15
+  Task: TASK-002b-Aa-2a/PATCH – useDirectoryNavigation QA defect fixes
+  - Fixed misleading comment in doNavigate: null-path branch still passes signal
+    (browseDirectory(undefined, signal)), not a zero-argument call
+  - Fixed retryPathRef initialisation: removed redundant computed initial value
+    (resolvedInitialPath conditional); doNavigate unconditionally overwrites the
+    ref before retry() can ever observe it; simplified to null
+  - TypeScript compiles without errors; commit b6aad82
 
 Developer: Completed 2026-03-15
   Task: TASK-002b-Aa-1 – filesystem.ts API stub with async behavior and test error seam
