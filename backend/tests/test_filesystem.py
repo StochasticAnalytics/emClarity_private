@@ -258,7 +258,7 @@ class TestErrorConditions:
     def test_path_longer_than_path_max_returns_400(
         self, client: TestClient
     ) -> None:
-        # Build a path that is definitely longer than 4096 characters.
+        # Build a path that is definitely longer than 4096 bytes.
         long_path = "/" + "a" * 4097
         response = client.get(f"/api/v1/filesystem/browse?path={long_path}")
         assert response.status_code == 400

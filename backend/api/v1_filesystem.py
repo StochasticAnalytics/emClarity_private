@@ -92,7 +92,7 @@ def _validate_browse_path(path: str | None) -> _BrowsePath:
 
     Applies the following checks in order:
       1. Empty / missing → default to home directory.
-      2. Length > PATH_MAX → 400.
+      2. Length >= PATH_MAX → 400.
       3. Null byte present → 400.
       4. '..' component present (after URL-decode, which FastAPI already did) → 400.
       5. No leading '/' (relative path) → 400.
