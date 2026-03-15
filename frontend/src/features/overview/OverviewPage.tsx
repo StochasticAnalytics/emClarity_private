@@ -6,18 +6,17 @@
  * Also shows a pipeline progress stepper (matching tutorial Figure 1)
  * and the last 5 recent jobs with status badges.
  *
- * The project data is already loaded by ProjectLayout via ProjectContext.
- * This page fetches additional details on its own.
- *
  * API calls:
  *   GET /api/v1/projects/{id}                       – project state / cycle
- *   GET /api/v1/projects/{id}/tilt-series           – tilt-series list (for count)
+ *   GET /api/v1/projects/{id}/statistics            – particle count, resolution
  *   GET /api/v1/workflow/{id}/available-commands    – current workflow state
  *   GET /api/v1/jobs?project_id={id}                – recent jobs list
  */
+import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useProject } from '@/context/ProjectContext.tsx'
 import { useApiQuery } from '@/hooks/useApi.ts'
+import { useRecentProjects } from '@/hooks/useRecentProjects.ts'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -31,8 +30,11 @@ interface ProjectDetails {
   current_cycle: number
 }
 
-interface TiltSeriesListResponse {
-  tilt_series: { name: string }[]
+interface ProjectStatistics {
+  project_id: string
+  particle_count: number | null
+  resolution_angstrom: number | null
+  tilt_series_count: number
 }
 
 interface AvailableCommandsResponse {
@@ -61,10 +63,23 @@ interface PipelineStep {
   label: string
   subtitle: string
   optional?: boolean
-  /** The minimum pipeline state index at which this step is considered "active" */
+  /**
+   * The minimum pipeline state index at which this step is considered "active"
+   * when no job history is available.
+   */
   activeFromStateIdx: number
   /** The minimum pipeline state index at which this step is considered "completed" */
   completedFromStateIdx: number
+  /**
+   * If set, this step is part of the iterative CYCLE_N phase.
+   * Only one iterative step is shown as "active" at a time (determined by job history).
+   */
+  cycleStep?: boolean
+  /**
+   * The emClarity CLI command(s) associated with this step.
+   * Used to match against recent jobs during CYCLE_N to find the active step.
+   */
+  commands?: string[]
 }
 
 /** Ordered states in the state machine, mapped to numeric indices for comparison. */
@@ -87,90 +102,158 @@ function stateIndex(state: string): number {
 
 /**
  * 11-step pipeline from emClarity tutorial Figure 1.
- * Each step has thresholds for when it becomes active and when it is completed,
- * expressed as indices into STATE_ORDER.
  */
 const TUTORIAL_PIPELINE_STEPS: ReadonlyArray<PipelineStep> = [
   {
     id: 'align-ts',
     label: 'Align Tilt-Series',
     subtitle: 'autoAlign',
-    activeFromStateIdx: 0, // active from UNINITIALIZED
-    completedFromStateIdx: 1, // done when ≥ TILT_ALIGNED
+    commands: ['autoAlign'],
+    activeFromStateIdx: 0,
+    completedFromStateIdx: 1,
   },
   {
     id: 'ctf-est',
     label: 'Estimate CTF',
     subtitle: 'ctf estimate',
+    commands: ['ctf estimate'],
     activeFromStateIdx: 1,
-    completedFromStateIdx: 2, // done when ≥ CTF_ESTIMATED
+    completedFromStateIdx: 2,
   },
   {
     id: 'sub-regions',
     label: 'Select Sub-regions',
     subtitle: 'segment',
+    commands: ['ctf 3d'],
     activeFromStateIdx: 2,
-    completedFromStateIdx: 3, // done when ≥ RECONSTRUCTED
+    completedFromStateIdx: 3,
   },
   {
     id: 'pick',
     label: 'Pick Particles',
     subtitle: 'templateSearch',
+    commands: ['templateSearch'],
     activeFromStateIdx: 3,
-    completedFromStateIdx: 4, // done when ≥ PARTICLES_PICKED
+    completedFromStateIdx: 4,
   },
   {
     id: 'init',
     label: 'Initialize Project',
     subtitle: 'init',
+    commands: ['init'],
     activeFromStateIdx: 4,
-    completedFromStateIdx: 5, // done when ≥ INITIALIZED
+    completedFromStateIdx: 5,
   },
   {
     id: 'recon',
     label: 'Reconstruct Tomograms',
     subtitle: 'ctf 3d',
+    commands: ['ctf 3d'],
     activeFromStateIdx: 5,
-    completedFromStateIdx: 6, // done when ≥ CYCLE_N
+    completedFromStateIdx: 6,
   },
   {
     id: 'avg',
     label: 'Subtomogram Averaging',
     subtitle: 'avg',
+    commands: ['avg'],
     activeFromStateIdx: 6,
-    completedFromStateIdx: 7, // done when ≥ EXPORT
+    completedFromStateIdx: 7,
+    cycleStep: true,
   },
   {
     id: 'align',
     label: 'Subtomogram Alignment',
     subtitle: 'alignRaw',
+    commands: ['alignRaw'],
     activeFromStateIdx: 6,
     completedFromStateIdx: 7,
+    cycleStep: true,
   },
   {
     id: 'tomocpr',
     label: 'Tilt-Series Refinement',
     subtitle: 'tomoCPR',
+    commands: ['tomoCPR'],
     optional: true,
     activeFromStateIdx: 6,
     completedFromStateIdx: 7,
+    cycleStep: true,
   },
   {
     id: 'classify',
     label: 'Classification',
     subtitle: 'pca / cluster',
+    commands: ['pca', 'cluster'],
     optional: true,
     activeFromStateIdx: 6,
     completedFromStateIdx: 7,
+    cycleStep: true,
   },
   {
     id: 'final',
     label: 'Final Reconstruction',
     subtitle: 'reconstruct',
+    commands: ['reconstruct'],
     activeFromStateIdx: 7,
-    completedFromStateIdx: 8, // done when = DONE
+    completedFromStateIdx: 8,
   },
 ]
+
+// ---------------------------------------------------------------------------
+// Determine the active cycle step from recent jobs
+// ---------------------------------------------------------------------------
+
+/**
+ * During CYCLE_N, determine which iterative step is "currently active"
+ * by inspecting the most recent completed/running job.
+ *
+ * Logic:
+ *  - If a job is currently RUNNING or PENDING, that command is active.
+ *  - If the most recent COMPLETED job was `avg`, the next step is `alignRaw`.
+ *  - If the most recent COMPLETED job was `alignRaw`, the next step is `avg`.
+ *  - Default to `avg` (first step in the iteration) if no job history.
+ *
+ * Returns the step ID (from TUTORIAL_PIPELINE_STEPS) that should be "active".
+ */
+function getActiveCycleStepId(jobs: Job[]): string {
+  if (jobs.length === 0) return 'avg'
+
+  // Find the most recent job that is a cycle-relevant command
+  const cycleCommands = new Set(['avg', 'alignRaw', 'tomoCPR', 'pca', 'cluster'])
+
+  for (const job of jobs) {
+    const cmd = job.command
+    if (!cycleCommands.has(cmd)) continue
+
+    if (job.status === 'RUNNING' || job.status === 'PENDING') {
+      // Whichever command is currently running is the active step
+      return commandToStepId(cmd)
+    }
+
+    if (job.status === 'COMPLETED') {
+      // The most recently completed step tells us what's next
+      if (cmd === 'avg') return 'align'
+      if (cmd === 'alignRaw') return 'avg'
+      // For other completed commands, default to avg
+      return 'avg'
+    }
+  }
+
+  // Default: averaging is the first step in each cycle
+  return 'avg'
+}
+
+function commandToStepId(command: string): string {
+  switch (command) {
+    case 'avg': return 'avg'
+    case 'alignRaw': return 'align'
+    case 'tomoCPR': return 'tomocpr'
+    case 'pca':
+    case 'cluster': return 'classify'
+    default: return 'avg'
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Status badge config for jobs
@@ -255,10 +338,16 @@ function StatCard({ label, value, sub, accent = 'default' }: StatCardProps) {
 interface PipelineProgressStepperProps {
   /** Current workflow state string (e.g. "TILT_ALIGNED", "CYCLE_N") */
   currentState: string
+  /** Recent jobs, used to determine which iterative step is active during CYCLE_N */
+  recentJobs: Job[]
 }
 
-function PipelineProgressStepper({ currentState }: PipelineProgressStepperProps) {
+function PipelineProgressStepper({ currentState, recentJobs }: PipelineProgressStepperProps) {
   const currentIdx = stateIndex(currentState)
+  const isCycleN = currentIdx === stateIndex('CYCLE_N')
+
+  // During CYCLE_N, determine which specific iterative step is active
+  const activeCycleStepId = isCycleN ? getActiveCycleStepId(recentJobs) : null
 
   return (
     <div className="w-full">
@@ -270,10 +359,20 @@ function PipelineProgressStepper({ currentState }: PipelineProgressStepperProps)
         >
           {TUTORIAL_PIPELINE_STEPS.map((step, idx) => {
             const isCompleted = currentIdx >= step.completedFromStateIdx
-            const isActive =
-              !isCompleted &&
-              currentIdx >= step.activeFromStateIdx &&
-              (idx === 0 || currentIdx >= TUTORIAL_PIPELINE_STEPS[idx - 1].completedFromStateIdx - 1)
+
+            let isActive: boolean
+            if (step.cycleStep && isCycleN && !isCompleted) {
+              // During CYCLE_N, only the determined active cycle step is shown as active
+              isActive = step.id === activeCycleStepId
+            } else {
+              // For non-cycle steps, use the normal threshold logic
+              isActive =
+                !isCompleted &&
+                currentIdx >= step.activeFromStateIdx &&
+                (idx === 0 ||
+                  currentIdx >= TUTORIAL_PIPELINE_STEPS[idx - 1].activeFromStateIdx)
+            }
+
             const isLast = idx === TUTORIAL_PIPELINE_STEPS.length - 1
 
             return (
@@ -388,16 +487,23 @@ function PipelineProgressStepper({ currentState }: PipelineProgressStepperProps)
 
 interface RecentJobsSectionProps {
   projectId: string
+  onJobsLoaded?: (jobs: Job[]) => void
 }
 
-function RecentJobsSection({ projectId }: RecentJobsSectionProps) {
+function RecentJobsSection({ projectId, onJobsLoaded }: RecentJobsSectionProps) {
   const { data: allJobs, isLoading } = useApiQuery<Job[]>(
     ['overview-recent-jobs', projectId],
     `/api/v1/jobs?project_id=${projectId}`,
   )
 
-  // Take the 5 most recent jobs (API returns newest-first based on JobsPage behaviour)
   const recentJobs = allJobs ? allJobs.slice(0, 5) : []
+
+  // Notify parent of loaded jobs (for stepper)
+  useEffect(() => {
+    if (allJobs && onJobsLoaded) {
+      onJobsLoaded(allJobs)
+    }
+  }, [allJobs, onJobsLoaded])
 
   if (isLoading) {
     return (
@@ -480,6 +586,10 @@ function formatRelativeTime(iso: string): string {
 export function OverviewPage() {
   const { projectId } = useParams<{ projectId: string }>()
   const { activeProject } = useProject()
+  const { addProject } = useRecentProjects()
+
+  // Jobs state for stepper (populated by RecentJobsSection)
+  const [allJobs, setAllJobs] = useState<Job[]>([])
 
   const { data: project, isLoading: projectLoading } = useApiQuery<ProjectDetails>(
     ['project-details', projectId ?? ''],
@@ -487,9 +597,9 @@ export function OverviewPage() {
     { enabled: !!projectId },
   )
 
-  const { data: tiltsData, isLoading: tiltsLoading } = useApiQuery<TiltSeriesListResponse>(
-    ['project-tilt-series-count', projectId ?? ''],
-    `/api/v1/projects/${projectId ?? ''}/tilt-series`,
+  const { data: statistics, isLoading: statsLoading } = useApiQuery<ProjectStatistics>(
+    ['project-statistics', projectId ?? ''],
+    `/api/v1/projects/${projectId ?? ''}/statistics`,
     { enabled: !!projectId },
   )
 
@@ -499,12 +609,26 @@ export function OverviewPage() {
     { enabled: !!projectId },
   )
 
-  const isLoading = projectLoading || tiltsLoading
+  // Track this project in recent projects when it loads
+  useEffect(() => {
+    if (project && projectId) {
+      addProject({
+        id: projectId,
+        name: project.name,
+        directory: project.directory,
+      })
+    }
+  }, [project, projectId, addProject])
+
+  const isLoading = projectLoading || statsLoading
 
   const displayName = activeProject?.name ?? project?.name ?? projectId ?? '—'
   const state = workflowData?.state ?? activeProject?.state ?? project?.state ?? 'UNINITIALIZED'
   const cycle = project?.current_cycle
-  const tiltCount = tiltsData?.tilt_series.length
+
+  const tiltCount = statistics?.tilt_series_count
+  const particleCount = statistics?.particle_count
+  const resolution = statistics?.resolution_angstrom
 
   // State badge colour
   const stateBadgeClass =
@@ -574,13 +698,14 @@ export function OverviewPage() {
             />
             <StatCard
               label="Particles"
-              value="—"
-              sub="Available after picking"
+              value={particleCount !== null && particleCount !== undefined ? String(particleCount) : '—'}
+              sub={particleCount === null ? 'Available after picking' : undefined}
             />
             <StatCard
               label="Resolution"
-              value="—"
-              sub="Available after averaging"
+              value={resolution !== null && resolution !== undefined ? `${resolution} Å` : '—'}
+              sub={resolution === null ? 'Available after averaging' : undefined}
+              accent={resolution !== null && resolution !== undefined ? 'green' : 'default'}
             />
           </div>
 
@@ -601,7 +726,7 @@ export function OverviewPage() {
               </Link>
             </div>
             <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
-              <PipelineProgressStepper currentState={state} />
+              <PipelineProgressStepper currentState={state} recentJobs={allJobs} />
             </div>
           </section>
 
@@ -621,7 +746,12 @@ export function OverviewPage() {
                 View all →
               </Link>
             </div>
-            {projectId && <RecentJobsSection projectId={projectId} />}
+            {projectId && (
+              <RecentJobsSection
+                projectId={projectId}
+                onJobsLoaded={setAllJobs}
+              />
+            )}
           </section>
         </>
       )}

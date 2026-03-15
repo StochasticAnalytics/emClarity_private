@@ -1,13 +1,13 @@
 /**
- * Project manager page (landing page).
+ * Project manager page (landing page / welcome screen).
  *
  * Provides two workflows:
  *  1. Create New Project – form with name, directory, and microscope parameters;
  *     submits to POST /api/v1/projects then navigates to /project/:id/overview.
  *  2. Load Existing Project – enter a project ID to open its overview.
  *
- * Once a project is selected, all project-scoped pages are accessible via the
- * sidebar navigation at /project/:projectId/<section>.
+ * Also shows recent projects from localStorage (with Zod-validated entries).
+ * Stale entries (backend returns 404) are automatically removed.
  */
 import { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -15,6 +15,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { apiClient, ApiError } from '@/api/client.ts'
+import { useRecentProjects } from '@/hooks/useRecentProjects.ts'
 
 // ---------------------------------------------------------------------------
 // Types mirroring the backend response models
@@ -23,6 +24,7 @@ import { apiClient, ApiError } from '@/api/client.ts'
 interface ProjectResponse {
   id: string
   name: string
+  directory: string
   state: string
 }
 
@@ -57,7 +59,7 @@ const labelClass = 'block text-sm font-medium text-gray-700 dark:text-gray-300'
 // ---------------------------------------------------------------------------
 
 interface NewProjectFormProps {
-  onCreated: (projectId: string) => void
+  onCreated: (projectId: string, name: string, directory: string) => void
 }
 
 function NewProjectForm({ onCreated }: NewProjectFormProps) {
@@ -87,7 +89,7 @@ function NewProjectForm({ onCreated }: NewProjectFormProps) {
             AMPCONT: data.AMPCONT,
           },
         })
-        onCreated(response.id)
+        onCreated(response.id, data.name, data.directory)
       } catch (err) {
         if (err instanceof ApiError) {
           setSubmitError(`Failed to create project: ${err.message}`)
@@ -158,7 +160,6 @@ function NewProjectForm({ onCreated }: NewProjectFormProps) {
         </h3>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {/* PIXEL_SIZE */}
           <div>
             <label htmlFor="param-pixel-size" className={labelClass}>
               Pixel Size (m) <span className="text-red-500">*</span>
@@ -178,7 +179,6 @@ function NewProjectForm({ onCreated }: NewProjectFormProps) {
             )}
           </div>
 
-          {/* Cs */}
           <div>
             <label htmlFor="param-cs" className={labelClass}>
               Cs (m) <span className="text-red-500">*</span>
@@ -196,7 +196,6 @@ function NewProjectForm({ onCreated }: NewProjectFormProps) {
             )}
           </div>
 
-          {/* VOLTAGE */}
           <div>
             <label htmlFor="param-voltage" className={labelClass}>
               Voltage (V) <span className="text-red-500">*</span>
@@ -216,7 +215,6 @@ function NewProjectForm({ onCreated }: NewProjectFormProps) {
             )}
           </div>
 
-          {/* AMPCONT */}
           <div>
             <label htmlFor="param-ampcont" className={labelClass}>
               Amplitude Contrast <span className="text-red-500">*</span>
@@ -238,7 +236,6 @@ function NewProjectForm({ onCreated }: NewProjectFormProps) {
         </div>
       </section>
 
-      {/* Submission error */}
       {submitError && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20">
           <p className="text-sm text-red-600 dark:text-red-400">{submitError}</p>
@@ -261,7 +258,7 @@ function NewProjectForm({ onCreated }: NewProjectFormProps) {
 // ---------------------------------------------------------------------------
 
 interface LoadProjectPanelProps {
-  onLoaded: (projectId: string) => void
+  onLoaded: (projectId: string, name: string, directory: string) => void
 }
 
 function LoadProjectPanel({ onLoaded }: LoadProjectPanelProps) {
@@ -278,11 +275,11 @@ function LoadProjectPanel({ onLoaded }: LoadProjectPanelProps) {
     setError(null)
     setIsLoading(true)
     try {
-      await apiClient.get<ProjectResponse>(`/api/v1/projects/${trimmed}`)
-      onLoaded(trimmed)
+      const project = await apiClient.get<ProjectResponse>(`/api/v1/projects/${trimmed}`)
+      onLoaded(trimmed, project.name, project.directory)
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
-        setError('Project not found')
+        setError('Project not found. The project may have been deleted or the ID is incorrect.')
       } else {
         setError('Failed to load project. Check the ID and ensure the backend is running.')
       }
@@ -327,6 +324,100 @@ function LoadProjectPanel({ onLoaded }: LoadProjectPanelProps) {
 }
 
 // ---------------------------------------------------------------------------
+// RecentProjectsList
+// ---------------------------------------------------------------------------
+
+interface RecentProjectsListProps {
+  projects: { id: string; name: string; directory: string; lastAccessed: string }[]
+  onOpen: (projectId: string, name: string, directory: string) => void
+  onRemove: (projectId: string) => void
+}
+
+function RecentProjectsList({ projects, onOpen, onRemove }: RecentProjectsListProps) {
+  const [loadingId, setLoadingId] = useState<string | null>(null)
+  const [errorId, setErrorId] = useState<string | null>(null)
+
+  if (projects.length === 0) return null
+
+  const handleOpen = async (id: string, name: string, directory: string) => {
+    setLoadingId(id)
+    setErrorId(null)
+    try {
+      // Verify project still exists on backend before navigating
+      await apiClient.get<ProjectResponse>(`/api/v1/projects/${id}`)
+      onOpen(id, name, directory)
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) {
+        // Backend restarted or project was deleted — remove stale entry
+        onRemove(id)
+        setErrorId(id)
+      }
+    } finally {
+      setLoadingId(null)
+    }
+  }
+
+  function formatDate(iso: string): string {
+    try {
+      return new Date(iso).toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      })
+    } catch {
+      return iso
+    }
+  }
+
+  return (
+    <div>
+      <h3 className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+        Recent Projects
+      </h3>
+      <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white dark:divide-gray-700 dark:border-gray-700 dark:bg-gray-900">
+        {projects.map((p) => (
+          <li key={p.id} className="flex items-center justify-between gap-3 px-4 py-3">
+            <div className="min-w-0 flex-1">
+              <button
+                type="button"
+                onClick={() => {
+                  void handleOpen(p.id, p.name, p.directory)
+                }}
+                disabled={loadingId === p.id}
+                className="block truncate text-left text-sm font-medium text-blue-600 hover:underline disabled:opacity-60 dark:text-blue-400"
+              >
+                {loadingId === p.id ? 'Opening…' : p.name}
+              </button>
+              <span className="block truncate font-mono text-xs text-gray-400 dark:text-gray-500">
+                {p.directory}
+              </span>
+              {errorId === p.id && (
+                <span className="text-xs text-red-500">
+                  Project not found on server — entry removed
+                </span>
+              )}
+            </div>
+            <div className="shrink-0 text-right">
+              <span className="block text-xs text-gray-400 dark:text-gray-500">
+                {formatDate(p.lastAccessed)}
+              </span>
+              <button
+                type="button"
+                onClick={() => onRemove(p.id)}
+                className="mt-0.5 text-xs text-gray-300 hover:text-red-500 dark:text-gray-600 dark:hover:text-red-400"
+                aria-label={`Remove ${p.name} from recent projects`}
+              >
+                remove
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // ProjectPage – main exported component
 // ---------------------------------------------------------------------------
 
@@ -335,19 +426,22 @@ type View = 'home' | 'create'
 export function ProjectPage() {
   const [view, setView] = useState<View>('home')
   const navigate = useNavigate()
+  const { projects: recentProjects, addProject, removeProject } = useRecentProjects()
 
   const handleProjectCreated = useCallback(
-    (projectId: string) => {
+    (projectId: string, name: string, directory: string) => {
+      addProject({ id: projectId, name, directory })
       void navigate(`/project/${projectId}/overview`)
     },
-    [navigate],
+    [navigate, addProject],
   )
 
   const handleProjectLoaded = useCallback(
-    (projectId: string) => {
+    (projectId: string, name: string, directory: string) => {
+      addProject({ id: projectId, name, directory })
       void navigate(`/project/${projectId}/overview`)
     },
-    [navigate],
+    [navigate, addProject],
   )
 
   const handleBack = useCallback(() => {
@@ -375,16 +469,20 @@ export function ProjectPage() {
     )
   }
 
-  // Home view
+  // Home / welcome view
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-semibold">Project Manager</h2>
-        <p className="mt-2 text-gray-500 dark:text-gray-400">
-          Create or open an emClarity project to get started.
+    <div className="space-y-8">
+      {/* Branding header */}
+      <div className="text-center py-6">
+        <h1 className="text-4xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
+          emClarity
+        </h1>
+        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+          Sub-tomogram averaging for cryo-electron tomography · v1.5.3.10
         </p>
       </div>
 
+      {/* Action cards */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Create new project card */}
         <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
@@ -406,7 +504,7 @@ export function ProjectPage() {
         {/* Load existing project card */}
         <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
           <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">
-            Load Existing Project
+            Open Existing Project
           </h3>
           <p className="mt-1 mb-4 text-sm text-gray-500 dark:text-gray-400">
             Open a previously created project by its ID.
@@ -414,6 +512,13 @@ export function ProjectPage() {
           <LoadProjectPanel onLoaded={handleProjectLoaded} />
         </div>
       </div>
+
+      {/* Recent projects */}
+      <RecentProjectsList
+        projects={recentProjects}
+        onOpen={handleProjectLoaded}
+        onRemove={removeProject}
+      />
     </div>
   )
 }

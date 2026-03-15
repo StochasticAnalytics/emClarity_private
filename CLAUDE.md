@@ -164,6 +164,7 @@ When modifying code, maintain these protective measures. Never optimize for spee
 - **Never commit test data or temporary files** to the repository
 - **Always preserve original data** - Work on copies when testing
 - **Clean up temporary files** after completing tasks - Remove any test scripts or outputs created during development
+- **Do not commit to the main project repo while the autonomous-build orchestrator is running** — the orchestrator may revert or rebase your commits. Make external edits between tasks only. See `autonomous-build/QUICKSTART.md` for details.
 
 ### Error Handling Philosophy
 - **Fail fast and loudly** when results might be compromised
