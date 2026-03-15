@@ -56,7 +56,7 @@ export function Header() {
         {activeProject ? (
           <div className="flex items-center gap-2 truncate">
             <span
-              className="max-w-[160px] truncate text-sm font-medium text-gray-800 dark:text-gray-200 sm:max-w-xs"
+              className="max-w-[140px] truncate text-sm font-medium text-gray-800 dark:text-gray-200 sm:max-w-xs"
               title={activeProject.name}
             >
               {activeProject.name}
@@ -66,6 +66,14 @@ export function Header() {
             >
               {activeProject.state}
             </span>
+            {activeProject.current_cycle !== undefined && activeProject.current_cycle > 0 && (
+              <span
+                className="inline-flex shrink-0 items-center rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
+                title="Current refinement cycle"
+              >
+                Cycle {activeProject.current_cycle}
+              </span>
+            )}
           </div>
         ) : (
           <span className="text-xs text-gray-400 dark:text-gray-500">

@@ -17,6 +17,8 @@ export interface ActiveProject {
   id: string
   name: string
   state: string
+  /** Current iterative cycle number, or undefined before cycling begins. */
+  current_cycle?: number
 }
 
 export interface ProjectContextValue {

@@ -159,3 +159,30 @@ Developer: Completed TASK-020 [2026-03-14]
   - TypeScript compiles without errors; all 35 backend tests pass
   - Chrome verified: all 11 tabs render, accordion sections collapse/expand,
     expert toggle works, help panel shows tutorial content, run bar present
+
+Developer: Completed TASK-023 [2026-03-15]
+  - Created SettingsPage with two-panel layout (profile list + detail form)
+  - System params banner: nGPUs*, nCpuCores*, fastScratchDisk from Table 1
+  - Full profile CRUD with two-click delete confirmation
+  - useRunProfiles hook for localStorage persistence (emClarity_runProfiles)
+  - ActionsPage RunBar now reads real profiles from localStorage
+  - Default profiles: Local (1 GPU), Local (multi-GPU), Singularity container
+  - App.tsx: /settings → SettingsPage; /parameters → ParametersPage
+  - TypeScript clean; all 35 E2E + 36 backend tests pass
+
+Developer: Completed 2026-03-15
+  Task: TASK-024 - App shell polish + integration verification
+  - Header: added Cycle badge (indigo pill "Cycle N") shown when current_cycle > 0
+  - Header: extended ActiveProject type with optional current_cycle field
+  - ProjectLayout: propagates current_cycle from API response to context
+  - Sidebar: added collapsed/expanded toggle (ChevronLeft/Right button at bottom)
+    - Collapsed: 48px icon-only rail with title tooltips on each nav item
+    - Expanded: 224px icon + label rail (default state)
+    - Smooth CSS transition (duration-200) between states
+    - Abbreviated "eC" branding in collapsed mode
+  - TypeScript: compiles clean (npx tsc --noEmit exits 0)
+  - Backend tests: 36/36 pass (pytest backend/tests/ -v)
+  - E2E tests: 35/35 pass (pytest tests/ -v)
+  - Created COMPONENT_LOG.md documenting all Phase 0.1 components
+  - Chrome verification: all 7 sidebar pages load correctly
+  - Chrome verification: sidebar collapse/expand toggle works

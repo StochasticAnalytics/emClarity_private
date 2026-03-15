@@ -20,6 +20,7 @@ interface ProjectDetails {
   id: string
   name: string
   state: string
+  current_cycle?: number
 }
 
 // ---------------------------------------------------------------------------
@@ -40,7 +41,7 @@ export function ProjectLayout() {
       try {
         const data = await apiClient.get<ProjectDetails>(`/api/v1/projects/${id}`, signal)
         if (!signal.aborted) {
-          setActiveProject({ id: data.id, name: data.name, state: data.state })
+          setActiveProject({ id: data.id, name: data.name, state: data.state, current_cycle: data.current_cycle })
           setIsLoading(false)
         }
       } catch (err: unknown) {
