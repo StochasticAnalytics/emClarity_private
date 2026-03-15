@@ -65,6 +65,7 @@ function NavItem({ path, label, icon: Icon, projectId, collapsed }: NavItemProps
           collapsed ? 'justify-center p-2' : 'gap-3 px-3 py-2',
         ].join(' ')}
         title={collapsed ? label : 'Open a project to access this section'}
+        aria-label={collapsed ? label : undefined}
         aria-disabled="true"
       >
         <Icon className="h-4 w-4 shrink-0" aria-hidden />
@@ -77,6 +78,7 @@ function NavItem({ path, label, icon: Icon, projectId, collapsed }: NavItemProps
     <NavLink
       to={`/project/${projectId}/${path}`}
       title={collapsed ? label : undefined}
+      aria-label={collapsed ? label : undefined}
       className={({ isActive }) =>
         [
           'flex items-center rounded-md text-sm font-medium transition-colors',
@@ -145,7 +147,7 @@ export function Sidebar() {
 
       {/* Navigation items */}
       <nav
-        className={['flex-1 space-y-1 p-2', collapsed && 'flex flex-col items-center'].join(' ')}
+        className={['flex-1 space-y-1 p-2', collapsed && 'flex flex-col items-center'].filter(Boolean).join(' ')}
         aria-label="Main navigation"
       >
         {NAV_ITEMS.map(({ path, label, icon }) => (
@@ -170,7 +172,7 @@ export function Sidebar() {
         )}
 
         {/* Collapse / expand toggle */}
-        <div className={['p-2', !collapsed && 'flex justify-end'].join(' ')}>
+        <div className={['p-2', !collapsed && 'flex justify-end'].filter(Boolean).join(' ')}>
           <button
             type="button"
             onClick={() => setCollapsed((c) => !c)}
