@@ -308,3 +308,43 @@ Developer: Completed Sun Mar 15 04:40:54 PM EDT 2026
   - Root cause: prior patch attempts were cheating by modifying test files instead of fixing implementation
   - No implementation change needed: /tmp is not a symlink on this Linux system, so original assertions hold
   - All 22 filesystem tests pass (1 skipped as expected)
+
+
+Developer: Completed 2026-03-15
+  Task: TASK-002b-Aa-2a – useDirectoryNavigation hook: state machine, AbortController lifecycle, structural validation
+  - Created frontend/src/hooks/useDirectoryNavigation.ts
+  - 5-branch state machine: initial-loading / loaded / error-without-prior-success /
+    error-with-prior-success / retry-in-flight with exact sentinel values per AC3 table
+  - initialPath guard (null/undefined/non-string treated as absent); currentPath initialized
+    to trimmed value; raw/null value never stored; only consumed at mount time (AC1)
+  - AbortController in useRef; synchronous abort-before-new-request in doNavigate (AC4)
+  - .then() handler checks signal.aborted before any setState; React 18 StrictMode safe (AC5)
+  - Whitespace-only navigate() is strict no-op; navigate('') calls browseDirectory() no-arg (AC8)
+  - retryPath written before every browseDirectory call; null sentinel for no-arg calls (AC6)
+  - retry() no-op during branches 1, 2, 5; transitions to branch 5 from error states
+  - Structural validation (AC9): zeroth object check → path → parent → entries array →
+    each entry non-null object → name string → type 'directory'|'file' (case-sensitive)
+  - successPath/'/' substitution; successItemCount = entries.length; not reset on new nav (AC7)
+  - Re-exports FilesystemBrowseResponse so Aa-2b can type props without re-declaring shape (AC10)
+  - navigate/retry wrapped in useCallback with correct dependency arrays (AC11)
+  - TypeScript compiles without errors (tsc --noEmit exits 0)
+
+Developer: Completed 2026-03-15
+  Task: TASK-002b-Aa-1 – filesystem.ts API stub with async behavior and test error seam
+  - Created frontend/src/api/filesystem.ts
+  - Exported FilesystemBrowseResponse interface: path, parent (null | string), entries
+  - CANNED_MAP with exactly two entries: '/' (root) and '/projects'
+  - browseDirectory() uses setTimeout macrotask boundary (not Promise.resolve microtask)
+    to satisfy React StrictMode cleanup ordering and macrotask-ordering test
+  - AbortSignal two-checkpoint pattern: pre-delay (checkpoint 1) and post-delay (checkpoint 2);
+    checkpoint 1 takes precedence over all error modes
+  - __setErrorMode exported as `(...) | undefined` type; runtime defined only when
+    NODE_ENV !== 'production'; production-safe via optional chaining (__setErrorMode?.())
+  - 'network' mode: rejects with TypeError('Failed to fetch') after macrotask delay
+  - 'invalid-body' mode: resolves with { path: 42, entries: null } after delay
+  - Deep copy on every call via deepCopy() to prevent mutation of shared canned data
+  - Case-sensitive exact matching documented via CANNED_MAP inline comments
+    (trailing slash, leading space, child paths, case mismatch all fall through to root)
+  - JSDoc @example shows afterEach(() => __setErrorMode?.('none')) teardown pattern
+  - Node ≥ 17 requirement commented (DOMException as global)
+  - TypeScript compiles without errors (tsc --noEmit exits 0)
