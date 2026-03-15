@@ -238,20 +238,29 @@ def _detect_best_resolution(project_dir: Path) -> float | None:
                 fsc_val = float(parts[1])
             except ValueError:
                 continue
-            # freq must be a realistic reciprocal-space value (0 < freq ≤ 0.5 1/Å)
-            if freq <= 0 or freq > 0.5:
+            # freq must be a realistic reciprocal-space value (0 < freq ≤ 1.0 1/Å).
+            # The upper bound of 1.0 corresponds to ~1 Å resolution, which is the
+            # practical physical limit for cryo-EM; values beyond this indicate
+            # misinterpreted units or corrupt data.
+            if freq <= 0 or freq > 1.0:
                 continue
             if fsc_val >= 0.143:
                 resolution_freq = freq
 
-        if resolution_freq is not None and resolution_freq > 0:
+        if resolution_freq is not None:
             angstrom = 1.0 / resolution_freq
-            # Only accept resolutions in a physically meaningful cryo-EM range.
-            # Values outside 2–200 Å most likely indicate misinterpreted units
-            # (e.g. normalised vs. absolute frequencies) and are discarded.
-            if 2.0 <= angstrom <= 200.0:
+            # Accept physically meaningful cryo-EM resolutions up to 200 Å.
+            # No lower bound: sub-2 Å results are valid for high-resolution structures.
+            if angstrom <= 200.0:
                 if best_angstrom is None or angstrom < best_angstrom:
                     best_angstrom = angstrom
+            else:
+                log.warning(
+                    "Discarding implausible resolution %.2f Å from %s "
+                    "(exceeds 200 Å upper bound; likely a unit mismatch).",
+                    angstrom,
+                    fsc_file,
+                )
 
     return round(best_angstrom, 2) if best_angstrom is not None else None
 
