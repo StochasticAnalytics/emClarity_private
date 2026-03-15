@@ -15,7 +15,7 @@ import { useState, useCallback, useEffect } from 'react'
 import { useParams, Navigate } from 'react-router-dom'
 import { apiClient, ApiError } from '@/api/client.ts'
 import { useApiQuery } from '@/hooks/useApi.ts'
-import { DEMO_PROJECT_ID } from '@/components/layout/ProjectLayout'
+import { DEMO_PROJECT_ID } from '@/constants'
 
 // ---------------------------------------------------------------------------
 // Types

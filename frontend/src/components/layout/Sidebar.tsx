@@ -16,7 +16,7 @@
  */
 import { useState, useRef } from 'react'
 import { NavLink, useMatch, useLocation, Link } from 'react-router-dom'
-import { DEMO_PROJECT_ID } from './ProjectLayout'
+import { DEMO_PROJECT_ID } from '@/constants'
 import {
   LayoutDashboard,
   Database,
@@ -80,10 +80,10 @@ function NavItem({ path, label, icon: Icon, projectId, collapsed }: NavItemProps
           return
         }
         // Deduplicate rapid double-clicks to the same target before React
-        // re-renders (50 ms window covers typical double-click timing without
-        // suppressing a legitimate second navigation shortly after the first).
+        // re-renders (300 ms window covers OS double-click timing up to the
+        // typical maximum configured interval, including accessibility settings).
         const now = Date.now()
-        if (lastNavRef.current?.path === targetPath && now - lastNavRef.current.time < 50) {
+        if (lastNavRef.current?.path === targetPath && now - lastNavRef.current.time < 300) {
           e.preventDefault()
           return
         }

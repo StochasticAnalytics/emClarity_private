@@ -16,7 +16,7 @@
  */
 import { useState, useCallback, useMemo } from 'react'
 import { useParams, Navigate } from 'react-router-dom'
-import { DEMO_PROJECT_ID } from '@/components/layout/ProjectLayout'
+import { DEMO_PROJECT_ID } from '@/constants'
 import {
   useReactTable,
   getCoreRowModel,

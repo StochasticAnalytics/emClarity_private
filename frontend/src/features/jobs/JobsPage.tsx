@@ -14,7 +14,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { apiClient, ApiError } from '@/api/client.ts'
-import { DEMO_PROJECT_ID } from '@/components/layout/ProjectLayout'
+import { DEMO_PROJECT_ID } from '@/constants'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -402,15 +402,39 @@ interface JobTableProps {
 }
 
 function JobTable({ jobs, selectedJobId, onSelectJob }: JobTableProps) {
+  // Roving tabIndex state: tracks which row owns tabIndex=0.
+  // Defaults to the first row when no row has been explicitly focused.
+  const [focusedJobId, setFocusedJobId] = useState<string | null>(null)
+  const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map())
+
+  const focusRow = useCallback(
+    (jobId: string) => {
+      setFocusedJobId(jobId)
+      rowRefs.current.get(jobId)?.focus()
+    },
+    [],
+  )
+
   return (
     <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-      <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+      {/*
+       * role="grid" is correct here: the table has selectable, keyboard-navigable
+       * rows (ARIA grid interaction model). Each <tr> carries aria-selected, which
+       * is valid on role="row" within a grid context (WAI-ARIA 1.2 §6.6.4).
+       * Arrow-key navigation is implemented below to satisfy WCAG 2.1.1.
+       */}
+      <table
+        role="grid"
+        aria-label="Jobs"
+        className="min-w-full divide-y divide-gray-200 dark:divide-gray-700"
+      >
         <thead className="bg-gray-50 dark:bg-gray-800">
-          <tr>
+          <tr role="row">
             {['Command', 'Status', 'Start Time', 'Duration', 'Project'].map((col) => (
               <th
                 key={col}
                 scope="col"
+                role="columnheader"
                 className={
                   'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ' +
                   'text-gray-500 dark:text-gray-400'
@@ -423,46 +447,66 @@ function JobTable({ jobs, selectedJobId, onSelectJob }: JobTableProps) {
         </thead>
 
         <tbody className="divide-y divide-gray-100 dark:divide-gray-800 bg-white dark:bg-gray-900">
-          {jobs.map((job) => {
+          {jobs.map((job, index) => {
             const isSelected = job.id === selectedJobId
+            // Roving tabIndex: the focused row (or first row by default) gets tabIndex=0;
+            // all others get -1 so Tab exits the grid rather than cycling through rows.
+            const isTabStop =
+              job.id === (focusedJobId ?? jobs[0]?.id)
+
             return (
               <tr
                 key={job.id}
+                role="row"
+                ref={(el) => {
+                  if (el) rowRefs.current.set(job.id, el)
+                  else rowRefs.current.delete(job.id)
+                }}
                 className={[
                   'cursor-pointer transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500',
                   isSelected
                     ? 'bg-blue-50 dark:bg-blue-900/20'
                     : 'hover:bg-gray-50 dark:hover:bg-gray-800/50',
                 ].join(' ')}
                 onClick={() => onSelectJob(job)}
+                onFocus={() => setFocusedJobId(job.id)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault()
+                    const nextJob = jobs[index + 1]
+                    if (nextJob) focusRow(nextJob.id)
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault()
+                    const prevJob = jobs[index - 1]
+                    if (prevJob) focusRow(prevJob.id)
+                  } else if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault()
                     onSelectJob(job)
                   }
                 }}
-                tabIndex={0}
+                tabIndex={isTabStop ? 0 : -1}
                 aria-selected={isSelected}
               >
                 {/* Command */}
-                <td className="px-4 py-3 whitespace-nowrap">
+                <td role="gridcell" className="px-4 py-3 whitespace-nowrap">
                   <span className="font-mono text-sm font-medium text-gray-900 dark:text-gray-100">
                     {job.command}
                   </span>
                 </td>
 
                 {/* Status */}
-                <td className="px-4 py-3 whitespace-nowrap">
+                <td role="gridcell" className="px-4 py-3 whitespace-nowrap">
                   <StatusBadge status={job.status} />
                 </td>
 
                 {/* Start time */}
-                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
+                <td role="gridcell" className="px-4 py-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
                   {formatDateTime(job.created_at)}
                 </td>
 
                 {/* Duration */}
-                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
+                <td role="gridcell" className="px-4 py-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
                   {computeDuration(
                     job.created_at,
                     job.status === 'RUNNING' ? null : job.updated_at,
@@ -470,7 +514,7 @@ function JobTable({ jobs, selectedJobId, onSelectJob }: JobTableProps) {
                 </td>
 
                 {/* Project ID (shortened) */}
-                <td className="px-4 py-3 whitespace-nowrap">
+                <td role="gridcell" className="px-4 py-3 whitespace-nowrap">
                   <span
                     className="text-xs font-mono text-gray-500 dark:text-gray-500"
                     title={job.project_id}
@@ -498,14 +542,21 @@ export function JobsPage() {
   const isDemo = projectId === DEMO_PROJECT_ID
 
   const [jobs, setJobs] = useState<JobV1[]>([])
-  const [isLoading, setIsLoading] = useState(!isDemo)
+  // Lazy initializer ensures the correct loading state on first paint regardless
+  // of how the component is mounted (demo vs. real project URL).
+  const [isLoading, setIsLoading] = useState(() => projectId !== DEMO_PROJECT_ID)
   const [fetchError, setFetchError] = useState<string | null>(null)
 
-  // useState(!isDemo) only captures the initial render value, so when navigating
-  // from /project/demo/jobs to a real project's jobs page the loading indicator
-  // is never shown.  Reset it whenever the project changes.
+  // Reset all per-project state atomically when the project changes, covering
+  // both directions: demo → real (show spinner) and real → demo (clear spinner).
   useEffect(() => {
-    if (!isDemo) {
+    if (isDemo) {
+      // Switching to demo: no fetch will run, so clear any loading/error state
+      // that was left over from the previous real project.
+      setIsLoading(false)
+      setJobs([])
+      setFetchError(null)
+    } else {
       setIsLoading(true)
     }
   }, [projectId, isDemo])

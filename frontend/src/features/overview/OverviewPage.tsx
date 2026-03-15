@@ -17,7 +17,7 @@ import { useParams, Link } from 'react-router-dom'
 import { useProject } from '@/context/ProjectContext.tsx'
 import { useApiQuery } from '@/hooks/useApi.ts'
 import { useRecentProjects } from '@/hooks/useRecentProjects.ts'
-import { DEMO_PROJECT_ID } from '@/components/layout/ProjectLayout'
+import { DEMO_PROJECT_ID } from '@/constants'
 
 // ---------------------------------------------------------------------------
 // Types

@@ -17,7 +17,7 @@
 
 import { useState, useMemo, useCallback } from 'react'
 import { useParams, Navigate, useNavigate } from 'react-router-dom'
-import { DEMO_PROJECT_ID } from '@/components/layout/ProjectLayout'
+import { DEMO_PROJECT_ID } from '@/constants'
 import { ChevronDown, ChevronRight, Settings2, Play, BookOpen, Info, ExternalLink } from 'lucide-react'
 import rawSchema from '@/data/parameter-schema.json'
 import type { ParameterDefinition } from '@/types/parameters'
@@ -1121,16 +1121,28 @@ function RunBar({ command, onRun, isRunning, runMessage }: RunBarProps) {
         )}
       </div>
 
-      <button
-        type="button"
-        onClick={onRun}
-        disabled={isRunning || isDemo}
-        title={isDemo ? 'Commands cannot be run in demo mode' : undefined}
-        className="flex items-center gap-2 rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-blue-500 dark:hover:bg-blue-600 transition-colors"
-      >
-        <Play className="h-3.5 w-3.5" aria-hidden="true" />
-        {isRunning ? 'Starting…' : `Start: ${command}`}
-      </button>
+      {/*
+       * Browsers do not show `title` tooltips on disabled buttons because
+       * pointer events are suppressed on the button itself. Wrapping the button
+       * in a <span> restores hover events so the tooltip is visible in demo mode.
+       */}
+      <span title={isDemo ? 'Commands cannot be run in demo mode' : undefined}>
+        <button
+          type="button"
+          onClick={onRun}
+          disabled={isRunning || isDemo}
+          aria-describedby={isDemo ? 'run-demo-tooltip' : undefined}
+          className="flex items-center gap-2 rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-blue-500 dark:hover:bg-blue-600 transition-colors"
+        >
+          <Play className="h-3.5 w-3.5" aria-hidden="true" />
+          {isRunning ? 'Starting…' : `Start: ${command}`}
+        </button>
+        {isDemo && (
+          <span id="run-demo-tooltip" className="sr-only">
+            Commands cannot be run in demo mode
+          </span>
+        )}
+      </span>
     </div>
   )
 }
@@ -1267,7 +1279,6 @@ function ActionTabContent({
 
 export function ActionsPage() {
   const { projectId } = useParams<{ projectId: string }>()
-  const isDemo = projectId === DEMO_PROJECT_ID
 
   // Active tab
   const [activeTabId, setActiveTabId] = useState<string>(ACTION_TABS[0].id)
