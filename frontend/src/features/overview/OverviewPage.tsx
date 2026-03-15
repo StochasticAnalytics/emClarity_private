@@ -124,7 +124,7 @@ const TUTORIAL_PIPELINE_STEPS: ReadonlyArray<PipelineStep> = [
     id: 'sub-regions',
     label: 'Select Sub-regions',
     subtitle: 'segment',
-    commands: ['ctf 3d'],
+    commands: ['segment'],
     activeFromStateIdx: 2,
     completedFromStateIdx: 3,
   },
@@ -704,7 +704,7 @@ export function OverviewPage() {
             <StatCard
               label="Resolution"
               value={resolution !== null && resolution !== undefined ? `${resolution} Å` : '—'}
-              sub={resolution === null ? 'Available after averaging' : undefined}
+              sub={statistics !== undefined && resolution === null ? 'Available after averaging' : undefined}
               accent={resolution !== null && resolution !== undefined ? 'green' : 'default'}
             />
           </div>
