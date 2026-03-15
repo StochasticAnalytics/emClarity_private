@@ -222,9 +222,6 @@ export function useDirectoryNavigation(
             return;
           }
 
-          // AC5: final abort guard before committing success state.
-          if (signal.aborted) return;
-
           const newSuccessPath = response.path === '' ? '/' : response.path;
           const newSuccessItemCount = response.entries.length;
 
