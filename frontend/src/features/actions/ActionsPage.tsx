@@ -1198,7 +1198,7 @@ function RunBar({ command, onRun, isRunning, runMessage }: RunBarProps) {
                 : 'sr-only'
             }
           >
-            {demoBlocked ? 'Commands cannot be run in demo mode' : ''}
+            Commands cannot be run in demo mode
           </span>
         )}
       </span>
