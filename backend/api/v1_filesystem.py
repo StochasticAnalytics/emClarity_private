@@ -28,7 +28,9 @@ from __future__ import annotations
 
 import logging
 import os
+import stat
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -50,7 +52,7 @@ class FilesystemEntry(BaseModel):
     """A single directory entry returned by the browse endpoint."""
 
     name: str
-    type: str  # always "directory"
+    type: Literal["directory"]
     path: str
 
 
@@ -151,22 +153,28 @@ def browse_filesystem(
     real_path = _validate_browse_path(path)
 
     # --- Existence check -----------------------------------------------------------
+    # Use os.stat() rather than Path.exists() because Path.exists() swallows
+    # PermissionError (returns False) on Python 3.10+, which would incorrectly
+    # produce a 404 instead of a 403 when the caller lacks permission to stat the
+    # path (e.g. a non-traversable parent directory).
     try:
-        path_exists = real_path.exists()
+        path_stat = real_path.stat()
     except PermissionError:
         raise HTTPException(
             status_code=403,
             detail=f"Permission denied accessing: {real_path}",
         )
-
-    if not path_exists:
+    except OSError:
+        # Covers FileNotFoundError, NotADirectoryError, and other stat failures.
         raise HTTPException(
             status_code=404,
             detail=f"Path not found: {real_path}",
         )
 
     # --- Must be a directory -------------------------------------------------------
-    if not real_path.is_dir():
+    # Reuse the stat result so there is no additional syscall and no risk of an
+    # unguarded PermissionError from a separate Path.is_dir() call.
+    if not stat.S_ISDIR(path_stat.st_mode):
         raise HTTPException(
             status_code=400,
             detail=f"Path is not a directory: {real_path}",
