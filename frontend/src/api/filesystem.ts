@@ -51,7 +51,7 @@ const CANNED_MAP: Readonly<Record<string, FilesystemBrowseResponse>> = {
       { name: 'readme.txt', type: 'file' },
     ],
   },
-} as const;
+};
 
 /** Sentinel key for the root / fallback response. */
 const ROOT_KEY = '/';
@@ -103,7 +103,7 @@ export async function browseDirectory(
   // ── Checkpoint 1: pre-delay abort check ──────────────────────────────────
   // AbortSignal checkpoint 1 takes precedence over error mode.
   if (signal?.aborted === true) {
-    return Promise.reject(new DOMException('The operation was aborted.', 'AbortError'));
+    throw new DOMException('The operation was aborted.', 'AbortError');
   }
 
   // ── Macrotask boundary ────────────────────────────────────────────────────
@@ -116,7 +116,7 @@ export async function browseDirectory(
   // ── Checkpoint 2: post-delay abort check ─────────────────────────────────
   // Also takes precedence over 'invalid-body' error mode.
   if (signal?.aborted === true) {
-    return Promise.reject(new DOMException('The operation was aborted.', 'AbortError'));
+    throw new DOMException('The operation was aborted.', 'AbortError');
   }
 
   // ── Error-mode handling (non-production test seam) ────────────────────────
@@ -130,7 +130,9 @@ export async function browseDirectory(
 
   // ── Normal path ───────────────────────────────────────────────────────────
   const key = path === undefined || path === '' ? ROOT_KEY : path;
-  const canned = CANNED_MAP[key] ?? CANNED_MAP[ROOT_KEY];
+  // CANNED_MAP[ROOT_KEY] is always present by construction; the non-null
+  // assertion silences the noUncheckedIndexedAccess widening to `| undefined`.
+  const canned = CANNED_MAP[key] ?? (CANNED_MAP[ROOT_KEY] as FilesystemBrowseResponse);
   return deepCopy(canned);
 }
 
