@@ -1127,12 +1127,19 @@ function RunBar({ command, onRun, isRunning, runMessage }: RunBarProps) {
        * in a <span> restores hover events so the tooltip is visible in demo mode.
        */}
       <span title={isDemo ? 'Commands cannot be run in demo mode' : undefined}>
+        {/*
+         * `aria-disabled` keeps the button in the tab order so keyboard users
+         * can Tab onto it and hear the `aria-describedby` explanation. Native
+         * `disabled` removes it from tab order entirely, making the description
+         * unreachable (WCAG 2.1.1, 4.1.2). The click handler is a no-op when
+         * aria-disabled is true.
+         */}
         <button
           type="button"
-          onClick={onRun}
-          disabled={isRunning || isDemo}
+          onClick={isRunning || isDemo ? undefined : onRun}
+          aria-disabled={isRunning || isDemo}
           aria-describedby={isDemo ? 'run-demo-tooltip' : undefined}
-          className="flex items-center gap-2 rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-blue-500 dark:hover:bg-blue-600 transition-colors"
+          className="flex items-center gap-2 rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 aria-disabled:cursor-not-allowed aria-disabled:opacity-60 dark:bg-blue-500 dark:hover:bg-blue-600 transition-colors"
         >
           <Play className="h-3.5 w-3.5" aria-hidden="true" />
           {isRunning ? 'Starting…' : `Start: ${command}`}
@@ -1359,7 +1366,8 @@ export function ActionsPage() {
           const tabEls = Array.from(
             e.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]'),
           )
-          const currentIndex = tabEls.indexOf(document.activeElement as HTMLElement)
+          // Compare by identity — avoids unsafe cast of document.activeElement
+          const currentIndex = tabEls.findIndex((el) => el === document.activeElement)
           if (currentIndex === -1) return
 
           let newIndex = currentIndex
@@ -1376,7 +1384,9 @@ export function ActionsPage() {
           }
           e.preventDefault()
           tabEls[newIndex].focus()
-          tabEls[newIndex].click()
+          // Update state directly instead of dispatching a DOM click event,
+          // which would bubble and could trigger unintended side effects.
+          setActiveTabId(ACTION_TABS[newIndex].id)
         }}
       >
         {ACTION_TABS.map((tab) => {

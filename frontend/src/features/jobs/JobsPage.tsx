@@ -407,6 +407,16 @@ function JobTable({ jobs, selectedJobId, onSelectJob }: JobTableProps) {
   const [focusedJobId, setFocusedJobId] = useState<string | null>(null)
   const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map())
 
+  // Reset focused job when it is no longer present in the list (e.g., removed
+  // after auto-refresh). Without this, focusedJobId stays non-null, the
+  // `?? jobs[0]?.id` fallback never fires, and every row gets tabIndex=-1,
+  // making the grid keyboard-unreachable.
+  useEffect(() => {
+    if (focusedJobId !== null && !jobs.some((j) => j.id === focusedJobId)) {
+      setFocusedJobId(null)
+    }
+  }, [jobs, focusedJobId])
+
   const focusRow = useCallback(
     (jobId: string) => {
       setFocusedJobId(jobId)

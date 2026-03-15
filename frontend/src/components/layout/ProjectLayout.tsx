@@ -28,7 +28,8 @@ interface ProjectDetails {
 // ---------------------------------------------------------------------------
 
 /** Sentinel used when no real project is selected — allows demo navigation. */
-export { DEMO_PROJECT_ID } from '@/constants'
+import { DEMO_PROJECT_ID } from '@/constants'
+export { DEMO_PROJECT_ID }
 
 export function ProjectLayout() {
   const { projectId } = useParams<{ projectId: string }>()
