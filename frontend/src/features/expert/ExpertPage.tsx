@@ -18,21 +18,13 @@ import { useState, useMemo } from 'react'
 import { ChevronDown, ChevronRight, FlaskConical, Info } from 'lucide-react'
 import rawSchema from '@/data/parameter-schema.json'
 import { CLAIMED_PARAMS } from '@/data/parameterRegistry'
+import type { ParameterDefinition } from '@/types/parameters'
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-interface SchemaParam {
-  name: string
-  type: 'numeric' | 'string' | 'boolean' | 'numeric_array'
-  required: boolean
-  default: number | string | boolean | number[] | null
-  range: [number, number] | null
-  description: string
-  category: string
-  deprecated_name?: string | null
-}
+type SchemaParam = ParameterDefinition
 
 // ---------------------------------------------------------------------------
 // Category metadata
@@ -168,7 +160,10 @@ function ParameterField({ param, value, onChange }: ParameterFieldProps) {
         {param.type === 'boolean' ? (
           <select
             id={id}
-            value={value !== '' ? value : (param.default !== null ? String(param.default) : '0')}
+            value={(() => {
+              const raw = value !== '' ? value : String(param.default ?? false)
+              return (raw === 'true' || raw === '1') ? '1' : '0'
+            })()}
             onChange={(e) => onChange(param.name, e.target.value)}
             className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1 text-xs text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
