@@ -33,8 +33,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.main import app
-
 
 # ---------------------------------------------------------------------------
 # Default-path behaviour (no param / empty / whitespace)

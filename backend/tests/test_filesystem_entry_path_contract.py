@@ -48,7 +48,7 @@ class TestEntryPathContract:
         assert entry["path"] == expected_entry_path, (
             f"Entry path {entry['path']!r} is inconsistent with "
             f"response.path {data['path']!r}. "
-            "Expected: {expected_entry_path!r}"
+            f"Expected: {expected_entry_path!r}"
         )
 
     def test_symlink_target_entry_paths_use_real_path(
