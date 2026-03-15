@@ -186,3 +186,27 @@ Developer: Completed 2026-03-15
   - Created COMPONENT_LOG.md documenting all Phase 0.1 components
   - Chrome verification: all 7 sidebar pages load correctly
   - Chrome verification: sidebar collapse/expand toggle works
+
+Developer: Completed 2026-03-15 (TASK-001/PATCH intervention)
+  - ProjectLayout.tsx: fixed DEMO_PROJECT_ID re-export (export{X}from'Y' creates no local binding)
+    → changed to import+re-export so identifier is locally bound; fixes TS2304 + runtime ReferenceError
+  - JobsPage.tsx/JobTable: added useEffect to reset stale focusedJobId when focused job is removed
+    by auto-refresh, restoring the fallback jobs[0]?.id tab stop (WCAG 2.1.1)
+  - ActionsPage.tsx: replaced disabled with aria-disabled on Run button (keeps button in tab order),
+    replaced unsafe type cast with findIndex identity comparison, replaced .click() dispatch
+    with direct setActiveTabId() state mutation
+  - tsc: clean, all 71 tests pass
+
+Developer: Verified 2026-03-15 (TASK-001/PATCH QA Leader intervention — consolidated directive)
+  Task: TASK-001 — Enable sidebar navigation without project (oscillation intervention)
+  Verified all 5 Round-5 defects are resolved in a single atomic patch:
+  1. ProjectLayout.tsx: DEMO_PROJECT_ID now has a local binding (import + export);
+     TS2304 eliminated; isDemoMode guard correctly fires on /project/demo/* routes
+  2. JobTable: stale focusedJobId cleared by useEffect when job absent from refreshed
+     list — tab stop falls back to jobs[0]?.id, WCAG 2.1.1 keyboard access maintained
+  3. RunBar: aria-disabled used instead of native disabled; button stays in tab order
+     so screen reader can reach aria-describedby="run-demo-tooltip" explanation
+  4. ActionsPage tab keyDown: document.activeElement compared by identity (===), no cast
+  5. ActionsPage tab keyDown: calls setActiveTabId() directly, not tabEls[n].click()
+  Validation: tsc --noEmit → 0 errors; pytest backend/ → 36/36; pytest tests/ → 35/35
+
