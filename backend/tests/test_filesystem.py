@@ -36,12 +36,6 @@ from fastapi.testclient import TestClient
 from backend.main import app
 
 
-@pytest.fixture()
-def client() -> TestClient:
-    """Return a TestClient bound to the FastAPI app."""
-    return TestClient(app)
-
-
 # ---------------------------------------------------------------------------
 # Default-path behaviour (no param / empty / whitespace)
 # ---------------------------------------------------------------------------
@@ -78,8 +72,9 @@ class TestValidPaths:
         response = client.get("/api/v1/filesystem/browse?path=/tmp")
         assert response.status_code == 200
         data = response.json()
-        assert data["path"] == "/tmp"
-        assert data["parent"] == "/"
+        real_tmp = os.path.realpath("/tmp")
+        assert data["path"] == real_tmp
+        assert data["parent"] == str(Path(real_tmp).parent)
         assert isinstance(data["entries"], list)
         for entry in data["entries"]:
             assert "name" in entry
@@ -165,7 +160,8 @@ class TestValidPaths:
         r_slash = client.get("/api/v1/filesystem/browse?path=/tmp/")
         assert r_plain.status_code == 200
         assert r_slash.status_code == 200
-        assert r_plain.json()["path"] == r_slash.json()["path"] == "/tmp"
+        real_tmp = os.path.realpath("/tmp")
+        assert r_plain.json()["path"] == r_slash.json()["path"] == real_tmp
 
     def test_symlink_path_resolves_to_real(
         self, client: TestClient, tmp_path: Path
@@ -300,12 +296,10 @@ class TestErrorConditions:
         # (what Python uses for undecodable filesystem bytes via surrogateescape).
         bad_entry = MagicMock()
         bad_entry.is_dir.return_value = True
-        bad_entry.is_symlink.return_value = False
         bad_entry.name = "bad\udcffname"  # surrogate → encode('utf-8') raises
 
         good_entry = MagicMock()
         good_entry.is_dir.return_value = True
-        good_entry.is_symlink.return_value = False
         good_entry.name = "valid_dir"
 
         mock_cm = MagicMock()

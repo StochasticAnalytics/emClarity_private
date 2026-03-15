@@ -90,8 +90,9 @@ def _validate_browse_path(path: str | None) -> Path:
 
     path = path.strip()
 
-    # 2. Length guard (Linux PATH_MAX = 4096 bytes; approximate with len())
-    if len(path) > _PATH_MAX:
+    # 2. Length guard (Linux PATH_MAX = 4096 bytes; measure in UTF-8 bytes, not
+    #    Unicode code points, so multi-byte characters are counted correctly).
+    if len(path.encode("utf-8")) > _PATH_MAX:
         raise HTTPException(
             status_code=400,
             detail=f"Path too long: maximum length is {_PATH_MAX} characters",
@@ -228,5 +229,13 @@ def browse_filesystem(
             status_code=404,
             detail=f"Path not found (removed during listing): {real_path}",
         )
+    except OSError as exc:
+        # Catch remaining OS-level errors (e.g. EIO, ENAMETOOLONG from the
+        # kernel) so they never bubble up as an unhandled 500.
+        log.warning("OS error scanning directory %s: %s", real_path, exc)
+        raise HTTPException(
+            status_code=500,
+            detail=f"I/O error reading directory: {real_path}",
+        ) from exc
 
     return BrowseResponse(path=path_str, parent=parent, entries=entries)
