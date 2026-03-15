@@ -12,6 +12,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useParams } from 'react-router-dom'
 import { apiClient, ApiError } from '@/api/client.ts'
 
 // ---------------------------------------------------------------------------
@@ -485,8 +486,11 @@ function JobTable({ jobs, selectedJobId, onSelectJob }: JobTableProps) {
 const REFRESH_INTERVAL_MS = 5000
 
 export function JobsPage() {
+  const { projectId } = useParams<{ projectId: string }>()
+  const isDemo = projectId === 'demo'
+
   const [jobs, setJobs] = useState<JobV1[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(!isDemo)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [selectedJob, setSelectedJob] = useState<JobV1 | null>(null)
   const [isCancelling, setIsCancelling] = useState(false)
@@ -500,6 +504,9 @@ export function JobsPage() {
   // ---------------------------------------------------------------------------
 
   const fetchJobs = useCallback(async () => {
+    // Skip all API calls when browsing in demo mode (no real project loaded)
+    if (isDemo) return
+
     try {
       const data = await apiClient.get<JobV1[]>('/api/v1/jobs')
       setJobs(data)
@@ -520,18 +527,19 @@ export function JobsPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [isDemo])
 
   // Initial load
   useEffect(() => {
     void fetchJobs()
   }, [fetchJobs])
 
-  // Auto-refresh every 5 seconds
+  // Auto-refresh every 5 seconds — stops when an error is present or in demo mode
   useEffect(() => {
+    if (isDemo || fetchError !== null) return
     const interval = setInterval(() => void fetchJobs(), REFRESH_INTERVAL_MS)
     return () => clearInterval(interval)
-  }, [fetchJobs])
+  }, [isDemo, fetchError, fetchJobs])
 
   // ---------------------------------------------------------------------------
   // Cancel job

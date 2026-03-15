@@ -15,7 +15,7 @@
  *   Overview · Assets · Actions · Results · Settings · Jobs · Expert
  */
 import { useState } from 'react'
-import { NavLink, useMatch, Link } from 'react-router-dom'
+import { NavLink, useMatch, useLocation, Link } from 'react-router-dom'
 import {
   LayoutDashboard,
   Database,
@@ -58,12 +58,21 @@ function NavItem({ path, label, icon: Icon, projectId, collapsed }: NavItemProps
   // Use 'demo' as a sentinel project ID when no real project is loaded,
   // so all nav items are always navigable.
   const effectiveProjectId = projectId ?? 'demo'
+  const targetPath = `/project/${effectiveProjectId}/${path}`
+  const location = useLocation()
 
   return (
     <NavLink
-      to={`/project/${effectiveProjectId}/${path}`}
+      to={targetPath}
       title={collapsed ? label : undefined}
       aria-label={collapsed ? label : undefined}
+      onClick={(e) => {
+        // Prevent pushing a duplicate history entry when already on this page
+        // (e.g. double-click), which would require two Back presses to leave.
+        if (location.pathname === targetPath) {
+          e.preventDefault()
+        }
+      }}
       className={({ isActive }) =>
         [
           'flex items-center rounded-md text-sm font-medium transition-colors',
