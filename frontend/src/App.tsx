@@ -3,7 +3,7 @@ import { MainLayout } from '@/components/layout/MainLayout.tsx'
 import { ProjectLayout } from '@/components/layout/ProjectLayout.tsx'
 import { ProjectPage } from '@/features/project/ProjectPage.tsx'
 import { OverviewPage } from '@/features/overview/OverviewPage.tsx'
-import { TiltSeriesPage } from '@/features/tilt-series/TiltSeriesPage.tsx'
+import { AssetsPage } from '@/features/assets/AssetsPage.tsx'
 import { WorkflowPage } from '@/features/workflow/WorkflowPage.tsx'
 import { ResultsPage } from '@/features/results/ResultsPage.tsx'
 import { ParametersPage } from '@/features/parameters/ParametersPage.tsx'
@@ -21,7 +21,7 @@ function App() {
         <Route path="/project/:projectId" element={<ProjectLayout />}>
           <Route index element={<Navigate to="overview" replace />} />
           <Route path="overview" element={<OverviewPage />} />
-          <Route path="assets" element={<TiltSeriesPage />} />
+          <Route path="assets" element={<AssetsPage />} />
           <Route path="actions" element={<WorkflowPage />} />
           <Route path="results" element={<ResultsPage />} />
           <Route path="settings" element={<ParametersPage />} />

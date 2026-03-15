@@ -261,7 +261,8 @@ function commandToStepId(command: string): string {
     case 'cluster': return 'classify'
     // Post-cycle step
     case 'reconstruct': return 'final'
-    default: return 'avg'
+    default:
+      throw new Error(`commandToStepId: unrecognised command "${command}"`)
   }
 }
 
