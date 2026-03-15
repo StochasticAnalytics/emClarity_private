@@ -60,9 +60,10 @@ function validateResponse(response: unknown): response is FilesystemBrowseRespon
     }
     const e = entry as Record<string, unknown>;
 
-    // name: must be a string (null is rejected, undefined key is rejected)
+    // name: must be a string (null, undefined, and non-strings are all rejected
+    // by the typeof check alone; no separate null guard is needed)
     const name: unknown = e['name'];
-    if (name === null || typeof name !== 'string') {
+    if (typeof name !== 'string') {
       return false;
     }
 
@@ -83,7 +84,11 @@ function validateResponse(response: unknown): response is FilesystemBrowseRespon
 export interface UseDirectoryNavigationReturn {
   /** The path currently being shown (updated on successful navigation). */
   currentPath: string;
-  /** True only during the initial mount-time request (branch 1). */
+  /**
+   * True while any non-retry navigation request is in-flight.  This includes
+   * the initial mount-time request (branch 1) and every subsequent navigate()
+   * call, regardless of whether lastGoodData is already populated.
+   */
   isLoading: boolean;
   /** True only while a Retry request is in-flight (branch 5). */
   retryInFlight: boolean;
@@ -135,6 +140,15 @@ export function useDirectoryNavigation(
   // invocation's cleanup, guaranteeing a fresh controller on re-mount.
   const currentAbortControllerRef = useRef<AbortController | null>(null);
 
+  // Mirror the three guard values used by retry() as refs so that retry's
+  // useCallback dependency array can remain [doNavigate] — a stable reference.
+  // Without this, retry would need isLoading/retryInFlight/errorMessage in its
+  // deps, causing a new function reference on every navigation state transition
+  // and violating AC11's keyboard-listener-stability guarantee.
+  const isLoadingRef = useRef<boolean>(true);
+  const retryInFlightRef = useRef<boolean>(false);
+  const errorMessageRef = useRef<string | null>(null);
+
   // retryPath is written before every browseDirectory call (AC6):
   //   null  → the call was made with no argument (mirrors empty/absent path)
   //   string → the trimmed path argument passed to the call
@@ -167,10 +181,14 @@ export function useDirectoryNavigation(
       // ── Synchronous state transition ─────────────────────────────────────
       if (isRetry) {
         // Branch 5: retryInFlight=true, isLoading stays false, error preserved.
+        retryInFlightRef.current = true;
         setRetryInFlight(true);
         // errorMessage, lastGoodData, successPath, successItemCount: unchanged
       } else {
         // Branch 1 (or fresh re-navigation): isLoading=true, clear error.
+        isLoadingRef.current = true;
+        retryInFlightRef.current = false;
+        errorMessageRef.current = null;
         setIsLoading(true);
         setRetryInFlight(false);
         setErrorMessage(null);
@@ -191,11 +209,13 @@ export function useDirectoryNavigation(
 
           // AC9: structural validation — invalid body → error state.
           if (!validateResponse(response)) {
-            if (signal.aborted) return; // second check after synchronous work
+            errorMessageRef.current = ERROR_MESSAGE;
             setErrorMessage(ERROR_MESSAGE);
             if (isRetry) {
+              retryInFlightRef.current = false;
               setRetryInFlight(false);
             } else {
+              isLoadingRef.current = false;
               setIsLoading(false);
             }
             // lastGoodData/successPath/successItemCount preserved (AC6/AC7)
@@ -209,14 +229,17 @@ export function useDirectoryNavigation(
           const newSuccessItemCount = response.entries.length;
 
           // Commit all success state in one synchronous block (React batches these).
+          errorMessageRef.current = null;
           setCurrentPath(response.path);
           setLastGoodData(response);
           setErrorMessage(null);
           setSuccessPath(newSuccessPath);
           setSuccessItemCount(newSuccessItemCount);
           if (isRetry) {
+            retryInFlightRef.current = false;
             setRetryInFlight(false);
           } else {
+            isLoadingRef.current = false;
             setIsLoading(false);
           }
         },
@@ -228,10 +251,13 @@ export function useDirectoryNavigation(
           if (signal.aborted) return;
 
           // Navigation failure: set error, preserve lastGoodData (AC6).
+          errorMessageRef.current = ERROR_MESSAGE;
           setErrorMessage(ERROR_MESSAGE);
           if (isRetry) {
+            retryInFlightRef.current = false;
             setRetryInFlight(false);
           } else {
+            isLoadingRef.current = false;
             setIsLoading(false);
           }
           // lastGoodData, successPath, successItemCount: not cleared (AC6/AC7)
@@ -275,12 +301,15 @@ export function useDirectoryNavigation(
   );
 
   // ── retry callback ────────────────────────────────────────────────────────
+  // Reads guard values from refs (not state) so this callback's reference stays
+  // stable across navigation state transitions — satisfying AC11.  The refs are
+  // kept in sync with the corresponding state inside doNavigate.
   const retry = useCallback((): void => {
     // No-op when not in error state (AC6):
-    //   - branch 1: isLoading is true
-    //   - branch 2: errorMessage is null
-    //   - branch 5: retryInFlight is true
-    if (isLoading || retryInFlight || errorMessage === null) return;
+    //   - branch 1: isLoadingRef is true
+    //   - branch 2: errorMessageRef is null
+    //   - branch 5: retryInFlightRef is true
+    if (isLoadingRef.current || retryInFlightRef.current || errorMessageRef.current === null) return;
 
     const storedRetryPath = retryPathRef.current;
 
@@ -288,7 +317,7 @@ export function useDirectoryNavigation(
     if (storedRetryPath !== null && storedRetryPath.trim() === '') return;
 
     doNavigate(storedRetryPath, true);
-  }, [isLoading, retryInFlight, errorMessage, doNavigate]);
+  }, [doNavigate]);
 
   // ── Return value ──────────────────────────────────────────────────────────
   return {
