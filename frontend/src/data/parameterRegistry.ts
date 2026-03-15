@@ -6,8 +6,11 @@
  * The Expert panel (/project/:id/expert) shows the UNCLAIMED remainder –
  * schema params not referenced by any tutorial table.
  *
- * Maintenance: keep this file in sync with ActionsPage.tsx whenever Action
- * tab parameter lists are updated.
+ * Sync enforcement: PARAMS_BY_TAB is typed as Record<ActionTabId, ...>.
+ * TypeScript will flag a compile error if PARAMS_BY_TAB is missing a tab ID
+ * or uses an ID not in ACTION_TAB_IDS.  ActionsPage.tsx imports ActionTabId
+ * and uses it for ActionTabDef.id, so both directions are enforced at compile
+ * time — no drift is possible without a build failure.
  *
  * A parameter is also considered claimed if its canonical schema name has a
  * deprecated_name alias that is explicitly claimed by an action tab.
@@ -15,11 +18,43 @@
  */
 
 // ---------------------------------------------------------------------------
+// Canonical tab ID registry — single source of truth for all Action tab IDs
+// ---------------------------------------------------------------------------
+
+/**
+ * Ordered list of Action tab IDs matching the ACTION_TABS array in
+ * ActionsPage.tsx.  Add new tab IDs here first; TypeScript then requires
+ * a matching entry in PARAMS_BY_TAB and forces ActionsPage to use a valid ID.
+ */
+export const ACTION_TAB_IDS = [
+  'autoAlign',
+  'ctfEstimate',
+  'selectSubregions',
+  'templateSearch',
+  'init',
+  'ctf3d',
+  'avg',
+  'alignRaw',
+  'tomoCPR',
+  'classification',
+  'finalRecon',
+] as const
+
+/** Union type of all valid Action tab IDs. */
+export type ActionTabId = (typeof ACTION_TAB_IDS)[number]
+
+// ---------------------------------------------------------------------------
 // Per-tab claimed sets (sourced from ActionsPage ACTION_TABS definitions)
 // ---------------------------------------------------------------------------
 
-/** Maps Action tab ID → set of parameter names it claims. */
-export const PARAMS_BY_TAB: Readonly<Record<string, ReadonlySet<string>>> = {
+/**
+ * Maps Action tab ID → set of parameter names it claims.
+ *
+ * Typed as Record<ActionTabId, ...> so TypeScript enforces that every tab in
+ * ACTION_TAB_IDS has a corresponding entry — missing or extra keys are build
+ * errors, not silent runtime gaps.
+ */
+export const PARAMS_BY_TAB: Readonly<Record<ActionTabId, ReadonlySet<string>>> = {
   // Section 5, Table 3
   autoAlign: new Set([
     'PIXEL_SIZE',

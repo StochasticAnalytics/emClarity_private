@@ -16,23 +16,24 @@
  */
 
 import { useState, useMemo, useCallback } from 'react'
-import { useParams, Navigate } from 'react-router-dom'
-import { ChevronDown, ChevronRight, Settings2, Play, BookOpen, Info } from 'lucide-react'
+import { useParams, Navigate, useNavigate } from 'react-router-dom'
+import { ChevronDown, ChevronRight, Settings2, Play, BookOpen, Info, ExternalLink } from 'lucide-react'
 import rawSchema from '@/data/parameter-schema.json'
+import type { ParameterDefinition } from '@/types/parameters'
+import type { ActionTabId } from '@/data/parameterRegistry'
+import { useRunProfiles } from '@/hooks/useRunProfiles'
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-interface SchemaParam {
-  name: string
-  type: 'numeric' | 'string' | 'boolean'
-  required: boolean
-  default: number | string | boolean | null
-  range: [number, number] | null
-  description: string
-  category: string
-}
+/**
+ * Alias to the canonical parameter definition from types/parameters.ts.
+ * Using the canonical type eliminates the duplicate SchemaParam interface
+ * that previously diverged from ExpertPage's definition (missing numeric_array
+ * and deprecated_name).
+ */
+type SchemaParam = ParameterDefinition
 
 /** A parameter entry within a tab's accordion section. */
 interface TabParamDef {
@@ -49,7 +50,8 @@ interface TabParamDef {
 
 /** Full definition of one action tab. */
 interface ActionTabDef {
-  id: string
+  /** Must match an entry in ACTION_TAB_IDS — enforced at compile time. */
+  id: ActionTabId
   label: string
   shortLabel: string
   tutorialSection: number
@@ -312,55 +314,11 @@ const PARAM_FALLBACKS: Record<string, FallbackParam> = {
 // Schema lookup helpers
 // ---------------------------------------------------------------------------
 
-type RawSchemaEntry = {
-  name: string
-  type: string
-  required: boolean
-  default: number | string | boolean | null
-  range: [number, number] | null
-  description: string
-  category: string
-}
-
-const schemaMap = useMemo
-  ? (() => {
-    // Build at module level (not inside a hook)
-    const m = new Map<string, SchemaParam>()
-    for (const raw of (rawSchema as { parameters: RawSchemaEntry[] }).parameters) {
-      m.set(raw.name, {
-        name: raw.name,
-        type: (raw.type === 'numeric' || raw.type === 'string' || raw.type === 'boolean')
-          ? raw.type
-          : 'string',
-        required: raw.required,
-        default: raw.default,
-        range: raw.range,
-        description: raw.description ?? '',
-        category: raw.category ?? 'general',
-      })
-    }
-    return m
-  })()
-  : new Map<string, SchemaParam>()
-
-// Build schema lookup at module level
-const SCHEMA_MAP = (() => {
-  const m = new Map<string, SchemaParam>()
-  for (const raw of (rawSchema as { parameters: RawSchemaEntry[] }).parameters) {
-    m.set(raw.name, {
-      name: raw.name,
-      type: (raw.type === 'numeric' || raw.type === 'string' || raw.type === 'boolean')
-        ? raw.type as 'numeric' | 'string' | 'boolean'
-        : 'string',
-      required: raw.required,
-      default: raw.default,
-      range: raw.range,
-      description: raw.description ?? '',
-      category: raw.category ?? 'general',
-    })
-  }
-  return m
-})()
+// Build schema lookup at module level — cast the static JSON directly to the
+// canonical ParameterDefinition type (same shape as the backend schema response).
+const SCHEMA_MAP = new Map<string, SchemaParam>(
+  (rawSchema as { parameters: SchemaParam[] }).parameters.map((p) => [p.name, p]),
+)
 
 function resolveParam(name: string): SchemaParam {
   if (SCHEMA_MAP.has(name)) {
@@ -374,8 +332,11 @@ function resolveParam(name: string): SchemaParam {
       required: false,
       default: fb.default,
       range: fb.range ?? null,
+      n_elements: null,
+      allowed_values: null,
+      deprecated_name: null,
       description: fb.description,
-      category: 'general',
+      category: 'metadata',
     }
   }
   // Minimal fallback
@@ -385,8 +346,11 @@ function resolveParam(name: string): SchemaParam {
     required: false,
     default: null,
     range: null,
+    n_elements: null,
+    allowed_values: null,
+    deprecated_name: null,
     description: `Parameter: ${name}`,
-    category: 'general',
+    category: 'metadata',
   }
 }
 
@@ -1109,10 +1073,10 @@ interface RunBarProps {
   runMessage: string | null
 }
 
-const RUN_PROFILES = ['Local (1 GPU)', 'Local (multi-GPU)', 'Cluster (SLURM)', 'Dry run'] as const
-
 function RunBar({ command, onRun, isRunning, runMessage }: RunBarProps) {
-  const [profile, setProfile] = useState<string>(RUN_PROFILES[0])
+  const { profiles, selectedId, select } = useRunProfiles()
+  const navigate = useNavigate()
+  const { projectId } = useParams<{ projectId: string }>()
 
   return (
     <div className="flex items-center gap-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3">
@@ -1125,14 +1089,28 @@ function RunBar({ command, onRun, isRunning, runMessage }: RunBarProps) {
         </label>
         <select
           id="run-profile"
-          value={profile}
-          onChange={(e) => setProfile(e.target.value)}
+          value={selectedId}
+          onChange={(e) => select(e.target.value)}
           className="rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1 text-xs text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          disabled={profiles.length === 0}
         >
-          {RUN_PROFILES.map((p) => (
-            <option key={p} value={p}>{p}</option>
-          ))}
+          {profiles.length === 0 ? (
+            <option value="">No profiles — create one in Settings</option>
+          ) : (
+            profiles.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))
+          )}
         </select>
+        <button
+          type="button"
+          title="Manage run profiles in Settings"
+          onClick={() => navigate(`/project/${projectId}/settings`)}
+          className="rounded p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+          aria-label="Open Settings to manage run profiles"
+        >
+          <ExternalLink className="h-3 w-3" aria-hidden="true" />
+        </button>
       </div>
 
       <div className="flex-1 min-w-0">

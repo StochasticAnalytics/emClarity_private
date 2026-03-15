@@ -8,6 +8,7 @@ import { WorkflowPage } from '@/features/workflow/WorkflowPage.tsx'
 import { ActionsPage } from '@/features/actions/ActionsPage.tsx'
 import { ResultsPage } from '@/features/results/ResultsPage.tsx'
 import { ParametersPage } from '@/features/parameters/ParametersPage.tsx'
+import { SettingsPage } from '@/features/settings/SettingsPage.tsx'
 import { JobsPage } from '@/features/jobs/JobsPage.tsx'
 import { ExpertPage } from '@/features/expert/ExpertPage.tsx'
 
@@ -26,7 +27,8 @@ function App() {
           <Route path="actions" element={<ActionsPage />} />
           <Route path="workflow" element={<WorkflowPage />} />
           <Route path="results" element={<ResultsPage />} />
-          <Route path="settings" element={<ParametersPage />} />
+          <Route path="settings" element={<SettingsPage />} />
+          <Route path="parameters" element={<ParametersPage />} />
           <Route path="jobs" element={<JobsPage />} />
           <Route path="expert" element={<ExpertPage />} />
         </Route>
