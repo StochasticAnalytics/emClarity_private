@@ -13,10 +13,8 @@ file closes that gap without modifying the original test file.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
-import pytest
 from fastapi.testclient import TestClient
 
 

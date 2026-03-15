@@ -128,7 +128,7 @@ def _validate_browse_path(path: str | None) -> _BrowsePath:
     if len(path.encode("utf-8")) >= _PATH_MAX:
         raise HTTPException(
             status_code=400,
-            detail=f"Path too long: maximum length is {_PATH_MAX} bytes",
+            detail=f"Path too long: maximum length is {_PATH_MAX - 1} bytes",
         )
 
     # 3. Null byte guard
