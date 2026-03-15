@@ -558,6 +558,12 @@ export function JobsPage() {
   const [fetchError, setFetchError] = useState<string | null>(null)
 
   const [selectedJob, setSelectedJob] = useState<JobV1 | null>(null)
+  const [isCancelling, setIsCancelling] = useState(false)
+  const [notification, setNotification] = useState<{
+    type: 'success' | 'error'
+    message: string
+  } | null>(null)
+  const notificationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Reset all per-project state atomically when the project changes, covering
   // both directions: demo → real (show spinner) and real → demo (clear spinner).
@@ -573,12 +579,6 @@ export function JobsPage() {
       setIsLoading(true)
     }
   }, [projectId, isDemo])
-  const [isCancelling, setIsCancelling] = useState(false)
-  const [notification, setNotification] = useState<{
-    type: 'success' | 'error'
-    message: string
-  } | null>(null)
-  const notificationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Cancel notification timer on unmount to avoid state updates on unmounted component
   useEffect(() => {

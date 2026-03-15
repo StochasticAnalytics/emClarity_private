@@ -15,7 +15,7 @@
  * Manual fallbacks cover tutorial params absent from the schema.
  */
 
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { useParams, Navigate, useNavigate } from 'react-router-dom'
 import { DEMO_PROJECT_ID } from '@/constants'
 import { ChevronDown, ChevronRight, Settings2, Play, BookOpen, Info, ExternalLink } from 'lucide-react'
@@ -1080,6 +1080,23 @@ function RunBar({ command, onRun, isRunning, runMessage }: RunBarProps) {
   const { projectId } = useParams<{ projectId: string }>()
   const isDemo = projectId === DEMO_PROJECT_ID
 
+  // Brief visible feedback when a keyboard user activates the button while in demo mode.
+  // Without this, pressing Enter produces a completely silent no-op for sighted keyboard users.
+  const [demoBlocked, setDemoBlocked] = useState(false)
+  const demoBlockedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (demoBlockedTimerRef.current !== null) clearTimeout(demoBlockedTimerRef.current)
+    }
+  }, [])
+
+  const showDemoBlocked = useCallback(() => {
+    if (demoBlockedTimerRef.current !== null) clearTimeout(demoBlockedTimerRef.current)
+    setDemoBlocked(true)
+    demoBlockedTimerRef.current = setTimeout(() => setDemoBlocked(false), 1500)
+  }, [])
+
   return (
     <div className="flex items-center gap-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3">
       <div className="flex items-center gap-2">
@@ -1125,28 +1142,62 @@ function RunBar({ command, onRun, isRunning, runMessage }: RunBarProps) {
        * Browsers do not show `title` tooltips on disabled buttons because
        * pointer events are suppressed on the button itself. Wrapping the button
        * in a <span> restores hover events so the tooltip is visible in demo mode.
+       * The span is also `relative` so the keyboard-activated tooltip can be
+       * absolutely positioned without shifting surrounding layout.
        */}
-      <span title={isDemo ? 'Commands cannot be run in demo mode' : undefined}>
+      <span
+        title={isDemo ? 'Commands cannot be run in demo mode' : undefined}
+        className="relative"
+      >
         {/*
          * `aria-disabled` keeps the button in the tab order so keyboard users
          * can Tab onto it and hear the `aria-describedby` explanation. Native
          * `disabled` removes it from tab order entirely, making the description
          * unreachable (WCAG 2.1.1, 4.1.2). The click handler is a no-op when
          * aria-disabled is true.
+         *
+         * Hover styles are suppressed when the button is inert (isRunning or
+         * isDemo) to avoid the contradictory "cursor=stop, color=go" signal.
+         *
+         * Keyboard users who press Enter/Space in demo mode receive a brief
+         * visible tooltip via showDemoBlocked() — identical information to what
+         * mouse users see on hover — satisfying WCAG 2.1.1 for sighted
+         * keyboard-only users.
          */}
         <button
           type="button"
           onClick={isRunning || isDemo ? undefined : onRun}
+          onKeyDown={(e) => {
+            if ((e.key === 'Enter' || e.key === ' ') && isDemo) {
+              e.preventDefault()
+              showDemoBlocked()
+            }
+          }}
           aria-disabled={isRunning || isDemo}
           aria-describedby={isDemo ? 'run-demo-tooltip' : undefined}
-          title={isDemo ? 'Commands cannot be run in demo mode' : undefined}
-          className="flex items-center gap-2 rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 aria-disabled:cursor-not-allowed aria-disabled:opacity-60 dark:bg-blue-500 dark:hover:bg-blue-600 transition-colors"
+          className={[
+            'flex items-center gap-2 rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white shadow-sm',
+            isRunning || isDemo
+              ? 'cursor-not-allowed opacity-60'
+              : 'hover:bg-blue-700 dark:hover:bg-blue-600',
+            'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2',
+            'dark:bg-blue-500 transition-colors',
+          ].join(' ')}
         >
           <Play className="h-3.5 w-3.5" aria-hidden="true" />
           {isRunning ? 'Starting…' : `Start: ${command}`}
         </button>
         {isDemo && (
-          <span id="run-demo-tooltip" className="sr-only">
+          <span
+            id="run-demo-tooltip"
+            role="tooltip"
+            aria-live="polite"
+            className={
+              demoBlocked
+                ? 'absolute right-0 top-full z-10 mt-1 whitespace-nowrap rounded bg-gray-800 px-2 py-1 text-xs text-white shadow-lg dark:bg-gray-700'
+                : 'sr-only'
+            }
+          >
             Commands cannot be run in demo mode
           </span>
         )}
