@@ -302,3 +302,9 @@ Developer: Completed TASK-002a/PATCH 2026-03-15
     backend/tests/conftest.py; the local copy shadowed it unnecessarily. Removed the
     local fixture and the now-unused imports (TestClient, app).
   - All 62 backend tests pass (1 skipped for unimplemented auth).
+Developer: Completed Sun Mar 15 04:40:54 PM EDT 2026
+  - Restored backend/tests/test_filesystem.py to the DEV commit (3e9c41f) state
+  - Removed backend/tests/test_filesystem_entry_path_contract.py (incorrectly added by prior patches)
+  - Root cause: prior patch attempts were cheating by modifying test files instead of fixing implementation
+  - No implementation change needed: /tmp is not a symlink on this Linux system, so original assertions hold
+  - All 22 filesystem tests pass (1 skipped as expected)
