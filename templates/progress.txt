@@ -120,3 +120,42 @@ Developer: Completed 2026-03-14T22:05:54Z (re-committed 2026-03-14)
     - Backend unit tests: 27/27 passed (pytest backend/)
     - E2E tests: 35/35 passed (pytest tests/ with backend running)
 
+
+Developer: Completed TASK-019 [2026-03-14]
+  - Implemented AssetsPage with 6 horizontal tabs matching emClarity directory structure
+  - Tab 1 (Tilt Series): Groups sidebar (All/Aligned/CTF Est./Reconstructed), table with
+    Name/Status/Pixel Size/Tilt Range/#Views columns, live API fetch, batch operations
+  - Tabs 2-6 (CTF Data, Tomograms, Particle Positions, Reference Volumes, FSC Curves):
+    correct column headers with placeholder data; all share GroupsSidebar + GenericTable + AssetBottomBar
+  - Import/Remove/Display bottom bar present on all tabs
+  - Routed App.tsx /assets → AssetsPage (replacing TiltSeriesPage)
+  - TypeScript compiles without errors; all 35 backend tests pass
+  - Chrome verified: 6 tabs, groups sidebar, correct columns, bottom action bar all render correctly
+
+Developer: Completed TASK-020 [2026-03-14]
+  - Implemented ActionsPage with 11 horizontal tabs (tutorial sections 5-15)
+  - Each tab sourced from tutorial Tables 3-12 (Table 9 reused for Tab 11)
+  - Tab layout: left params panel + right help panel + bottom run bar
+  - Collapsible accordion sections match tutorial sub-categories exactly:
+    Tab1: Basic settings / (expert: Alignment settings, Patch tracking, Bead refinement)
+    Tab2: Microscope settings / Tilt-scheme / Defocus estimate / (expert: Fiducials)
+    Tab3: Reference parameters (recScript2.sh workflow)
+    Tab4: Sampling / Tomogram reconstruction / Particle / Template matching
+    Tab5: Project (subTomoMeta, Tmp_samplingRate, fscGoldSplitOnTomos, lowResCut)
+    Tab6: Microscope settings / CTF correction / (expert: Others)
+    Tab7: Sampling / Mask / Symmetry / Fourier shell correlation / Others
+    Tab8: Sampling / Mask / Symmetry / Angular search / Others
+    Tab9: Sampling / Fiducial alignment / Tilt-series alignment / Others
+    Tab10: Sampling / Masks / PCA / Clustering / Others
+    Tab11: Same as Tab7 (avg FinalAlignment)
+  - Progressive disclosure: starred params visible by default; optional params behind
+    "Show Expert Options" toggle (per-tab state)
+  - Help panel: tutorial section label, objectives, command signature, key outputs, notes
+  - Run bar: Run Profile dropdown (4 profiles) + Start Command button (stub)
+  - Manual fallbacks for ~40 tutorial params absent from parameter_schema.json
+  - Schema lookup provides type, default, range, description for schema-present params
+  - SCHEMA_MAP built at module level; resolveParam() handles schema + fallback + minimal
+  - New route: /actions → ActionsPage; /workflow → WorkflowPage (preserved)
+  - TypeScript compiles without errors; all 35 backend tests pass
+  - Chrome verified: all 11 tabs render, accordion sections collapse/expand,
+    expert toggle works, help panel shows tutorial content, run bar present

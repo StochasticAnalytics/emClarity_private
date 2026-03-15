@@ -5,6 +5,7 @@ import { ProjectPage } from '@/features/project/ProjectPage.tsx'
 import { OverviewPage } from '@/features/overview/OverviewPage.tsx'
 import { AssetsPage } from '@/features/assets/AssetsPage.tsx'
 import { WorkflowPage } from '@/features/workflow/WorkflowPage.tsx'
+import { ActionsPage } from '@/features/actions/ActionsPage.tsx'
 import { ResultsPage } from '@/features/results/ResultsPage.tsx'
 import { ParametersPage } from '@/features/parameters/ParametersPage.tsx'
 import { JobsPage } from '@/features/jobs/JobsPage.tsx'
@@ -22,7 +23,8 @@ function App() {
           <Route index element={<Navigate to="overview" replace />} />
           <Route path="overview" element={<OverviewPage />} />
           <Route path="assets" element={<AssetsPage />} />
-          <Route path="actions" element={<WorkflowPage />} />
+          <Route path="actions" element={<ActionsPage />} />
+          <Route path="workflow" element={<WorkflowPage />} />
           <Route path="results" element={<ResultsPage />} />
           <Route path="settings" element={<ParametersPage />} />
           <Route path="jobs" element={<JobsPage />} />
