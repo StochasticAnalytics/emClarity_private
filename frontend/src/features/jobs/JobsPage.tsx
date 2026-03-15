@@ -435,6 +435,13 @@ function JobTable({ jobs, selectedJobId, onSelectJob }: JobTableProps) {
                     : 'hover:bg-gray-50 dark:hover:bg-gray-800/50',
                 ].join(' ')}
                 onClick={() => onSelectJob(job)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    onSelectJob(job)
+                  }
+                }}
+                tabIndex={0}
                 aria-selected={isSelected}
               >
                 {/* Command */}
