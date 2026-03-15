@@ -1124,7 +1124,7 @@ function RunBar({ command, onRun, isRunning, runMessage }: RunBarProps) {
         <button
           type="button"
           title="Manage run profiles in Settings"
-          onClick={() => projectId != null && navigate(`/project/${projectId}/settings`)}
+          onClick={() => projectId !== null && navigate(`/project/${projectId}/settings`)}
           className="rounded p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
           aria-label="Open Settings to manage run profiles"
         >
@@ -1198,7 +1198,7 @@ function RunBar({ command, onRun, isRunning, runMessage }: RunBarProps) {
                 : 'sr-only'
             }
           >
-            Commands cannot be run in demo mode
+            {demoBlocked ? 'Commands cannot be run in demo mode' : ''}
           </span>
         )}
       </span>

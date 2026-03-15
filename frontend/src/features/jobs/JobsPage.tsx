@@ -490,6 +490,14 @@ function JobTable({ jobs, selectedJobId, onSelectJob }: JobTableProps) {
                     e.preventDefault()
                     const prevJob = jobs[index - 1]
                     if (prevJob) focusRow(prevJob.id)
+                  } else if (e.key === 'Home') {
+                    e.preventDefault()
+                    const firstJob = jobs[0]
+                    if (firstJob) focusRow(firstJob.id)
+                  } else if (e.key === 'End') {
+                    e.preventDefault()
+                    const lastJob = jobs[jobs.length - 1]
+                    if (lastJob) focusRow(lastJob.id)
                   } else if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault()
                     onSelectJob(job)
@@ -624,12 +632,14 @@ export function JobsPage() {
     void fetchJobs()
   }, [fetchJobs])
 
-  // Auto-refresh every 5 seconds — stops when an error is present or in demo mode
+  // Auto-refresh every 5 seconds — stops when an error is present or in demo mode.
+  // `isDemo` is omitted from deps: fetchJobs already captures it via its own useCallback
+  // deps, so any change to isDemo produces a new fetchJobs reference and re-runs this effect.
   useEffect(() => {
     if (isDemo || fetchError !== null) return
     const interval = setInterval(() => void fetchJobs(), REFRESH_INTERVAL_MS)
     return () => clearInterval(interval)
-  }, [isDemo, fetchError, fetchJobs])
+  }, [fetchError, fetchJobs])
 
   // ---------------------------------------------------------------------------
   // Cancel job
@@ -664,6 +674,12 @@ export function JobsPage() {
   // Render
   // ---------------------------------------------------------------------------
 
+  // Mask any leftover isLoading=true state synchronously when in demo mode so
+  // navigating from a real-project Jobs page to /project/demo never shows a
+  // one-frame spinner (the async reset effect would clear it on the next tick,
+  // but this derivation makes the correction instantaneous).
+  const effectiveIsLoading = isLoading && !isDemo
+
   return (
     <div className="space-y-6">
       {/* Page header */}
@@ -678,7 +694,7 @@ export function JobsPage() {
 
         {/* Manual refresh + job count */}
         <div className="flex items-center gap-3">
-          {!isLoading && !fetchError && (
+          {!effectiveIsLoading && !fetchError && (
             <span className="text-sm text-gray-500 dark:text-gray-400">
               {jobs.length} {jobs.length === 1 ? 'job' : 'jobs'}
             </span>
@@ -686,7 +702,7 @@ export function JobsPage() {
           <button
             type="button"
             onClick={() => void fetchJobs()}
-            disabled={isLoading || isDemo}
+            disabled={effectiveIsLoading || isDemo}
             aria-label="Refresh job list"
             className={
               'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium ' +
@@ -698,7 +714,7 @@ export function JobsPage() {
             }
           >
             <svg
-              className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`}
+              className={`w-4 h-4 ${effectiveIsLoading ? 'animate-spin' : ''}`}
               viewBox="0 0 20 20"
               fill="currentColor"
               aria-hidden="true"
@@ -770,7 +786,7 @@ export function JobsPage() {
       )}
 
       {/* Loading spinner */}
-      {isLoading && (
+      {effectiveIsLoading && (
         <div className="flex items-center justify-center py-16">
           <svg
             className="w-6 h-6 animate-spin text-blue-500"
@@ -797,23 +813,16 @@ export function JobsPage() {
       )}
 
       {/* Content: table or empty state */}
-      {!isLoading && !fetchError && (
-        <>
-          {/* Synchronous guard prevents stale job rows from rendering for one frame
-              when navigating to demo mode before the reset effect fires. */}
-          {(() => {
-            const displayedJobs = isDemo ? [] : jobs
-            return displayedJobs.length === 0 ? (
-              <EmptyState />
-            ) : (
-              <JobTable
-                jobs={displayedJobs}
-                selectedJobId={selectedJob?.id ?? null}
-                onSelectJob={setSelectedJob}
-              />
-            )
-          })()}
-        </>
+      {!effectiveIsLoading && !fetchError && (
+        isDemo || jobs.length === 0 ? (
+          <EmptyState />
+        ) : (
+          <JobTable
+            jobs={jobs}
+            selectedJobId={selectedJob?.id ?? null}
+            onSelectJob={setSelectedJob}
+          />
+        )
       )}
 
       {/* Log viewer panel – shown when a job is selected */}
