@@ -284,7 +284,14 @@ function LoadProjectPanel({ onLoaded }: LoadProjectPanelProps) {
       if (err instanceof ApiError && err.status === 404) {
         setError('Directory not found. Check that the path exists and is an emClarity project.')
       } else if (err instanceof ApiError && err.status === 400) {
-        const detail = (err.body as { detail?: string } | null)?.detail
+        const rawBody: unknown = err.body
+        const detail =
+          rawBody !== null &&
+          typeof rawBody === 'object' &&
+          'detail' in rawBody &&
+          typeof (rawBody as Record<string, unknown>).detail === 'string'
+            ? ((rawBody as Record<string, unknown>).detail as string)
+            : undefined
         setError(`Invalid path: ${detail ?? err.message}`)
       } else {
         setError('Failed to load project. Check the path and ensure the backend is running.')
@@ -436,22 +443,50 @@ interface NewProjectDialogProps {
 function NewProjectDialog({ isOpen, onClose, onCreated }: NewProjectDialogProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
 
-  // Close on Escape key
+  // Escape key + focus trap
   useEffect(() => {
     if (!isOpen) return
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+
+    // Focus the dialog panel when it opens
+    if (dialogRef.current) {
+      dialogRef.current.focus()
     }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose()
+        return
+      }
+
+      if (e.key !== 'Tab') return
+
+      const el = dialogRef.current
+      if (!el) return
+
+      const focusableSelectors =
+        'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])'
+      const focusableList = Array.from(el.querySelectorAll<HTMLElement>(focusableSelectors))
+      if (focusableList.length === 0) return
+
+      const first = focusableList[0]
+      const last = focusableList[focusableList.length - 1]
+
+      if (e.shiftKey) {
+        if (document.activeElement === first) {
+          e.preventDefault()
+          last.focus()
+        }
+      } else {
+        if (document.activeElement === last) {
+          e.preventDefault()
+          first.focus()
+        }
+      }
+    }
+
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [isOpen, onClose])
-
-  // Focus the dialog panel when it opens
-  useEffect(() => {
-    if (isOpen && dialogRef.current) {
-      dialogRef.current.focus()
-    }
-  }, [isOpen])
 
   if (!isOpen) return null
 
@@ -459,9 +494,6 @@ function NewProjectDialog({ isOpen, onClose, onCreated }: NewProjectDialogProps)
     /* Backdrop */
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="new-project-dialog-title"
       onClick={(e) => {
         // Close when clicking the backdrop (not the dialog itself)
         if (e.target === e.currentTarget) onClose()
@@ -470,6 +502,9 @@ function NewProjectDialog({ isOpen, onClose, onCreated }: NewProjectDialogProps)
       {/* Dialog panel */}
       <div
         ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="new-project-dialog-title"
         tabIndex={-1}
         className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-2xl focus:outline-none dark:border-gray-700 dark:bg-gray-900"
       >
