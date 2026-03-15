@@ -121,7 +121,11 @@ def _validate_browse_path(path: str | None) -> _BrowsePath:
 
     # 2. Length guard (Linux PATH_MAX = 4096 bytes; measure in UTF-8 bytes, not
     #    Unicode code points, so multi-byte characters are counted correctly).
-    if len(path.encode("utf-8")) > _PATH_MAX:
+    #    Use >= so that exactly 4096 bytes is also rejected: PATH_MAX includes
+    #    the NUL terminator, meaning valid paths are at most 4095 bytes long.
+    #    A path of exactly 4096 bytes reaches the OS and triggers ENAMETOOLONG,
+    #    which would otherwise surface as a 404 rather than a proper 400.
+    if len(path.encode("utf-8")) >= _PATH_MAX:
         raise HTTPException(
             status_code=400,
             detail=f"Path too long: maximum length is {_PATH_MAX} characters",
@@ -222,11 +226,12 @@ def browse_filesystem(
     real_path_str = str(real_path)
     parent: str | None = None if real_path_str == "/" else str(real_path.parent)
 
-    # Entry paths are built from display_path so they remain consistent with
-    # the caller-supplied path on systems where the temp-dir prefix crosses a
-    # symlink boundary (e.g. macOS /tmp → /private/tmp).  For entry listing
-    # we always use real_path for the OS scandir call.
-    entry_base = display_path
+    # Entry paths are built from real_path_str (the fully-resolved real path)
+    # so they remain consistent with response.path.  This is essential when the
+    # browse target is itself a symlink: using display_path (pre-realpath) would
+    # produce entry paths rooted at the symlink path while response.path is the
+    # resolved real path, violating the documented response contract.
+    entry_base = real_path_str
 
     # --- Scan entries --------------------------------------------------------------
     entries: list[FilesystemEntry] = []
