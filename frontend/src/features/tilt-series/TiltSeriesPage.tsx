@@ -715,6 +715,7 @@ function TiltSeriesContent({ projectId }: TiltSeriesContentProps) {
 export function TiltSeriesPage() {
   // Project ID comes from the URL (/project/:projectId/assets)
   const { projectId } = useParams<{ projectId: string }>()
+  const isDemo = projectId === 'demo'
 
   // Guard: redirect to root if projectId is missing (shouldn't happen with nested routing)
   if (!projectId) {
@@ -731,7 +732,15 @@ export function TiltSeriesPage() {
         </p>
       </div>
 
-      <TiltSeriesContent projectId={projectId} />
+      {isDemo ? (
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-8 text-center dark:border-gray-700 dark:bg-gray-800/50">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            No project selected. Open a project to view tilt-series data.
+          </p>
+        </div>
+      ) : (
+        <TiltSeriesContent projectId={projectId} />
+      )}
     </div>
   )
 }

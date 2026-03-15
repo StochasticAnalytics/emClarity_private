@@ -403,7 +403,7 @@ interface JobTableProps {
 function JobTable({ jobs, selectedJobId, onSelectJob }: JobTableProps) {
   return (
     <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-      <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+      <table role="grid" className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
         <thead className="bg-gray-50 dark:bg-gray-800">
           <tr>
             {['Command', 'Status', 'Start Time', 'Duration', 'Project'].map((col) => (
@@ -498,6 +498,16 @@ export function JobsPage() {
     type: 'success' | 'error'
     message: string
   } | null>(null)
+  const notificationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Cancel notification timer on unmount to avoid state updates on unmounted component
+  useEffect(() => {
+    return () => {
+      if (notificationTimerRef.current !== null) {
+        clearTimeout(notificationTimerRef.current)
+      }
+    }
+  }, [])
 
   // ---------------------------------------------------------------------------
   // Fetch job list
@@ -561,7 +571,10 @@ export function JobsPage() {
         setNotification({ type: 'error', message })
       } finally {
         setIsCancelling(false)
-        setTimeout(() => setNotification(null), 5000)
+        if (notificationTimerRef.current !== null) {
+          clearTimeout(notificationTimerRef.current)
+        }
+        notificationTimerRef.current = setTimeout(() => setNotification(null), 5000)
       }
     },
     [fetchJobs],

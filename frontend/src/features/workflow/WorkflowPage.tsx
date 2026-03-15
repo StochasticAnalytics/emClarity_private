@@ -725,6 +725,7 @@ function WorkflowContent({ projectId, stateMachine }: WorkflowContentProps) {
 export function WorkflowPage() {
   // Project ID comes from the URL (/project/:projectId/actions)
   const { projectId } = useParams<{ projectId: string }>()
+  const isDemo = projectId === 'demo'
 
   // Fetch state machine once – it's static
   const {
@@ -776,7 +777,15 @@ export function WorkflowPage() {
         </p>
       </div>
 
-      <WorkflowContent projectId={projectId} stateMachine={stateMachine} />
+      {isDemo ? (
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-8 text-center dark:border-gray-700 dark:bg-gray-800/50">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            No project selected. Open a project to run pipeline commands.
+          </p>
+        </div>
+      ) : (
+        <WorkflowContent projectId={projectId} stateMachine={stateMachine} />
+      )}
     </div>
   )
 }

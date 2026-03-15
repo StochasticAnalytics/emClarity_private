@@ -598,6 +598,7 @@ export function OverviewPage() {
   const { projectId } = useParams<{ projectId: string }>()
   const { activeProject } = useProject()
   const { addProject } = useRecentProjects()
+  const isDemo = projectId === 'demo'
 
   // Jobs state for stepper (populated by RecentJobsSection)
   const [allJobs, setAllJobs] = useState<Job[]>([])
@@ -605,19 +606,19 @@ export function OverviewPage() {
   const { data: project, isLoading: projectLoading } = useApiQuery<ProjectDetails>(
     ['project-details', projectId ?? ''],
     `/api/v1/projects/${projectId ?? ''}`,
-    { enabled: !!projectId },
+    { enabled: !!projectId && !isDemo },
   )
 
   const { data: statistics, isLoading: statsLoading } = useApiQuery<ProjectStatistics>(
     ['project-statistics', projectId ?? ''],
     `/api/v1/projects/${projectId ?? ''}/statistics`,
-    { enabled: !!projectId },
+    { enabled: !!projectId && !isDemo },
   )
 
   const { data: workflowData } = useApiQuery<AvailableCommandsResponse>(
     ['overview-workflow-state', projectId ?? ''],
     `/api/v1/workflow/${projectId ?? ''}/available-commands`,
-    { enabled: !!projectId },
+    { enabled: !!projectId && !isDemo },
   )
 
   // Track this project in recent projects when it loads
@@ -633,7 +634,7 @@ export function OverviewPage() {
 
   const isLoading = projectLoading || statsLoading
 
-  const displayName = activeProject?.name ?? project?.name ?? projectId ?? '—'
+  const displayName = activeProject?.name ?? project?.name ?? (isDemo ? null : projectId) ?? '—'
   const state = workflowData?.state ?? activeProject?.state ?? project?.state ?? 'UNINITIALIZED'
   const cycle = project?.current_cycle
 
@@ -757,7 +758,7 @@ export function OverviewPage() {
                 View all →
               </Link>
             </div>
-            {projectId && (
+            {projectId && !isDemo && (
               <RecentJobsSection
                 projectId={projectId}
                 onJobsLoaded={setAllJobs}
