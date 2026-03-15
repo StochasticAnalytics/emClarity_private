@@ -55,28 +55,13 @@ interface NavItemProps {
 }
 
 function NavItem({ path, label, icon: Icon, projectId, collapsed }: NavItemProps) {
-  if (!projectId) {
-    // No project: disabled placeholder
-    return (
-      <span
-        className={[
-          'flex items-center rounded-md text-sm font-medium',
-          'text-gray-300 dark:text-gray-600 cursor-not-allowed select-none',
-          collapsed ? 'justify-center p-2' : 'gap-3 px-3 py-2',
-        ].join(' ')}
-        title={collapsed ? label : 'Open a project to access this section'}
-        aria-label={collapsed ? label : undefined}
-        aria-disabled="true"
-      >
-        <Icon className="h-4 w-4 shrink-0" aria-hidden />
-        {!collapsed && <span>{label}</span>}
-      </span>
-    )
-  }
+  // Use 'demo' as a sentinel project ID when no real project is loaded,
+  // so all nav items are always navigable.
+  const effectiveProjectId = projectId ?? 'demo'
 
   return (
     <NavLink
-      to={`/project/${projectId}/${path}`}
+      to={`/project/${effectiveProjectId}/${path}`}
       title={collapsed ? label : undefined}
       aria-label={collapsed ? label : undefined}
       className={({ isActive }) =>
@@ -162,14 +147,8 @@ export function Sidebar() {
         ))}
       </nav>
 
-      {/* Footer: footer hint + collapse toggle */}
+      {/* Footer: collapse toggle */}
       <div className="border-t border-gray-100 dark:border-gray-800">
-        {/* Hint text – only when expanded and no project */}
-        {!collapsed && !projectId && (
-          <p className="px-3 pt-2 text-xs text-gray-400 dark:text-gray-600 text-center">
-            Open a project to begin
-          </p>
-        )}
 
         {/* Collapse / expand toggle */}
         <div className={['p-2', !collapsed && 'flex justify-end'].filter(Boolean).join(' ')}>

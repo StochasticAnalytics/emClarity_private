@@ -27,11 +27,15 @@ interface ProjectDetails {
 // Component
 // ---------------------------------------------------------------------------
 
+/** Sentinel used when no real project is selected — allows demo navigation. */
+const DEMO_PROJECT_ID = 'demo'
+
 export function ProjectLayout() {
   const { projectId } = useParams<{ projectId: string }>()
+  const isDemoMode = projectId === DEMO_PROJECT_ID
   const { setActiveProject, clearActiveProject } = useProject()
-  // Start loading only when a projectId is present; no setState needed in effect for the !projectId early-return
-  const [isLoading, setIsLoading] = useState(projectId !== undefined)
+  // Start loading only when a real projectId is present (not demo, not missing)
+  const [isLoading, setIsLoading] = useState(projectId !== undefined && !isDemoMode)
   const [error, setError] = useState<string | null>(null)
 
   const loadProject = useCallback(
@@ -58,8 +62,8 @@ export function ProjectLayout() {
   )
 
   useEffect(() => {
-    if (!projectId) {
-      // No project in URL — no fetch needed; isLoading was already initialised to false
+    if (!projectId || isDemoMode) {
+      // No project in URL, or demo sentinel — no fetch needed
       return
     }
 
@@ -71,11 +75,17 @@ export function ProjectLayout() {
       controller.abort()
       clearActiveProject()
     }
-  }, [projectId, loadProject, clearActiveProject])
+  }, [projectId, isDemoMode, loadProject, clearActiveProject])
 
   // No projectId in URL – redirect to landing page
   if (!projectId) {
     return <Navigate to="/" replace />
+  }
+
+  // Demo mode: render child pages directly with no active project context.
+  // Pages will display their own empty/error states via API calls.
+  if (isDemoMode) {
+    return <Outlet />
   }
 
   if (isLoading) {
