@@ -144,32 +144,30 @@ function ThreePanelLayout({
                 const isSelected = i === selectedIndex
                 const isChecked = selectedIndices ? selectedIndices.has(i) : false
                 return (
-                  <li key={item}>
+                  <li key={item} className="flex items-center">
+                    {onToggleIndex && (
+                      <label className="flex items-center pl-3 pr-1 py-2 shrink-0 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="h-3.5 w-3.5 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
+                          checked={isChecked}
+                          onChange={() => onToggleIndex(i)}
+                          aria-label={`Include ${item} in comparison`}
+                        />
+                      </label>
+                    )}
                     <button
                       role="option"
                       aria-selected={isSelected}
                       type="button"
                       className={
-                        'w-full flex items-center gap-2 text-left px-3 py-2 text-sm transition-colors ' +
+                        'flex-1 flex items-center text-left px-2 py-2 text-sm transition-colors ' +
                         (isSelected
                           ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium'
                           : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800')
                       }
                       onClick={() => onSelect(i)}
                     >
-                      {onToggleIndex && (
-                        <input
-                          type="checkbox"
-                          className="shrink-0 h-3.5 w-3.5 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
-                          checked={isChecked}
-                          onChange={(e) => {
-                            e.stopPropagation()
-                            onToggleIndex(i)
-                          }}
-                          aria-label={`Include ${item} in comparison`}
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                      )}
                       <span className="truncate font-mono text-xs">{item}</span>
                     </button>
                   </li>
@@ -594,7 +592,6 @@ function FscCurvesTab() {
   }, [])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchFsc()
   }, [fetchFsc])
 
@@ -613,7 +610,7 @@ function FscCurvesTab() {
 
   // Build the curves array for multi-cycle comparison
   const curves: FscChartProps['curves'] = Array.from(checkedIndices)
-    .sort()
+    .sort((a, b) => a - b)
     .map((i) => {
       const label = PLACEHOLDER_CYCLES[i] ?? `cycle${String(i).padStart(3, '0')}`
       // Only cycle000 (index 0) has real data from the API (when available)
@@ -891,9 +888,11 @@ function ParticleStatsTab() {
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [state, setState] = useState<FetchState<ParticleStats>>({ status: 'loading' })
 
-  const fetchStats = useCallback(async () => {
+  const fetchStats = useCallback(async (cycleIndex: number) => {
+    setState({ status: 'loading' })
     try {
-      const data = await apiClient.get<ParticleStats>('/api/v1/results/particles')
+      const cycleLabel = PARTICLE_STATS_CYCLES[cycleIndex] ?? `cycle${String(cycleIndex).padStart(3, '0')}`
+      const data = await apiClient.get<ParticleStats>(`/api/v1/results/particles?cycle=${cycleLabel}`)
       setState({ status: 'success', data })
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
@@ -902,16 +901,17 @@ function ParticleStatsTab() {
         const message =
           err instanceof ApiError
             ? `Failed to load particle statistics (${err.status}): ${err.statusText}`
-            : 'Failed to load particle statistics.'
+            : err instanceof Error
+              ? `Failed to load particle statistics: ${err.message}`
+              : 'Failed to load particle statistics.'
         setState({ status: 'error', message })
       }
     }
   }, [])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void fetchStats()
-  }, [fetchStats])
+    void fetchStats(selectedIndex)
+  }, [fetchStats, selectedIndex])
 
   return (
     <ThreePanelLayout
@@ -923,10 +923,10 @@ function ParticleStatsTab() {
       <div className="space-y-4">
         <div>
           <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-            Particle Statistics — {PARTICLE_STATS_CYCLES[selectedIndex]}
+            Particle Statistics
           </h3>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-            CCC score distributions and class population counts (tutorial §14.4.2)
+            CCC score distributions and class population counts — global statistics (tutorial §14.4.2)
           </p>
         </div>
 
@@ -950,10 +950,7 @@ function ParticleStatsTab() {
             <p className="text-sm text-red-700 dark:text-red-400">{state.message}</p>
             <button
               type="button"
-              onClick={() => {
-                setState({ status: 'loading' })
-                void fetchStats()
-              }}
+              onClick={() => void fetchStats(selectedIndex)}
               className="mt-2 text-sm text-red-600 dark:text-red-400 underline hover:no-underline"
             >
               Retry
@@ -1048,21 +1045,25 @@ export function ResultsPage() {
         })}
       </div>
 
-      {/* Tab panels */}
+      {/* Tab panels — all rendered but hidden to preserve state and avoid re-fetching */}
       <div className="flex-1 min-h-0">
-        <div
-          role="tabpanel"
-          id={`tabpanel-${activeTab}`}
-          aria-labelledby={`tab-${activeTab}`}
-          className="h-full"
-        >
-          {activeTab === 'alignment' && <AlignmentQualityTab />}
-          {activeTab === 'ctf' && <CTFDiagnosticsTab />}
-          {activeTab === 'particles' && <ParticlePicksTab />}
-          {activeTab === 'fsc' && <FscCurvesTab />}
-          {activeTab === 'averages' && <AveragesTab />}
-          {activeTab === 'stats' && <ParticleStatsTab />}
-        </div>
+        {TABS.map((tab) => (
+          <div
+            key={tab.id}
+            role="tabpanel"
+            id={`tabpanel-${tab.id}`}
+            aria-labelledby={`tab-${tab.id}`}
+            hidden={tab.id !== activeTab}
+            className="h-full"
+          >
+            {tab.id === 'alignment' && <AlignmentQualityTab />}
+            {tab.id === 'ctf' && <CTFDiagnosticsTab />}
+            {tab.id === 'particles' && <ParticlePicksTab />}
+            {tab.id === 'fsc' && <FscCurvesTab />}
+            {tab.id === 'averages' && <AveragesTab />}
+            {tab.id === 'stats' && <ParticleStatsTab />}
+          </div>
+        ))}
       </div>
     </div>
   )
