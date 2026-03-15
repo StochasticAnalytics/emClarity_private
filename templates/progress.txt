@@ -245,3 +245,11 @@ Developer: Completed 2026-03-15 [TASK-001/PATCH Round 9 — QA Leader Interventi
     declarations above the first useEffect block, restoring the all-hooks-before-effects
     convention used throughout the codebase (raised Round 6, structurally still present).
   Validation: tsc --noEmit → 0 errors; pytest backend/ → 36/36 passed; commit c149e92
+
+Developer: Completed PATCH 2026-03-15
+  - Fixed dead aria-live="polite" on keyboard-activation tooltip in ActionsPage.tsx
+  - Root cause: screen readers only announce live region updates when DOM text content
+    changes, not CSS class changes. The tooltip had static text that never changed.
+  - Fix: separated visual tooltip (CSS toggle) from ARIA live region (dynamic content
+    injection: message string when demoBlocked is true, empty string when false)
+  - TypeScript compiles cleanly after fix
