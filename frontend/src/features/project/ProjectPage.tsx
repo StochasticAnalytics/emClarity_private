@@ -10,7 +10,7 @@
  * Also shows recent projects from localStorage (with Zod-validated entries).
  * Stale entries (backend returns 404) are automatically removed.
  */
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -284,7 +284,8 @@ function LoadProjectPanel({ onLoaded }: LoadProjectPanelProps) {
       if (err instanceof ApiError && err.status === 404) {
         setError('Directory not found. Check that the path exists and is an emClarity project.')
       } else if (err instanceof ApiError && err.status === 400) {
-        setError(`Invalid path: ${err.message}`)
+        const detail = (err.body as { detail?: string } | null)?.detail
+        setError(`Invalid path: ${detail ?? err.message}`)
       } else {
         setError('Failed to load project. Check the path and ensure the backend is running.')
       }
@@ -433,6 +434,25 @@ interface NewProjectDialogProps {
 }
 
 function NewProjectDialog({ isOpen, onClose, onCreated }: NewProjectDialogProps) {
+  const dialogRef = useRef<HTMLDivElement>(null)
+
+  // Close on Escape key
+  useEffect(() => {
+    if (!isOpen) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, onClose])
+
+  // Focus the dialog panel when it opens
+  useEffect(() => {
+    if (isOpen && dialogRef.current) {
+      dialogRef.current.focus()
+    }
+  }, [isOpen])
+
   if (!isOpen) return null
 
   return (
@@ -448,7 +468,11 @@ function NewProjectDialog({ isOpen, onClose, onCreated }: NewProjectDialogProps)
       }}
     >
       {/* Dialog panel */}
-      <div className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
+      <div
+        ref={dialogRef}
+        tabIndex={-1}
+        className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-2xl focus:outline-none dark:border-gray-700 dark:bg-gray-900"
+      >
         {/* Dialog header */}
         <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-700">
           <h2
