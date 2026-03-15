@@ -1139,6 +1139,7 @@ function RunBar({ command, onRun, isRunning, runMessage }: RunBarProps) {
           onClick={isRunning || isDemo ? undefined : onRun}
           aria-disabled={isRunning || isDemo}
           aria-describedby={isDemo ? 'run-demo-tooltip' : undefined}
+          title={isDemo ? 'Commands cannot be run in demo mode' : undefined}
           className="flex items-center gap-2 rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 aria-disabled:cursor-not-allowed aria-disabled:opacity-60 dark:bg-blue-500 dark:hover:bg-blue-600 transition-colors"
         >
           <Play className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1386,7 +1387,9 @@ export function ActionsPage() {
           tabEls[newIndex].focus()
           // Update state directly instead of dispatching a DOM click event,
           // which would bubble and could trigger unintended side effects.
-          setActiveTabId(ACTION_TABS[newIndex].id)
+          // Guard access in case ACTION_TABS length diverges from DOM tab count.
+          const nextTab = ACTION_TABS[newIndex]
+          if (nextTab) setActiveTabId(nextTab.id)
         }}
       >
         {ACTION_TABS.map((tab) => {

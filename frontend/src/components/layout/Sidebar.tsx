@@ -44,7 +44,7 @@ const NAV_ITEMS = [
 ] as const
 
 // ---------------------------------------------------------------------------
-// NavItem component — handles active/inactive/disabled states
+// NavItem component — handles active/inactive states
 // ---------------------------------------------------------------------------
 
 interface NavItemProps {

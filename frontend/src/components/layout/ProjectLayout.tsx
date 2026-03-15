@@ -11,6 +11,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Outlet, useParams, Navigate, Link } from 'react-router-dom'
 import { apiClient, ApiError } from '@/api/client.ts'
 import { useProject } from '@/context/ProjectContext.tsx'
+import { DEMO_PROJECT_ID } from '@/constants'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -26,10 +27,6 @@ interface ProjectDetails {
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
-
-/** Sentinel used when no real project is selected — allows demo navigation. */
-import { DEMO_PROJECT_ID } from '@/constants'
-export { DEMO_PROJECT_ID }
 
 export function ProjectLayout() {
   const { projectId } = useParams<{ projectId: string }>()

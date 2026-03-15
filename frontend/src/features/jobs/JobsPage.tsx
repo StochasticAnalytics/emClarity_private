@@ -557,6 +557,8 @@ export function JobsPage() {
   const [isLoading, setIsLoading] = useState(() => projectId !== DEMO_PROJECT_ID)
   const [fetchError, setFetchError] = useState<string | null>(null)
 
+  const [selectedJob, setSelectedJob] = useState<JobV1 | null>(null)
+
   // Reset all per-project state atomically when the project changes, covering
   // both directions: demo → real (show spinner) and real → demo (clear spinner).
   useEffect(() => {
@@ -565,12 +567,12 @@ export function JobsPage() {
       // that was left over from the previous real project.
       setIsLoading(false)
       setJobs([])
+      setSelectedJob(null)
       setFetchError(null)
     } else {
       setIsLoading(true)
     }
   }, [projectId, isDemo])
-  const [selectedJob, setSelectedJob] = useState<JobV1 | null>(null)
   const [isCancelling, setIsCancelling] = useState(false)
   const [notification, setNotification] = useState<{
     type: 'success' | 'error'
@@ -797,15 +799,20 @@ export function JobsPage() {
       {/* Content: table or empty state */}
       {!isLoading && !fetchError && (
         <>
-          {jobs.length === 0 ? (
-            <EmptyState />
-          ) : (
-            <JobTable
-              jobs={jobs}
-              selectedJobId={selectedJob?.id ?? null}
-              onSelectJob={setSelectedJob}
-            />
-          )}
+          {/* Synchronous guard prevents stale job rows from rendering for one frame
+              when navigating to demo mode before the reset effect fires. */}
+          {(() => {
+            const displayedJobs = isDemo ? [] : jobs
+            return displayedJobs.length === 0 ? (
+              <EmptyState />
+            ) : (
+              <JobTable
+                jobs={displayedJobs}
+                selectedJobId={selectedJob?.id ?? null}
+                onSelectJob={setSelectedJob}
+              />
+            )
+          })()}
         </>
       )}
 
