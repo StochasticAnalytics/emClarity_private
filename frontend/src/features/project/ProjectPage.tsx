@@ -185,13 +185,13 @@ function NewProjectForm({ onCreated }: NewProjectFormProps) {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label htmlFor="param-pixel-size" className={labelClass}>
-              Pixel Size (m) <span className="text-red-500">*</span>
+              Pixel Size (Å) <span className="text-red-500">*</span>
             </label>
             <input
               id="param-pixel-size"
               type="number"
               step="any"
-              placeholder="1.35e-10"
+              placeholder="1.35"
               {...register('PIXEL_SIZE', { valueAsNumber: true })}
               className={inputClass}
             />
@@ -204,13 +204,13 @@ function NewProjectForm({ onCreated }: NewProjectFormProps) {
 
           <div>
             <label htmlFor="param-cs" className={labelClass}>
-              Cs (m) <span className="text-red-500">*</span>
+              Cs (mm) <span className="text-red-500">*</span>
             </label>
             <input
               id="param-cs"
               type="number"
               step="any"
-              placeholder="2.7e-3"
+              placeholder="2.7"
               {...register('Cs', { valueAsNumber: true })}
               className={inputClass}
             />
