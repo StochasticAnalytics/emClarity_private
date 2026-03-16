@@ -103,7 +103,7 @@ function deepCopy(response: BrowseDirectoryResponse): BrowseDirectoryResponse {
   return {
     path: response.path,
     parent: response.parent,
-    entries: response.entries.map((e) => ({ name: e.name, path: e.path })),
+    entries: response.entries.map((e) => ({ name: e.name, path: e.path, type: e.type })),
   };
 }
 
