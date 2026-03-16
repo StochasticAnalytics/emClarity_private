@@ -17,3 +17,26 @@ body {
 #root {
   min-height: 100vh;
 }
+
+/*
+ * Visually-hidden utility class.
+ *
+ * Hides content visually while keeping it accessible to assistive technology
+ * (screen readers, etc.). Required by DirectoryPickerModal for the
+ * "Browse Directories: " prefix span inside the dialog's <h2> title element.
+ *
+ * IMPORTANT: display:none and visibility:hidden suppress AT reading and must
+ * NOT be used here. This class uses absolute positioning and clipping so that
+ * the element remains in the accessibility tree and is announced by AT.
+ *
+ * See: https://www.a11yproject.com/posts/how-to-hide-content/
+ */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
