@@ -464,3 +464,34 @@ Developer: Completed 2026-03-16
   - Compiles cleanly under strict tsconfig (noUncheckedIndexedAccess handled with
     type assertion on always-present ROOT_KEY)
   - No default export, all public exports are named
+
+Developer: Completed 2026-03-16
+  Task: TASK-001 — Rewrite directory picker and wire Browse buttons into ProjectPage
+  - Deleted 4 over-engineered files (DirectoryPickerActions.tsx, directoryPickerConstants.ts,
+    old DirectoryPickerModal.tsx 794 lines, useDirectoryNavigation.ts 338 lines)
+  - Rewrote filesystem.ts to call GET /api/v1/filesystem/browse?path=... with real fetch;
+    updated DirectoryEntry interface to include backend-provided path field
+  - New DirectoryPickerModal.tsx (~210 lines): path display, directory list, Up/Select/Cancel,
+    loading/error/empty states, full keyboard accessibility (Escape, Tab focus trap)
+  - Wired independent Browse buttons into NewProjectForm (setValue with shouldValidate)
+    and LoadProjectPanel (setDirectory)
+  - TypeScript compiles cleanly; 26/26 backend filesystem tests pass
+
+Developer: Completed 2026-03-16
+  Task: TASK-002 - Fix microscope parameter unit labels and placeholder values
+  - Changed 'Pixel Size (m)' label to 'Pixel Size (Å)' (Angstroms)
+  - Changed 'Cs (m)' label to 'Cs (mm)' (millimeters)
+  - Changed pixel size placeholder from '1.35e-10' to '1.35'
+  - Changed Cs placeholder from '2.7e-3' to '2.7'
+  - TypeScript compiled without errors
+
+
+Developer: Completed 2026-03-16
+  Task: TASK-003 - Fix NaN validation errors on microscope parameter fields
+  - Changed z.number() to z.coerce.number() for all four microscope parameter fields
+    (PIXEL_SIZE, Cs, VOLTAGE, AMPCONT) in frontend/src/features/project/ProjectPage.tsx
+  - z.coerce.number() coerces string inputs before validation, preventing NaN errors
+    that occurred because HTML number inputs with valueAsNumber: true return NaN
+    for empty/unparseable strings
+  - All validation chains (.positive(), .min(0), .max(1)) preserved unchanged
+  - TypeScript compiled without errors
