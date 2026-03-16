@@ -6,6 +6,32 @@
  * Failing to satisfy this in CI produces:
  *   ReferenceError: DOMException is not defined
  * rather than a test failure.
+ *
+ * ---------------------------------------------------------------------------
+ * Canned fake-tree (development stub)
+ *
+ * Lookup uses EXACT STRING MATCHING — no normalization, no case folding, no
+ * trailing-slash collapsing. Notable edge-case examples:
+ *   '/PROJECTS'       → root fallback  (case mismatch)
+ *   '/projects/'      → root fallback  (trailing slash NOT stripped)
+ *   ' /projects'      → root fallback  (leading space NOT trimmed)
+ *   '/projects/alpha' → root fallback  (child path; no prefix matching)
+ *
+ * Canned paths and their outcomes:
+ *
+ *   undefined / ''    → { path: '/', parent: null,
+ *                          entries: [projects, home, etc] }  (root fallback key)
+ *   '/'               → same root response (explicit key in map)
+ *   '/projects'       → { path: '/projects', parent: '/',
+ *                          entries: [alpha (dir), readme.txt (file)] }
+ *   '/error'          → rejection: new Error('Simulated network error')
+ *                        (non-AbortError; exercises the error-state UI path)
+ *   <any other path>  → root response (fallback, same as undefined / '')
+ *
+ * AbortSignal takes priority over all canned outcomes:
+ *   - Pre-aborted signal → DOMException('Aborted', 'AbortError'), synchronous.
+ *   - Mid-flight abort   → DOMException('Aborted', 'AbortError'), via listener.
+ * ---------------------------------------------------------------------------
  */
 
 // ---------------------------------------------------------------------------
@@ -20,29 +46,24 @@ export interface FilesystemBrowseResponse {
 
 // ---------------------------------------------------------------------------
 // Canned data
-//
-// Lookup rules (matching is EXACT and CASE-SENSITIVE — no normalization):
-//   • undefined / '' / any path not listed below → root response ('/').
-//   • '/projects'                                → /projects response.
-//
-// Notable edge cases (intentional, not bugs):
-//   • '/PROJECTS'       → root (case mismatch falls through to root)
-//   • '/projects/'      → root (trailing slash is NOT stripped)
-//   • ' /projects'      → root (leading space is NOT trimmed)
-//   • '/projects/alpha' → root (child path; only exact canned keys match,
-//                               there is NO partial-prefix matching)
 // ---------------------------------------------------------------------------
 
+const ROOT_RESPONSE: FilesystemBrowseResponse = {
+  path: '/',
+  parent: null, // root has no parent — never '/'
+  entries: [
+    { name: 'projects', type: 'directory' },
+    { name: 'home', type: 'directory' },
+    { name: 'etc', type: 'directory' },
+  ],
+};
+
+/**
+ * Canned success responses keyed by exact path string.
+ * '/error' is intentionally absent — it is handled as a rejection case below.
+ */
 const CANNED_MAP: Readonly<Record<string, FilesystemBrowseResponse>> = {
-  '/': {
-    path: '/',
-    parent: null, // root has no parent — never '/'
-    entries: [
-      { name: 'projects', type: 'directory' },
-      { name: 'home', type: 'directory' },
-      { name: 'etc', type: 'directory' },
-    ],
-  },
+  '/': ROOT_RESPONSE,
   '/projects': {
     path: '/projects',
     parent: '/',
@@ -52,17 +73,6 @@ const CANNED_MAP: Readonly<Record<string, FilesystemBrowseResponse>> = {
     ],
   },
 };
-
-/** Sentinel key for the root / fallback response. */
-const ROOT_KEY = '/';
-
-// ---------------------------------------------------------------------------
-// Error-mode state (test seam — non-production only)
-// ---------------------------------------------------------------------------
-
-type ErrorMode = 'none' | 'network' | 'invalid-body';
-
-let errorMode: ErrorMode = 'none';
 
 // ---------------------------------------------------------------------------
 // Deep-copy helper — ensures callers cannot mutate shared canned data
@@ -86,94 +96,68 @@ function deepCopy(response: FilesystemBrowseResponse): FilesystemBrowseResponse 
  * @param path   Absolute path to browse. `undefined` and `''` are both
  *               equivalent and return the root response. Matching is exact
  *               and case-sensitive — no normalization is applied.
- * @param signal Optional AbortSignal. Checked at two checkpoints:
- *               (1) Immediately on call, before the async delay. If already
- *                   aborted, rejects with DOMException('AbortError') without
- *                   entering the macrotask boundary.
- *               (2) After the macrotask delay. If aborted during the wait,
- *                   rejects with DOMException('AbortError') before resolving.
+ * @param signal Optional AbortSignal. Abort is checked at two points:
+ *               (1) Synchronously on call, before the macrotask delay.
+ *                   If already aborted, rejects with DOMException('AbortError')
+ *                   without entering setTimeout.
+ *               (2) Mid-flight, via `signal.addEventListener('abort', …, { once: true })`.
+ *                   If the signal fires during the setTimeout delay, the
+ *                   promise rejects with DOMException('AbortError') before the
+ *                   canned response is resolved.
  *
  * @returns A **deep copy** of the matching canned response, so that callers
  *          mutating the returned `entries` array do not affect subsequent calls.
  */
-export async function browseDirectory(
+export function browseDirectory(
   path?: string,
   signal?: AbortSignal,
 ): Promise<FilesystemBrowseResponse> {
-  // ── Checkpoint 1: pre-delay abort check ──────────────────────────────────
-  // AbortSignal checkpoint 1 takes precedence over error mode.
+  // ── Checkpoint 1: pre-delay abort check (synchronous) ────────────────────
+  // Runs before any async work. Takes priority over all canned outcomes,
+  // including the '/error' rejection path.
   if (signal?.aborted === true) {
-    throw new DOMException('The operation was aborted.', 'AbortError');
+    return Promise.reject(new DOMException('Aborted', 'AbortError'));
   }
 
-  // ── Macrotask boundary ────────────────────────────────────────────────────
-  // Must use setTimeout (macrotask), NOT Promise.resolve() (microtask).
-  // setTimeout guarantees React StrictMode's useEffect cleanup fires before
-  // the promise settles. A Promise.resolve()-based delay crosses only a
-  // microtask boundary and fails the macrotask-ordering verification.
-  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  // ── Resolve the canned outcome for this path ──────────────────────────────
+  // Exact string matching — undefined and '' both map to the root key '/'.
+  const key = path === undefined || path === '' ? '/' : path;
 
-  // ── Checkpoint 2: post-delay abort check ─────────────────────────────────
-  // Also takes precedence over 'invalid-body' error mode.
-  if (signal?.aborted === true) {
-    throw new DOMException('The operation was aborted.', 'AbortError');
-  }
+  // ── Build and return the deferred Promise ─────────────────────────────────
+  return new Promise<FilesystemBrowseResponse>((resolve, reject) => {
+    // ── Checkpoint 2: mid-flight abort listener ───────────────────────────
+    // Registered with { once: true } so it auto-removes when the abort event
+    // fires. The resolve branch also calls removeEventListener explicitly to
+    // ensure no listener accumulation on repeated successful calls with the
+    // same signal.
+    const rejectHandler = (): void => {
+      reject(new DOMException('Aborted', 'AbortError'));
+    };
+    signal?.addEventListener('abort', rejectHandler, { once: true });
 
-  // ── Error-mode handling (non-production test seam) ────────────────────────
-  if (errorMode === 'network') {
-    throw new TypeError('Failed to fetch');
-  }
-  if (errorMode === 'invalid-body') {
-    // Intentionally invalid payload — exercises parse-error code paths.
-    return { path: 42, entries: null } as unknown as FilesystemBrowseResponse;
-  }
+    // ── Macrotask delay (simulates network latency) ───────────────────────
+    // setTimeout (macrotask) ensures React StrictMode cleanup fires before
+    // the promise settles. Promise.resolve() (microtask) is not acceptable
+    // because it makes the mid-flight abort path non-exercisable.
+    setTimeout(() => {
+      // Remove the abort listener before settling the promise on every
+      // outcome (both resolve and reject). This is required because { once }
+      // only cleans up when the abort event fires — it does NOT clean up on
+      // a successful resolution. Without explicit removal here, repeated
+      // successful calls accumulate listeners on the same signal.
+      signal?.removeEventListener('abort', rejectHandler);
 
-  // ── Normal path ───────────────────────────────────────────────────────────
-  const key = path === undefined || path === '' ? ROOT_KEY : path;
-  // CANNED_MAP[ROOT_KEY] is always present by construction; the non-null
-  // assertion silences the noUncheckedIndexedAccess widening to `| undefined`.
-  const canned = CANNED_MAP[key] ?? (CANNED_MAP[ROOT_KEY] as FilesystemBrowseResponse);
-  return deepCopy(canned);
-}
-
-// ---------------------------------------------------------------------------
-// __setErrorMode — test seam (tree-shaken from production bundles)
-//
-// The type is `(...) | undefined` to reflect that the function is absent in
-// production. Call sites in tests should null-check or use optional chaining:
-//   __setErrorMode?.('none')
-//
-// Required teardown pattern (prevents state leakage across tests):
-//   afterEach(() => __setErrorMode?.('none'))
-//
-// Note: whether module-level state (`errorMode`) persists across test *files*
-// depends on the `resetModules` configuration. With `resetModules: false`
-// (the Jest/Vitest default), `errorMode` is shared across all test files that
-// import this module in the same worker. Use `afterEach` teardown explicitly.
-// ---------------------------------------------------------------------------
-
-/**
- * Configure the error mode for the `browseDirectory` stub.
- *
- * **Only defined when `process.env.NODE_ENV !== 'production'`** (undefined in
- * production builds). Always use optional chaining at call sites:
- * `__setErrorMode?.('none')`.
- *
- * @param mode
- *   - `'none'`         — normal canned-data behavior (default at module load)
- *   - `'network'`      — rejects with `TypeError('Failed to fetch')` after delay
- *   - `'invalid-body'` — resolves with a structurally invalid payload after delay
- *
- * AbortSignal checkpoint 1 (pre-delay) always takes precedence over error mode.
- * AbortSignal checkpoint 2 (post-delay) takes precedence over `'invalid-body'`.
- *
- * @example
- * // Required teardown to prevent state leakage across tests:
- * afterEach(() => __setErrorMode?.('none'));
- */
-export const __setErrorMode: ((mode: 'none' | 'network' | 'invalid-body') => void) | undefined =
-  process.env.NODE_ENV !== 'production'
-    ? (mode: ErrorMode): void => {
-        errorMode = mode;
+      // '/error' → non-AbortError rejection (exercises error-state UI path)
+      if (key === '/error') {
+        reject(new Error('Simulated network error'));
+        return;
       }
-    : undefined;
+
+      // All other keys: look up the canned map, fall back to root response.
+      // CANNED_MAP['/'] is always present; the non-null assertion silences
+      // the noUncheckedIndexedAccess widening to `| undefined`.
+      const canned = CANNED_MAP[key] ?? (CANNED_MAP['/'] as FilesystemBrowseResponse);
+      resolve(deepCopy(canned));
+    }, 0);
+  });
+}
