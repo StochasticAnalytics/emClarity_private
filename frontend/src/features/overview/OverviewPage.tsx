@@ -35,7 +35,7 @@ interface ProjectStatistics {
   project_id: string
   particle_count: number | null
   resolution_angstrom: number | null
-  tilt_series_count: number
+  tilt_series_count: number | null
 }
 
 interface AvailableCommandsResponse {
