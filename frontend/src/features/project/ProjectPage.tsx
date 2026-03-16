@@ -17,6 +17,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { apiClient, ApiError } from '@/api/client.ts'
 import { useRecentProjects } from '@/hooks/useRecentProjects.ts'
+import { DirectoryPickerModal } from '@/components/common/DirectoryPickerModal.tsx'
 
 // ---------------------------------------------------------------------------
 // Types mirroring the backend response models
@@ -66,10 +67,12 @@ interface NewProjectFormProps {
 function NewProjectForm({ onCreated }: NewProjectFormProps) {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isPickerOpen, setIsPickerOpen] = useState(false)
 
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<CreateProjectFormValues>({
     resolver: zodResolver(createProjectSchema),
@@ -138,20 +141,39 @@ function NewProjectForm({ onCreated }: NewProjectFormProps) {
           <label htmlFor="project-directory" className={labelClass}>
             Directory Path <span className="text-red-500">*</span>
           </label>
-          <input
-            id="project-directory"
-            type="text"
-            autoComplete="off"
-            placeholder="/path/to/project"
-            {...register('directory')}
-            className={inputClass}
-          />
+          <div className="mt-1 flex gap-2">
+            <input
+              id="project-directory"
+              type="text"
+              autoComplete="off"
+              placeholder="/path/to/project"
+              {...register('directory')}
+              className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+            />
+            <button
+              type="button"
+              onClick={() => setIsPickerOpen(true)}
+              aria-label="Browse for directory"
+              className="shrink-0 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+            >
+              Browse…
+            </button>
+          </div>
           {errors.directory && (
             <p className="mt-1 text-xs text-red-600 dark:text-red-400">
               {errors.directory.message}
             </p>
           )}
         </div>
+
+        <DirectoryPickerModal
+          isOpen={isPickerOpen}
+          onSelect={(path) => {
+            setValue('directory', path, { shouldValidate: true })
+            setIsPickerOpen(false)
+          }}
+          onClose={() => setIsPickerOpen(false)}
+        />
       </section>
 
       {/* Microscope parameters */}
@@ -266,6 +288,7 @@ function LoadProjectPanel({ onLoaded }: LoadProjectPanelProps) {
   const [directory, setDirectory] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [isPickerOpen, setIsPickerOpen] = useState(false)
 
   const handleLoad = useCallback(async () => {
     const trimmed = directory.trim()
@@ -322,6 +345,14 @@ function LoadProjectPanel({ onLoaded }: LoadProjectPanelProps) {
         />
         <button
           type="button"
+          onClick={() => setIsPickerOpen(true)}
+          aria-label="Browse for project directory"
+          className="shrink-0 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+        >
+          Browse…
+        </button>
+        <button
+          type="button"
           onClick={() => {
             void handleLoad()
           }}
@@ -332,6 +363,14 @@ function LoadProjectPanel({ onLoaded }: LoadProjectPanelProps) {
         </button>
       </div>
       {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+      <DirectoryPickerModal
+        isOpen={isPickerOpen}
+        onSelect={(path) => {
+          setDirectory(path)
+          setIsPickerOpen(false)
+        }}
+        onClose={() => setIsPickerOpen(false)}
+      />
     </div>
   )
 }
