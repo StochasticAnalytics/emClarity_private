@@ -9,8 +9,8 @@ export interface ProjectInfo {
   created_at: string
   modified_at: string
   current_cycle: number
-  tilt_series_count: number
-  particle_count: number
+  tilt_series_count: number | null
+  particle_count: number | null
 }
 
 /** Status of project directories. */
