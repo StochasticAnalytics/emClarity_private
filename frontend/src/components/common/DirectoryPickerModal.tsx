@@ -1,8 +1,7 @@
 /**
- * DirectoryPickerModal.tsx — TASK-002b-Aa-i-c
+ * DirectoryPickerModal.tsx — TASK-002b-Aa-α-1b
  *
- * Error branch, retry engine, lastAttemptedPath tracking, and returnFocusRef
- * null-guard.
+ * Error branch, retry engine, lastAttemptedPath tracking.
  *
  * This sub-task extends TASK-002b-Aa-i-b-2 (portal, ARIA, focus trap,
  * loading UI, Up button) by adding:
@@ -13,10 +12,13 @@
  *   - errorKey in state for re-mount on repeated failures (AC5)
  *   - Retry button focus on error-state entry (AC10)
  *   - Empty-entries state: data-testid='empty-directory-message' (AC9)
- *   - returnFocusRef null-guard in handleClose (AC6/AC7)
- *   - Escape calls handleClose (abort + focus-restore + onClose) (AC7)
+ *   - Escape calls handleClose (abort + onClose) (AC7)
  *   - Loading indicator moved inside data-testid='directory-listing' with
  *     data-testid='loading-indicator' (AC8)
+ *
+ * NOTE: returnFocusRef null-guard and focus restoration via returnFocusRef
+ * are deferred to TASK-002b-Aa-β. In this sub-task, returnFocusRef is
+ * declared in props but has no usage in the component body.
  *
  * @requires React 18 — uses useId() (React 18+; installed version is React 19, compatible)
  *
@@ -387,46 +389,19 @@ export function DirectoryPickerModal({
     );
   }, []); // empty deps: navigate never needs to close over reactive render values
 
-  // ── handleClose: abort + returnFocusRef null-guard + onClose ─────────────
+  // ── handleClose: abort + onClose ─────────────────────────────────────────
   //
   // Called by Escape keydown and any other close path.
-  // Performs focus restoration BEFORE the portal unmounts (per AC6/AC7) so
-  // the focus call reaches the DOM element while it is still connected.
+  // Aborts any in-flight navigation request and delegates to the onClose prop.
   //
-  // Null-guard conditions per AC7 (any true → fall back to document.body):
-  //   - returnFocusRef.current is null
-  //   - document.contains(returnFocusRef.current) returns false
-  //   - element has the disabled attribute
-  //   - element has the hidden attribute
-  //   - element.closest('[inert]') !== null
-  //   - element.getAttribute('aria-hidden') === 'true'
+  // Focus restoration via returnFocusRef is deferred to TASK-002b-Aa-β.
+  // The useLayoutEffect cleanup handles focus restoration to prevFocusRef on
+  // unmount (the element that held focus immediately before the modal opened).
   const handleClose = useCallback((): void => {
-    // Abort any in-flight navigation request (AC7).
+    // Abort any in-flight navigation request.
     controllerRef.current?.abort();
-
-    // Focus restoration with null-guard (AC6/AC7).
-    const target = returnFocusRef.current;
-    const canFocus =
-      target !== null &&
-      document.contains(target) &&
-      !target.disabled &&
-      !target.hidden &&
-      target.closest('[inert]') === null &&
-      target.getAttribute('aria-hidden') !== 'true';
-
-    if (canFocus) {
-      // `target` is non-null here by the canFocus condition above.
-      // The non-null assertion is safe: `target !== null` is the first operand.
-      target.focus();
-    } else {
-      document.body.focus();
-    }
-
-    // Mark focus as handled so the useLayoutEffect cleanup does not attempt a
-    // second (redundant) focus call when the portal is unmounted.
-    focusRestoredRef.current = true;
     onClose();
-  }, [onClose, returnFocusRef]);
+  }, [onClose]);
 
   // ── handleRetry: re-issue the last failed navigation ─────────────────────
   //
@@ -493,7 +468,7 @@ export function DirectoryPickerModal({
   }, []); // empty deps: runs once on mount, cleanup runs once on unmount
 
   // ── useEffect — keyboard handlers (Escape + Tab focus trap) ──────────────
-  // Escape calls handleClose (abort + returnFocusRef null-guard + onClose).
+  // Escape calls handleClose (abort + onClose).
   // Tab/Shift+Tab cycles through focusable descendants without escaping.
   // Re-registered when handleClose changes (i.e., when onClose changes).
   useEffect(() => {
@@ -549,7 +524,7 @@ export function DirectoryPickerModal({
     return () => {
       container.removeEventListener('keydown', handleKeyDown);
     };
-  }, [handleClose]); // handleClose captures onClose + returnFocusRef
+  }, [handleClose]); // handleClose captures onClose
 
   // ── useEffect — aria-hidden on #root ─────────────────────────────────────
   // Prevents NVDA virtual-cursor navigation outside the modal in Firefox.
