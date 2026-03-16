@@ -23,7 +23,7 @@
  *                          entries: [projects, home, etc] }  (root fallback key)
  *   '/'               → same root response (explicit key in map)
  *   '/projects'       → { path: '/projects', parent: '/',
- *                          entries: [alpha (dir), readme.txt (file)] }
+ *                          entries: [alpha, readme.txt] }
  *   '/error'          → rejection: new Error('Simulated network error')
  *                        (non-AbortError; exercises the error-state UI path)
  *   <any other path>  → root response (fallback, same as undefined / '')
@@ -38,23 +38,42 @@
 // Types
 // ---------------------------------------------------------------------------
 
-export interface FilesystemBrowseResponse {
+/**
+ * A single filesystem entry returned by the browse API.
+ * Contains the entry name and its absolute path on the server.
+ */
+export interface DirectoryEntry {
+  name: string;
+  path: string;
+}
+
+/**
+ * Response shape for a successful browseDirectory call.
+ *
+ * - `path`: the canonical absolute path of the directory that was listed
+ * - `parent`: the parent directory's absolute path, or null if this is the root
+ * - `entries`: child entries (both files and subdirectories) within this directory
+ *
+ * Note: `parent` may be absent in malformed server responses; all consumers
+ * must treat `undefined` the same as `null` by coercing with `?? null`.
+ */
+export interface BrowseDirectoryResponse {
   path: string;
   parent: string | null;
-  entries: Array<{ name: string; type: 'directory' | 'file' }>;
+  entries: DirectoryEntry[];
 }
 
 // ---------------------------------------------------------------------------
 // Canned data
 // ---------------------------------------------------------------------------
 
-const ROOT_RESPONSE: FilesystemBrowseResponse = {
+const ROOT_RESPONSE: BrowseDirectoryResponse = {
   path: '/',
   parent: null, // root has no parent — never '/'
   entries: [
-    { name: 'projects', type: 'directory' },
-    { name: 'home', type: 'directory' },
-    { name: 'etc', type: 'directory' },
+    { name: 'projects', path: '/projects' },
+    { name: 'home', path: '/home' },
+    { name: 'etc', path: '/etc' },
   ],
 };
 
@@ -62,14 +81,14 @@ const ROOT_RESPONSE: FilesystemBrowseResponse = {
  * Canned success responses keyed by exact path string.
  * '/error' is intentionally absent — it is handled as a rejection case below.
  */
-const CANNED_MAP: Readonly<Record<string, FilesystemBrowseResponse>> = {
+const CANNED_MAP: Readonly<Record<string, BrowseDirectoryResponse>> = {
   '/': ROOT_RESPONSE,
   '/projects': {
     path: '/projects',
     parent: '/',
     entries: [
-      { name: 'alpha', type: 'directory' },
-      { name: 'readme.txt', type: 'file' },
+      { name: 'alpha', path: '/projects/alpha' },
+      { name: 'readme.txt', path: '/projects/readme.txt' },
     ],
   },
 };
@@ -78,11 +97,11 @@ const CANNED_MAP: Readonly<Record<string, FilesystemBrowseResponse>> = {
 // Deep-copy helper — ensures callers cannot mutate shared canned data
 // ---------------------------------------------------------------------------
 
-function deepCopy(response: FilesystemBrowseResponse): FilesystemBrowseResponse {
+function deepCopy(response: BrowseDirectoryResponse): BrowseDirectoryResponse {
   return {
     path: response.path,
     parent: response.parent,
-    entries: response.entries.map((e) => ({ name: e.name, type: e.type })),
+    entries: response.entries.map((e) => ({ name: e.name, path: e.path })),
   };
 }
 
@@ -96,7 +115,7 @@ function deepCopy(response: FilesystemBrowseResponse): FilesystemBrowseResponse 
  * @param path   Absolute path to browse. `undefined` and `''` are both
  *               equivalent and return the root response. Matching is exact
  *               and case-sensitive — no normalization is applied.
- * @param signal Optional AbortSignal. Abort is checked at two points:
+ * @param signal AbortSignal. Abort is checked at two points:
  *               (1) Synchronously on call, before the macrotask delay.
  *                   If already aborted, rejects with DOMException('AbortError')
  *                   without entering setTimeout.
@@ -109,13 +128,13 @@ function deepCopy(response: FilesystemBrowseResponse): FilesystemBrowseResponse 
  *          mutating the returned `entries` array do not affect subsequent calls.
  */
 export function browseDirectory(
-  path?: string,
-  signal?: AbortSignal,
-): Promise<FilesystemBrowseResponse> {
+  path: string | undefined,
+  signal: AbortSignal,
+): Promise<BrowseDirectoryResponse> {
   // ── Checkpoint 1: pre-delay abort check (synchronous) ────────────────────
   // Runs before any async work. Takes priority over all canned outcomes,
   // including the '/error' rejection path.
-  if (signal?.aborted === true) {
+  if (signal.aborted) {
     return Promise.reject(new DOMException('Aborted', 'AbortError'));
   }
 
@@ -124,7 +143,7 @@ export function browseDirectory(
   const key = path === undefined || path === '' ? '/' : path;
 
   // ── Build and return the deferred Promise ─────────────────────────────────
-  return new Promise<FilesystemBrowseResponse>((resolve, reject) => {
+  return new Promise<BrowseDirectoryResponse>((resolve, reject) => {
     // ── Checkpoint 2: mid-flight abort listener ───────────────────────────
     // Registered with { once: true } so it auto-removes when the abort event
     // fires. The resolve branch also calls removeEventListener explicitly to
@@ -133,7 +152,7 @@ export function browseDirectory(
     const rejectHandler = (): void => {
       reject(new DOMException('Aborted', 'AbortError'));
     };
-    signal?.addEventListener('abort', rejectHandler, { once: true });
+    signal.addEventListener('abort', rejectHandler, { once: true });
 
     // ── Macrotask delay (simulates network latency) ───────────────────────
     // setTimeout (macrotask) ensures React StrictMode cleanup fires before
@@ -145,7 +164,7 @@ export function browseDirectory(
       // only cleans up when the abort event fires — it does NOT clean up on
       // a successful resolution. Without explicit removal here, repeated
       // successful calls accumulate listeners on the same signal.
-      signal?.removeEventListener('abort', rejectHandler);
+      signal.removeEventListener('abort', rejectHandler);
 
       // '/error' → non-AbortError rejection (exercises error-state UI path)
       if (key === '/error') {
@@ -156,7 +175,7 @@ export function browseDirectory(
       // All other keys: look up the canned map, fall back to root response.
       // CANNED_MAP['/'] is always present; the non-null assertion silences
       // the noUncheckedIndexedAccess widening to `| undefined`.
-      const canned = CANNED_MAP[key] ?? (CANNED_MAP['/'] as FilesystemBrowseResponse);
+      const canned = CANNED_MAP[key] ?? (CANNED_MAP['/'] as BrowseDirectoryResponse);
       resolve(deepCopy(canned));
     }, 0);
   });

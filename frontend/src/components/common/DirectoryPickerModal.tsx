@@ -1,117 +1,119 @@
 /**
- * DirectoryPickerModal.tsx
+ * DirectoryPickerModal.tsx — TASK-002b-Aa-i-b-1
  *
- * Structural and visual layer for the directory browser dialog.
+ * State and lifecycle core of the Directory Picker Modal.
  *
- * Implements (TASK-002b-Aa-2b-i):
- *   - React portal rendered to document.body (outside parent DOM subtree)
- *   - Portal null-body guard for SSR / jsdom environments
- *   - ARIA dialog shell: role='dialog', aria-modal='true', aria-labelledby
- *   - Stable title id via useId() — two instances always produce distinct ids
- *   - data-testid='modal-current-path' with '/' fallback for all falsy values
- *   - Three always-in-DOM live-region containers (text managed in Aa-2b-ii)
- *   - aria-busy on listing container; all interactive elements disabled while loading
- *   - Up button: in DOM only when parent is non-null, non-empty, non-whitespace-only
- *   - Directory entries as <button>; file entries as <div aria-disabled='true'>
- *   - Unicode-aware whitespace filter on entry names
- *   - 'No subdirectories' fallback when all directory entries are filtered out
- *   - Retry button: always in DOM, always disabled, no onClick (Aa-2b-ii adds those)
- *   - onSelect threaded to <DirectoryPickerActions>; never called directly here
+ * This sub-task defines:
+ *   - Props interface (AC1)
+ *   - browseDirectory API contract and type exports (AC2)
+ *   - Typed 5-branch DirectoryPickerState discriminated struct (AC3)
+ *   - useRef-based AbortController lifecycle, StrictMode-safe (AC6)
+ *   - Mount-time initialPath bootstrap via initialPathRef (AC5)
+ *   - navigate() with functional setState to avoid stale closure (AC7)
+ *   - Non-AbortError error transitions that clear isLoading (AC8)
+ *
+ * Component returns null in this sub-task.
+ * Sub-task b-2 replaces `return null` with the full portal + UI,
+ * consuming the state shape defined here.
  *
  * Deferred to other tasks:
- *   - Live-region text management (Aa-2b-ii)
- *   - Error-branch state machine / Retry onClick (Aa-2b-ii)
- *   - Focus trap and Escape handler (Aa-3)
- *   - returnFocusRef call-site / Select button (Aa-Ab)
+ *   - Portal and DOM structure (TASK-002b-Aa-i-b-2)
+ *   - Error display / Retry onClick (TASK-002b-Aa-i-c)
+ *   - Focus trap and Escape handler (TASK-002b-Aa-3)
+ *   - returnFocusRef call-site / Select button (TASK-002b-Ab)
  */
 
-import { useId } from 'react';
-import { createPortal } from 'react-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
-import { useDirectoryNavigation } from '@/hooks/useDirectoryNavigation';
-import { DirectoryPickerActions } from './DirectoryPickerActions';
+import { browseDirectory } from '@/api/filesystem';
 
 // ---------------------------------------------------------------------------
-// Constants — regex patterns
+// Re-exported types (consumed by sub-tasks Aa-ii and Ab without re-defining)
+// ---------------------------------------------------------------------------
+
+export type { BrowseDirectoryResponse, DirectoryEntry } from '@/api/filesystem';
+import type { BrowseDirectoryResponse, DirectoryEntry } from '@/api/filesystem';
+
+// ---------------------------------------------------------------------------
+// State machine types (AC3)
 // ---------------------------------------------------------------------------
 
 /**
- * Matches strings that consist entirely of invisible / whitespace code points:
- *   \s  — ASCII whitespace (space, \t, \n, \r, \f, \v) + Unicode whitespace
- *   \u200b — zero-width space (U+200B)
- *   \u200f — right-to-left mark (U+200F)
- *   \u00a0 — non-breaking space (U+00A0)
+ * The five statuses of the directory picker state machine.
  *
- * The empty string matches (zero occurrences of the character class).
- * Emoji and other non-whitespace Unicode code points do NOT match.
+ * Invariants (enforced by navigate() and the mount effect, never broken):
+ *   - isLoading === true  iff  status is 'initial-loading' or 'loading'
+ *   - error !== null       iff  status === 'error'
  */
-const INVISIBLE_ONLY_RE = /^[\s\u200b\u200f\u00a0]*$/;
+export type PickerStatus = 'idle' | 'initial-loading' | 'loading' | 'success' | 'error';
 
 /**
- * Same as INVISIBLE_ONLY_RE but also explicitly enumerates \t, \n, \r as
- * required by the AC for Up-button parent validation.
- * (\s already includes those, so this is a belt-and-suspenders form.)
+ * Single state object for the directory picker modal.
+ *
+ * Five branches (see PickerStatus):
+ *
+ * idle            — initial value before mount effect fires
+ * initial-loading — first request dispatched; no prior entries to display
+ * loading         — subsequent navigation in-flight; stale entries preserved
+ * success         — most recent request resolved successfully
+ * error           — most recent request failed; entries/parent from last success
  */
-const PARENT_INVALID_RE = /^[\s\u200b\u200f\u00a0\t\n\r]*$/;
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-/**
- * A directory entry enriched with a computed absolute path.
- * The raw API response's entries lack a path field; we derive it from basePath.
- */
-interface DirectoryEntry {
-  name: string;
-  type: 'directory' | 'file';
-  /** Absolute path computed as basePath + '/' + name. */
-  path: string;
+export interface DirectoryPickerState {
+  status: PickerStatus;
+  /** Invariant: true iff status is 'initial-loading' or 'loading'. */
+  isLoading: boolean;
+  /** [] before first success; preserved across loading/error transitions. */
+  entries: DirectoryEntry[];
+  /** null until first success; from last resolved response's parent field. */
+  parent: string | null;
+  /** trimmedInitialPath before first response; response.path after. */
+  currentPath: string;
+  /**
+   * Most recently *requested* path, set on dispatch before response arrives.
+   * Distinct from currentPath: currentPath is updated only from server's
+   * response.path on success; lastAttemptedPath records what was asked for.
+   * Used by the Retry button (TASK-002b-Aa-i-c) to re-issue the last request.
+   */
+  lastAttemptedPath: string;
+  /** Non-null iff status === 'error'. */
+  error: Error | null;
 }
 
-/** Props for DirectoryPickerModal. */
+// ---------------------------------------------------------------------------
+// Props interface (AC1)
+// ---------------------------------------------------------------------------
+
+/**
+ * Props for DirectoryPickerModal.
+ *
+ * initialPath is a mount-time-only prop: it is captured once into a ref and
+ * never referenced inside any useEffect dependency array.  Parent re-renders
+ * that pass a different initialPath after mount have zero effect on the
+ * mounted modal's navigation state.
+ */
 export interface DirectoryPickerModalProps {
-  /** Initial directory path to open. Defaults to root when absent or empty. */
+  /**
+   * Initial directory path to open.  Trimmed before use.
+   * Defaults to root (browseDirectory(undefined, signal)) when absent,
+   * empty, or whitespace-only.
+   *
+   * Mount-time-only: captured into a ref; subsequent prop changes ignored.
+   */
   initialPath?: string;
   /**
    * Called with the confirmed path when the user clicks Select.
-   * This prop is NOT called directly in this file — it is threaded to
-   * <DirectoryPickerActions> to be wired up in TASK-002b-Ab.
+   * Wired up in TASK-002b-Ab; this sub-task declares the prop type only.
    */
   onSelect: (path: string) => void;
   /** Called when the user dismisses the modal without selecting a path. */
   onClose: () => void;
   /**
    * Ref to the element that triggered this modal.
-   * Focus restoration (returnFocusRef.current?.focus()) is deferred to
-   * TASK-002b-Ab.  This file never calls returnFocusRef.current.focus().
+   * returnFocusRef.current may be null at focus-return time; the null-guard
+   * and fallback focus target are implemented in TASK-002b-Ab.
+   * This sub-task declares the prop type only.
    */
   returnFocusRef: RefObject<HTMLButtonElement>;
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Compute an absolute path for a directory entry given the parent path.
- * Handles root ('/') and empty basePath so the result is never '//' or '/name'.
- */
-function computeEntryPath(basePath: string, name: string): string {
-  if (basePath === '' || basePath === '/') {
-    return `/${name}`;
-  }
-  return `${basePath}/${name}`;
-}
-
-/**
- * Type guard: returns true iff parent is a non-null, non-empty,
- * non-whitespace-only string.  Uses PARENT_INVALID_RE which explicitly covers
- * \s, \u200b, \u200f, \u00a0, \t, \n, \r.
- */
-function isValidParent(parent: string | null | undefined): parent is string {
-  if (parent === null || parent === undefined) return false;
-  return !PARENT_INVALID_RE.test(parent);
 }
 
 // ---------------------------------------------------------------------------
@@ -119,191 +121,167 @@ function isValidParent(parent: string | null | undefined): parent is string {
 // ---------------------------------------------------------------------------
 
 /**
- * Directory browser modal rendered via a React portal to document.body.
+ * Directory browser modal.
  *
- * Returns null (no output, no exception) when document.body is unavailable,
- * which guards against SSR and certain jsdom configurations.
+ * In this sub-task (TASK-002b-Aa-i-b-1) the component manages state and
+ * lifecycle but renders nothing (returns null).  Sub-task b-2 replaces the
+ * null return with the full portal + UI.
  */
 export function DirectoryPickerModal({
   initialPath,
-  onSelect,
-  onClose,
-  returnFocusRef: _returnFocusRef, // Focus restoration deferred to TASK-002b-Ab
-}: DirectoryPickerModalProps) {
-  // ── Hooks — must be called before any conditional returns ─────────────────
-  const titleId = useId();
+  onSelect: _onSelect,     // wired in TASK-002b-Ab
+  onClose: _onClose,       // wired in TASK-002b-Ab
+  returnFocusRef: _returnFocusRef, // focus restoration deferred to TASK-002b-Ab
+}: DirectoryPickerModalProps): null {
+  // ── AC3/AC5: initialPathRef BEFORE useState ───────────────────────────────
+  // Capturing initialPath into a ref before the useState call satisfies two
+  // requirements simultaneously:
+  //   (a) the ref is available inside the lazy initializer body if needed
+  //   (b) subsequent parent re-renders with a different initialPath prop are
+  //       silently ignored — initialPathRef.current always holds the mount-time value
+  const initialPathRef = useRef(initialPath);
 
-  const {
-    currentPath,
-    isLoading,
-    lastGoodData,
-    navigate: browseDirectory,
-  } = useDirectoryNavigation(initialPath);
+  // ── AC3: Single useState with lazy initializer ────────────────────────────
+  // The lazy form () => { ... } guarantees single execution at mount.
+  // Reading the `initialPath` prop directly here is safe because the lazy
+  // initializer runs only once (at mount), before any re-render can change it.
+  // Do NOT use initialPathRef.current here (requires declaration-order dep).
+  const [, setState] = useState<DirectoryPickerState>(() => {
+    const trimmedInitialPath = (initialPath ?? '').trim();
+    return {
+      status: 'idle',
+      isLoading: false,
+      entries: [],
+      parent: null,
+      currentPath: trimmedInitialPath,
+      lastAttemptedPath: trimmedInitialPath,
+      error: null,
+    };
+  });
 
-  // ── Portal guard ───────────────────────────────────────────────────────────
-  // Conditional return AFTER all hook calls to satisfy the Rules of Hooks.
-  // Returns null (no UI, no exception) in SSR or jsdom-without-body contexts.
-  if (typeof document === 'undefined' || !document.body) {
-    return null;
-  }
+  // ── AC6: AbortController stored in ref, not state ─────────────────────────
+  // Guarantees controllerRef.current?.abort() is synchronous and not deferred
+  // by React's render cycle.
+  const controllerRef = useRef<AbortController | null>(null);
 
-  // ── Build entry list ───────────────────────────────────────────────────────
-  // Defensively handle null lastGoodData and non-array entries at runtime.
-  // Both Array.isArray and typeof name === 'string' guards are required by AC
-  // so that malformed API payloads (null/non-array entries, non-string names)
-  // never cause a TypeError.
-  const basePath: string = lastGoodData?.path ?? '';
+  // ── AC7: navigate — stable identity via useCallback([]) ──────────────────
+  //
+  // CRITICAL — functional update form:
+  //   Because useCallback(fn, []) closes over the *initial* render's state,
+  //   reading state.entries directly would always see [] (stale closure),
+  //   causing every post-first-success navigate call to dispatch 'initial-loading'
+  //   instead of 'loading'.  The setState(prev => ...) functional form reads
+  //   prev.entries at dispatch time (current state), not at closure-creation time.
+  //
+  // Step order (per AC7):
+  //   1. Synchronously abort prior controller (no-op if null — first call)
+  //   2. Create new AbortController; assign to ref; capture signal locally
+  //   3. Dispatch functional state update (initial-loading vs loading)
+  //   4. Call browseDirectory with captured signal (NOT controllerRef.current.signal)
+  //   5. In .then: check signal.aborted; if false, transition to success
+  //   6. In .catch: check signal.aborted || AbortError; if false, transition to error
+  const navigate = useCallback((requestedPath: string | undefined): void => {
+    // Step 1: abort any prior in-flight request
+    controllerRef.current?.abort();
 
-  const rawEntries: Array<{ name: string; type: 'directory' | 'file' }> =
-    lastGoodData != null && Array.isArray(lastGoodData.entries)
-      ? lastGoodData.entries
-      : [];
+    // Step 2: create new controller; capture signal in local closure
+    // IMPORTANT: signal is captured here at call time — never read from
+    // controllerRef.current.signal inside .then()/.catch(), because the ref
+    // may have been reassigned by a subsequent navigate() call by then.
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    const signal = controller.signal;
 
-  // Filter out non-string names and invisible-only names, then enrich with path.
-  const allEntries: DirectoryEntry[] = rawEntries
-    .filter(
-      (e): e is { name: string; type: 'directory' | 'file' } =>
-        typeof e.name === 'string' && !INVISIBLE_ONLY_RE.test(e.name),
-    )
-    .map((e) => ({
-      name: e.name,
-      type: e.type,
-      path: computeEntryPath(basePath, e.name),
+    // Step 3: dispatch functional state update
+    // prev.entries.length === 0 → 'initial-loading' (no stale data to show)
+    // prev.entries.length > 0   → 'loading'         (stale entries available)
+    setState(prev => ({
+      status: prev.entries.length === 0 ? 'initial-loading' : 'loading',
+      isLoading: true,
+      entries: prev.entries,
+      parent: prev.parent,
+      currentPath: prev.currentPath,
+      lastAttemptedPath: requestedPath ?? '',
+      error: null,
     }));
 
-  const dirEntries = allEntries.filter((e) => e.type === 'directory');
-  const fileEntries = allEntries.filter((e) => e.type === 'file');
+    // Step 4: issue request with locally-captured signal
+    void browseDirectory(requestedPath, signal).then(
+      // Step 5: success handler
+      (response: BrowseDirectoryResponse) => {
+        // Abort guard: if signal was aborted between dispatch and resolution,
+        // skip all setState calls (prevents stale state updates after cleanup).
+        if (signal.aborted) return;
 
-  // ── Current path display ───────────────────────────────────────────────────
-  // Falsy check (!currentPath) catches '', null, and undefined across all three
-  // phases: (a) initial loading, (b) initial error, (c) successful '' response.
-  // Whitespace-only paths are NOT treated as empty — they render as-is.
-  const displayPath: string = currentPath || '/';
+        // Transition to success; preserve lastAttemptedPath from prev.
+        // response.parent ?? null: coerce undefined (key absent) to null,
+        // keeping state.parent typed as string | null (never | undefined).
+        setState(prev => ({
+          status: 'success',
+          isLoading: false,
+          entries: response.entries,
+          parent: response.parent ?? null,
+          currentPath: response.path,
+          lastAttemptedPath: prev.lastAttemptedPath, // unchanged on success
+          error: null,
+        }));
+      },
 
-  // ── Up button visibility ───────────────────────────────────────────────────
-  // isValidParent is the sole guard; no additional runtime check in onClick.
-  // browseDirectory is never called with a whitespace-only parent string.
-  const parent: string | null = lastGoodData?.parent ?? null;
+      // Step 6: error handler
+      (error: unknown) => {
+        // Abort guards (two forms to cover all environments):
+        //   signal.aborted        — reliable backstop across all JS runtimes
+        //   error.name==='AbortError' — fast path for environments that surface
+        //                              abort as a named Error (e.g., DOMException)
+        if (signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
+          return; // silent ignore — no UI change
+        }
 
-  // ── Modal content ──────────────────────────────────────────────────────────
-  const modal = (
-    <div role="dialog" aria-modal="true" aria-labelledby={titleId}>
-      {/*
-       * Title — fixed string per AC.  Never changes during navigation so screen
-       * readers always announce a stable dialog name.  id is generated by
-       * useId() which guarantees uniqueness across simultaneously-mounted
-       * instances (React 18+ guarantee).
-       */}
-      <h2 id={titleId}>Browse for Directory</h2>
+        // Non-AbortError: wrap to guarantee state.error is always an Error instance.
+        // Storing a raw unknown value into Error | null would be a TypeScript error
+        // under strict mode.  String rejections ('timeout'), plain objects ({code:429}),
+        // and undefined all become Error instances here (NEG-1).
+        const storedError =
+          error instanceof Error ? error : new Error(String(error ?? 'Unknown error'));
 
-      {/*
-       * Current path display.
-       * Standard React text rendering — dangerouslySetInnerHTML is prohibited
-       * here so path strings containing <, >, &, or script payloads render as
-       * literal text.
-       */}
-      <div data-testid="modal-current-path">{displayPath}</div>
+        // Transition to error; preserve entries/parent/currentPath from last success.
+        // isLoading MUST be cleared to false — this removes aria-busy and the loading
+        // indicator (added in sub-task b-2) and prevents permanent UI lockup (AC8).
+        setState(prev => ({
+          status: 'error',
+          isLoading: false,
+          entries: prev.entries,      // preserved from last success
+          parent: prev.parent,        // preserved from last success
+          currentPath: prev.currentPath, // preserved from last success
+          lastAttemptedPath: prev.lastAttemptedPath, // unchanged on error
+          error: storedError,
+        }));
+      },
+    );
+  }, []); // empty deps: navigate never needs to close over reactive render values
 
-      {/*
-       * Live-region scaffolding — all three containers are always in the DOM
-       * from the very first paint, before any useEffect fires or request resolves.
-       * Text content is managed in TASK-002b-Aa-2b-ii.
-       *
-       * (a) Loading indicator — role='status' (polite, non-intrusive)
-       * (b) Error announcements — role='alert' (assertive, immediate)
-       * (c) Success announcements — role='status' (polite)
-       */}
-      <div role="status" />
-      <div role="alert" />
-      <div role="status" />
+  // ── AC5: Mount effect ─────────────────────────────────────────────────────
+  // Reads initialPathRef.current (not the prop) so react-hooks/exhaustive-deps
+  // does not require initialPath in the dependency array.  Refs are excluded
+  // from the exhaustive-deps rule — they are mutable containers, not reactive
+  // values, so ESLint emits zero warnings for this effect.
+  //
+  // StrictMode safety: React 18 StrictMode mounts → unmounts → remounts.
+  //   First mount:   navigate() fires, new AbortController created
+  //   Cleanup:       controllerRef.current?.abort() fires, first controller aborted
+  //   Second mount:  navigate() fires again with state.entries === [] (back to idle),
+  //                  dispatching 'initial-loading' correctly
+  // After the full double-mount cycle, exactly one in-flight request exists.
+  useEffect(() => {
+    const trimmed = (initialPathRef.current ?? '').trim();
+    // Pass trimmed string if non-empty; undefined to request filesystem root.
+    navigate(trimmed !== '' ? trimmed : undefined);
 
-      {/*
-       * Up button — absent from DOM (not just CSS-hidden) when parent is
-       * null, empty, or whitespace-only.  isValidParent is the type guard;
-       * parent is narrowed to string in the truthy branch so the onClick
-       * lambda never receives a null value.
-       */}
-      {isValidParent(parent) && (
-        <button
-          type="button"
-          aria-label="Navigate to parent directory"
-          disabled={isLoading}
-          onClick={() => {
-            browseDirectory(parent);
-          }}
-        >
-          Up
-        </button>
-      )}
+    return () => {
+      controllerRef.current?.abort();
+    };
+  }, [navigate]); // navigate is stable (useCallback with []) — effect runs only once
 
-      {/*
-       * Directory listing container.
-       * aria-busy uses boolean coercion (!!isLoading) to prevent the invalid
-       * attribute value aria-busy='undefined' if isLoading were ever undefined.
-       */}
-      <div data-testid="directory-listing" aria-busy={!!isLoading}>
-        {/*
-         * Retry button — always present in this task (Aa-2b-i), always disabled,
-         * no onClick attached.  TASK-002b-Aa-2b-ii will add the onClick handler
-         * and conditional visibility based on error state.
-         */}
-        <button type="button" aria-label="Retry loading directory" disabled>
-          Retry
-        </button>
-
-        {/*
-         * Directory entries.
-         * Rendered as native <button> elements for keyboard accessibility.
-         * Text is set via React's standard rendering (not dangerouslySetInnerHTML)
-         * so names containing <, >, & render as literal text.
-         * Keys incorporate both name and index to handle duplicate names safely.
-         * onClick is set unconditionally; disabling during load is achieved via
-         * the disabled attribute, not by conditional onClick omission.
-         */}
-        {dirEntries.length === 0 ? (
-          <span>No subdirectories</span>
-        ) : (
-          dirEntries.map((entry, index) => (
-            <button
-              key={`${entry.name}-${index}`}
-              type="button"
-              disabled={isLoading}
-              onClick={() => {
-                browseDirectory(entry.path);
-              }}
-            >
-              {entry.name}
-            </button>
-          ))
-        )}
-
-        {/*
-         * File entries — purely presentational, no interaction.
-         * Rendered as <div aria-disabled='true'>.  No onClick, no onKeyDown,
-         * no tabIndex (omitted entirely, not -1) per AC.
-         * No <ul>, <ol>, or <li> elements anywhere in the listing area.
-         */}
-        {fileEntries.map((entry, index) => (
-          <div key={`${entry.name}-${index}`} aria-disabled="true">
-            {entry.name}
-          </div>
-        ))}
-      </div>
-
-      {/*
-       * Action buttons row.
-       * onSelect is passed as a prop here and ONLY here — never called directly
-       * in this file to avoid a double-invocation bug when Aa-Ab wires its
-       * Select button.  isLoading is forwarded so Aa-Ab can disable Select.
-       */}
-      <DirectoryPickerActions
-        onSelect={onSelect}
-        onClose={onClose}
-        currentPath={currentPath}
-        isLoading={isLoading}
-      />
-    </div>
-  );
-
-  return createPortal(modal, document.body);
+  // Sub-task b-2 replaces this null with the full portal + UI.
+  return null;
 }

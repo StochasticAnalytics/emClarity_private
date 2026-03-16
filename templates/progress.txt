@@ -373,3 +373,34 @@ Developer: Completed 2026-03-15
   - JSDoc @example shows afterEach(() => __setErrorMode?.('none')) teardown pattern
   - Node ≥ 17 requirement commented (DOMException as global)
   - TypeScript compiles without errors (tsc --noEmit exits 0)
+Developer: Completed 2026-03-16T00:32:28Z
+  - Rewrote frontend/src/api/filesystem.ts per TASK-002b-Aa-i-a spec
+  - FilesystemBrowseResponse interface: path, parent (string|null), entries — all required, no optionals
+  - browseDirectory(path?, signal?): Promise<FilesystemBrowseResponse>
+  - Canned map: '/' explicit key + root fallback, '/projects', '/error' (rejection), any other → root
+  - Pre-abort: synchronous Promise.reject(DOMException) before setTimeout on ALL paths
+  - Mid-flight abort: addEventListener('abort', rejectHandler, { once: true }) pattern
+  - removeEventListener before resolve() to prevent listener accumulation on successful calls
+  - Removed old __setErrorMode test seam and two-await pattern from prior implementation
+  - Zero TypeScript errors in filesystem.ts; pre-existing errors in other files are unrelated
+  - Key decision: '/error' handled as special case in setTimeout body (not in CANNED_MAP) since CANNED_MAP values are FilesystemBrowseResponse (success type only)
+
+Developer: Completed 2026-03-15T12:00:00Z (TASK-002b-Aa-i-b-1)
+  - Replaced DirectoryPickerModal.tsx 309-line portal with state machine scaffold (returns null)
+  - Exported PickerStatus type union and DirectoryPickerState interface (5-branch struct)
+  - Re-exported BrowseDirectoryResponse and DirectoryEntry from @/api/filesystem
+  - Implemented props interface: { initialPath?, onSelect, onClose, returnFocusRef }
+  - initialPath captured into useRef before useState (AC5 declaration order)
+  - Lazy useState initializer reads initialPath prop directly (safe: runs only once at mount)
+  - navigate() via useCallback([]) with functional setState(prev=>{...}) to avoid stale closure
+  - AbortController stored in useRef<AbortController|null>(null), not useState
+  - signal captured locally in navigate() closure; never re-read from controllerRef.current
+  - .then() checks signal.aborted before setState; .catch() checks signal.aborted||AbortError
+  - Non-Error rejections wrapped with `new Error(String(error ?? 'Unknown error'))` (NEG-1)
+  - response.parent ?? null coercion in success branch (NEG-4)
+  - Error branch preserves entries/parent/currentPath from prev (last success)
+  - Mount useEffect depends on [navigate] (stable); satisfies exhaustive-deps with no disable comment
+  - Cleanup: () => { controllerRef.current?.abort() } (StrictMode safe)
+  - Updated filesystem.ts: FilesystemBrowseResponse → BrowseDirectoryResponse; entries get path field
+  - Updated useDirectoryNavigation.ts: import/validate BrowseDirectoryResponse; validate path not type
+  - tsc --noEmit: zero errors; all 35 Python backend tests pass

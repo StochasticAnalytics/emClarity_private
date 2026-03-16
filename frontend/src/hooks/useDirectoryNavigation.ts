@@ -7,10 +7,10 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { browseDirectory, type FilesystemBrowseResponse } from '@/api/filesystem';
+import { browseDirectory, type BrowseDirectoryResponse } from '@/api/filesystem';
 
 // Re-export so consumers (Aa-2b, etc.) can type props without re-declaring shape.
-export type { FilesystemBrowseResponse };
+export type { BrowseDirectoryResponse };
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -19,13 +19,13 @@ export type { FilesystemBrowseResponse };
 const ERROR_MESSAGE = 'Failed to load directory. Please try again.' as const;
 
 // ---------------------------------------------------------------------------
-// Structural response validation (AC9)
+// Structural response validation
 //
 // Checks are ordered so each one precedes any property access that would
 // throw if a prior check had failed.
 // ---------------------------------------------------------------------------
 
-function validateResponse(response: unknown): response is FilesystemBrowseResponse {
+function validateResponse(response: unknown): response is BrowseDirectoryResponse {
   // Zeroth check: must be a non-null object (catches null, primitives, undefined)
   if (response === null || typeof response !== 'object') {
     return false;
@@ -52,8 +52,8 @@ function validateResponse(response: unknown): response is FilesystemBrowseRespon
     return false;
   }
 
-  // Each entry must be a plain non-null object with valid name and type.
-  // This check precedes any .name or .type access to prevent TypeError crashes.
+  // Each entry must be a plain non-null object with valid name and path.
+  // This check precedes any .name or .path access to prevent TypeError crashes.
   for (const entry of entries) {
     if (entry === null || typeof entry !== 'object') {
       return false;
@@ -67,9 +67,9 @@ function validateResponse(response: unknown): response is FilesystemBrowseRespon
       return false;
     }
 
-    // type: case-sensitive exact match against the allowed set
-    const type: unknown = e['type'];
-    if (type !== 'directory' && type !== 'file') {
+    // path: must be a string (validates the DirectoryEntry.path field)
+    const entryPath: unknown = e['path'];
+    if (typeof entryPath !== 'string') {
       return false;
     }
   }
@@ -98,7 +98,7 @@ export interface UseDirectoryNavigationReturn {
    */
   errorMessage: string | null;
   /** The full last-successful response, preserved through errors. null before first success. */
-  lastGoodData: FilesystemBrowseResponse | null;
+  lastGoodData: BrowseDirectoryResponse | null;
   /** response.path of the last success, substituting '/' for ''. null before first success. */
   successPath: string | null;
   /** response.entries.length of the last success. null before first success. */
@@ -128,7 +128,7 @@ export function useDirectoryNavigation(
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [retryInFlight, setRetryInFlight] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [lastGoodData, setLastGoodData] = useState<FilesystemBrowseResponse | null>(null);
+  const [lastGoodData, setLastGoodData] = useState<BrowseDirectoryResponse | null>(null);
   const [successPath, setSuccessPath] = useState<string | null>(null);
   const [successItemCount, setSuccessItemCount] = useState<number | null>(null);
   // currentPath is initialised to the trimmed prop value (never raw/null).
@@ -149,7 +149,7 @@ export function useDirectoryNavigation(
   const retryInFlightRef = useRef<boolean>(false);
   const errorMessageRef = useRef<string | null>(null);
 
-  // retryPath is written before every browseDirectory call (AC6):
+  // retryPath is written before every browseDirectory call:
   //   null  → the call was made with no explicit path (browseDirectory(undefined, signal))
   //   string → the trimmed path argument passed to the call
   // Initialised to null; doNavigate unconditionally overwrites this before any
@@ -175,7 +175,7 @@ export function useDirectoryNavigation(
       currentAbortControllerRef.current = controller;
       const { signal } = controller;
 
-      // ── Record retryPath before the call (AC6) ───────────────────────────
+      // ── Record retryPath before the call ─────────────────────────────────
       retryPathRef.current = pathArg;
 
       // ── Synchronous state transition ─────────────────────────────────────
@@ -192,22 +192,22 @@ export function useDirectoryNavigation(
         setIsLoading(true);
         setRetryInFlight(false);
         setErrorMessage(null);
-        // lastGoodData, successPath, successItemCount: preserved (AC7)
+        // lastGoodData, successPath, successItemCount: preserved
       }
 
       // ── Issue the request ─────────────────────────────────────────────────
-      const promise: Promise<FilesystemBrowseResponse> =
+      const promise: Promise<BrowseDirectoryResponse> =
         pathArg !== null
           ? browseDirectory(pathArg, signal)
           : browseDirectory(undefined, signal);
 
       // ── Handle success ────────────────────────────────────────────────────
       void promise.then(
-        (response: FilesystemBrowseResponse) => {
-          // AC5: abort guard before ANY setState call.
+        (response: BrowseDirectoryResponse) => {
+          // Abort guard before ANY setState call.
           if (signal.aborted) return;
 
-          // AC9: structural validation — invalid body → error state.
+          // Structural validation — invalid body → error state.
           if (!validateResponse(response)) {
             errorMessageRef.current = ERROR_MESSAGE;
             setErrorMessage(ERROR_MESSAGE);
@@ -218,7 +218,7 @@ export function useDirectoryNavigation(
               isLoadingRef.current = false;
               setIsLoading(false);
             }
-            // lastGoodData/successPath/successItemCount preserved (AC6/AC7)
+            // lastGoodData/successPath/successItemCount preserved
             return;
           }
 
@@ -241,17 +241,17 @@ export function useDirectoryNavigation(
           }
         },
         (error: unknown) => {
-          // AC4: Some environments surface abort as an Error with name 'AbortError';
+          // Some environments surface abort as an Error with name 'AbortError';
           // handle that case first as a fast path.
           if (error instanceof Error && error.name === 'AbortError') return;
 
-          // AC5: signal.aborted is the reliable abort-silencing backstop for all
+          // signal.aborted is the reliable abort-silencing backstop for all
           // environments — including those that reject with a non-AbortError value
           // or a plain object.  Any rejection that reaches here after the controller
           // was aborted is silently dropped; only genuine network/API errors proceed.
           if (signal.aborted) return;
 
-          // Navigation failure: set error, preserve lastGoodData (AC6).
+          // Navigation failure: set error, preserve lastGoodData.
           errorMessageRef.current = ERROR_MESSAGE;
           setErrorMessage(ERROR_MESSAGE);
           if (isRetry) {
@@ -261,7 +261,7 @@ export function useDirectoryNavigation(
             isLoadingRef.current = false;
             setIsLoading(false);
           }
-          // lastGoodData, successPath, successItemCount: not cleared (AC6/AC7)
+          // lastGoodData, successPath, successItemCount: not cleared
         },
       );
     },
@@ -272,7 +272,7 @@ export function useDirectoryNavigation(
 
   // ── Mount effect ─────────────────────────────────────────────────────────
   // Fires once on mount.  Cleanup aborts any in-flight request on unmount,
-  // preventing stale setState calls (AC4/AC5).
+  // preventing stale setState calls.
   useEffect(() => {
     const pathArg = resolvedInitialPath !== '' ? resolvedInitialPath : null;
     doNavigate(pathArg, false);
@@ -281,7 +281,7 @@ export function useDirectoryNavigation(
       currentAbortControllerRef.current?.abort();
     };
     // We intentionally omit resolvedInitialPath and doNavigate from deps:
-    // - resolvedInitialPath is only consumed at mount time (AC1 contract).
+    // - resolvedInitialPath is only consumed at mount time (mount-only prop contract).
     // - doNavigate is stable (useCallback with []).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -289,7 +289,7 @@ export function useDirectoryNavigation(
   // ── navigate callback ─────────────────────────────────────────────────────
   const navigate = useCallback(
     (path: string): void => {
-      // AC8: whitespace-only path is a no-op (strictly whitespace, length > 0).
+      // Whitespace-only path is a no-op (strictly whitespace, length > 0).
       if (path.length > 0 && path.trim() === '') return;
 
       // Map empty string to no-argument call (same semantics as mount with '').
@@ -303,10 +303,10 @@ export function useDirectoryNavigation(
 
   // ── retry callback ────────────────────────────────────────────────────────
   // Reads guard values from refs (not state) so this callback's reference stays
-  // stable across navigation state transitions — satisfying AC11.  The refs are
-  // kept in sync with the corresponding state inside doNavigate.
+  // stable across navigation state transitions.  The refs are kept in sync with
+  // the corresponding state inside doNavigate.
   const retry = useCallback((): void => {
-    // No-op when not in error state (AC6):
+    // No-op when not in error state:
     //   - branch 1: isLoadingRef is true
     //   - branch 2: errorMessageRef is null
     //   - branch 5: retryInFlightRef is true
