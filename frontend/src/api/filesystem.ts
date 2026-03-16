@@ -40,11 +40,13 @@
 
 /**
  * A single filesystem entry returned by the browse API.
- * Contains the entry name and its absolute path on the server.
+ * Contains the entry name, its absolute path, and its type on the server.
  */
 export interface DirectoryEntry {
   name: string;
   path: string;
+  /** Filesystem type — only 'directory' and 'file' are valid; other values fail validation. */
+  type: 'directory' | 'file';
 }
 
 /**
@@ -71,9 +73,9 @@ const ROOT_RESPONSE: BrowseDirectoryResponse = {
   path: '/',
   parent: null, // root has no parent — never '/'
   entries: [
-    { name: 'projects', path: '/projects' },
-    { name: 'home', path: '/home' },
-    { name: 'etc', path: '/etc' },
+    { name: 'projects', path: '/projects', type: 'directory' },
+    { name: 'home', path: '/home', type: 'directory' },
+    { name: 'etc', path: '/etc', type: 'directory' },
   ],
 };
 
@@ -87,8 +89,8 @@ const CANNED_MAP: Readonly<Record<string, BrowseDirectoryResponse>> = {
     path: '/projects',
     parent: '/',
     entries: [
-      { name: 'alpha', path: '/projects/alpha' },
-      { name: 'readme.txt', path: '/projects/readme.txt' },
+      { name: 'alpha', path: '/projects/alpha', type: 'directory' },
+      { name: 'readme.txt', path: '/projects/readme.txt', type: 'file' },
     ],
   },
 };

@@ -1,22 +1,22 @@
 /**
- * DirectoryPickerModal.tsx — TASK-002b-Aa-i-b-2
+ * DirectoryPickerModal.tsx — TASK-002b-Aa-i-c
  *
- * Portal, ARIA skeleton, focus trap, loading UI, and Up button.
+ * Error branch, retry engine, lastAttemptedPath tracking, and returnFocusRef
+ * null-guard.
  *
- * This sub-task extends TASK-002b-Aa-i-b-1 (state/lifecycle core) by replacing
- * the `return null` stub with the full portal and structural UI.
- *
- * This sub-task defines:
- *   - ReactDOM.createPortal wrapping the dialog into document.body (AC1)
- *   - ARIA dialog skeleton: role, aria-modal, tabIndex, ref, aria-labelledby (AC2)
- *   - visually-hidden title span + data-testid='current-path-display' (AC2)
- *   - useLayoutEffect focus assignment and return-focus restoration on unmount (AC3)
- *   - Keyboard focus trap for Tab / Shift+Tab (AC4)
- *   - Escape handler calling onClose(), with preventDefault+stopPropagation (AC5)
- *   - <ul data-testid='directory-listing'> unconditional, aria-busy lifecycle (AC6/AC8)
- *   - Loading indicator: role='status' sibling, conditional mount (AC7)
- *   - Up button: conditional render, disabled-when-loading, stale-closure guard (AC9)
- *   - aria-hidden='true' on #root while modal is mounted (AC10)
+ * This sub-task extends TASK-002b-Aa-i-b-2 (portal, ARIA, focus trap,
+ * loading UI, Up button) by adding:
+ *   - Structural response validation (AC: null body, missing fields, bad types)
+ *   - Error state UI: role='alert' container with message + Retry button (AC1)
+ *   - lastAttemptedPathRef (distinct useRef) and retry engine (AC2/AC8)
+ *   - currentPath display edge-case: '' → '/' (AC3)
+ *   - errorKey in state for re-mount on repeated failures (AC5)
+ *   - Retry button focus on error-state entry (AC10)
+ *   - Empty-entries state: data-testid='empty-directory-message' (AC9)
+ *   - returnFocusRef null-guard in handleClose (AC6/AC7)
+ *   - Escape calls handleClose (abort + focus-restore + onClose) (AC7)
+ *   - Loading indicator moved inside data-testid='directory-listing' with
+ *     data-testid='loading-indicator' (AC8)
  *
  * @requires React 18 — uses useId() (React 18+; installed version is React 19, compatible)
  *
@@ -28,14 +28,9 @@
  * (default Vite React scaffold). Update the aria-hidden effect selector if the
  * host application uses a different root element ID.
  *
- * Informational (not acceptance criteria): The portal places the modal outside
- * any ancestor's DOM subtree so outer focus traps and Escape listeners of
- * ancestor components cannot intercept events from within this portal subtree.
- *
  * Deferred to other tasks:
  *   - Entry rendering: <li> items in directory listing (TASK-002b-Aa-ii)
- *   - Error display / Retry onClick (TASK-002b-Aa-i-c)
- *   - Select button wiring / returnFocusRef prop usage (TASK-002b-Ab)
+ *   - Select button wiring (TASK-002b-Ab)
  *   - document.body scroll-lock (TASK-002b-Ab)
  */
 
@@ -59,7 +54,7 @@ export type { BrowseDirectoryResponse, DirectoryEntry } from '@/api/filesystem';
 import type { BrowseDirectoryResponse, DirectoryEntry } from '@/api/filesystem';
 
 // ---------------------------------------------------------------------------
-// State machine types (AC3)
+// State machine types
 // ---------------------------------------------------------------------------
 
 /**
@@ -90,21 +85,27 @@ export interface DirectoryPickerState {
   entries: DirectoryEntry[];
   /** null until first success; from last resolved response's parent field. */
   parent: string | null;
-  /** trimmedInitialPath before first response; response.path after. */
+  /** trimmedInitialPath before first response; response.path after first success. */
   currentPath: string;
   /**
    * Most recently *requested* path, set on dispatch before response arrives.
-   * Distinct from currentPath: currentPath is updated only from server's
-   * response.path on success; lastAttemptedPath records what was asked for.
-   * Used by the Retry button (TASK-002b-Aa-i-c) to re-issue the last request.
+   * Distinct from currentPath: currentPath is updated only on success;
+   * lastAttemptedPath records what was asked for.
+   * Mirrored from lastAttemptedPathRef (useRef) for state-snapshot inspection.
    */
   lastAttemptedPath: string;
   /** Non-null iff status === 'error'. */
   error: Error | null;
+  /**
+   * Increments on each error state entry (including repeated failures).
+   * Used as a React key on the error container to guarantee DOM remount and
+   * screen-reader re-announcement of role='alert' on consecutive failures.
+   */
+  errorKey: number;
 }
 
 // ---------------------------------------------------------------------------
-// Props interface (AC1)
+// Props interface
 // ---------------------------------------------------------------------------
 
 /**
@@ -133,9 +134,9 @@ export interface DirectoryPickerModalProps {
   onClose: () => void;
   /**
    * Ref to the element that triggered this modal.
-   * returnFocusRef.current may be null at focus-return time; the null-guard
-   * and fallback focus target are implemented in TASK-002b-Ab.
-   * This sub-task declares the prop type only.
+   * Used by the internal close handler to restore focus with null-guard:
+   * if the element is null, removed from DOM, disabled, hidden, inert, or
+   * aria-hidden, document.body receives focus instead.
    */
   returnFocusRef: RefObject<HTMLButtonElement>;
 }
@@ -151,6 +152,66 @@ export interface DirectoryPickerModalProps {
  */
 const FOCUSABLE_QUERY =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+// ---------------------------------------------------------------------------
+// Response validation helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Type guard for a single directory entry.
+ *
+ * An entry is valid iff:
+ *   - It is a non-null object
+ *   - `name` is a non-empty string
+ *   - `type` is exactly 'directory' or 'file'
+ *
+ * A single invalid entry fails the entire response (no partial rendering).
+ */
+function isValidEntry(entry: unknown): entry is DirectoryEntry {
+  if (entry === null || typeof entry !== 'object') return false;
+  const e = entry as Record<string, unknown>;
+  const name = e['name'];
+  const type = e['type'];
+  if (typeof name !== 'string' || name === '') return false;
+  if (type !== 'directory' && type !== 'file') return false;
+  return true;
+}
+
+/**
+ * Type guard for a browse-directory response body.
+ *
+ * A response is valid iff:
+ *   - It is a non-null object
+ *   - `path` is a non-empty string (null and '' are both invalid)
+ *   - `parent` is present and is either null or a string
+ *   - `entries` is a non-null array where every element passes isValidEntry
+ *
+ * Per AC: one invalid entry fails the entire response — no partial rendering.
+ */
+function isValidBrowseResponse(response: unknown): response is BrowseDirectoryResponse {
+  if (response === null || typeof response !== 'object') return false;
+  const r = response as Record<string, unknown>;
+
+  // path: must be a non-empty string (null, undefined, and '' are all invalid)
+  const path = r['path'];
+  if (typeof path !== 'string' || path === '') return false;
+
+  // parent: must be present; null (root) or a string are both valid;
+  // undefined (missing field) and non-string non-null values are invalid.
+  const parent = r['parent'];
+  if (parent !== null && typeof parent !== 'string') return false;
+
+  // entries: must be a non-null array
+  const entries = r['entries'];
+  if (!Array.isArray(entries)) return false;
+
+  // every entry must be valid — one invalid entry fails the whole response
+  for (const entry of entries as unknown[]) {
+    if (!isValidEntry(entry)) return false;
+  }
+
+  return true;
+}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -171,16 +232,11 @@ const FOCUSABLE_QUERY =
  */
 export function DirectoryPickerModal({
   initialPath,
-  onSelect: _onSelect,              // wired in TASK-002b-Ab
+  onSelect: _onSelect,        // wired in TASK-002b-Ab
   onClose,
-  returnFocusRef: _returnFocusRef,  // prop wiring deferred to TASK-002b-Ab
+  returnFocusRef,
 }: DirectoryPickerModalProps): ReactPortal | null {
-  // ── AC3/AC5: initialPathRef BEFORE useState ───────────────────────────────
-  // Capturing initialPath into a ref before the useState call satisfies two
-  // requirements simultaneously:
-  //   (a) the ref is available inside the lazy initializer body if needed
-  //   (b) subsequent parent re-renders with a different initialPath prop are
-  //       silently ignored — initialPathRef.current always holds the mount-time value
+  // ── initialPathRef: capture mount-time initialPath ────────────────────────
   const initialPathRef = useRef(initialPath);
 
   // ── AC3: Single useState with lazy initializer ────────────────────────────
@@ -194,16 +250,24 @@ export function DirectoryPickerModal({
       currentPath: trimmedInitialPath,
       lastAttemptedPath: trimmedInitialPath,
       error: null,
+      errorKey: 0,
     };
   });
 
   // ── stateRef: current state value at event time ───────────────────────────
-  // Updated on every render so click handlers and keydown handlers always
-  // read the latest state without closing over a stale render-time value.
+  // Updated on every render so click handlers always read the latest state.
   const stateRef = useRef(state);
   stateRef.current = state;
 
-  // ── AC6: AbortController stored in ref, not state ─────────────────────────
+  // ── lastAttemptedPathRef: dedicated ref per AC2 ───────────────────────────
+  // Assigned the exact path string passed to browseDirectory at the moment
+  // each new navigation begins — BEFORE the setState call.  Distinct from
+  // state.currentPath (which is updated only from response.path on success).
+  // The Retry handler reads this ref so it always re-issues the failed path
+  // even when the component has re-rendered since the error occurred.
+  const lastAttemptedPathRef = useRef<string>('');
+
+  // ── AbortController stored in ref, not state ─────────────────────────────
   const controllerRef = useRef<AbortController | null>(null);
 
   // ── ARIA / DOM refs ───────────────────────────────────────────────────────
@@ -211,33 +275,44 @@ export function DirectoryPickerModal({
   const containerRef = useRef<HTMLDivElement | null>(null);
   /**
    * Focus target before the modal opened.
-   * Restored to document.activeElement on mount; returned to on unmount.
-   * (Distinct from the returnFocusRef prop, which is wired in TASK-002b-Ab.)
+   * Captured synchronously in useLayoutEffect on mount.
+   * Restored in the useLayoutEffect cleanup unless handleClose already ran.
    */
   const prevFocusRef = useRef<HTMLElement | null>(null);
+  /**
+   * Set to true by handleClose after it handles focus restoration, preventing
+   * the useLayoutEffect cleanup from performing a second (redundant) focus call.
+   */
+  const focusRestoredRef = useRef(false);
+
+  /** Ref to the Retry button — used to focus it on error-state entry (AC10). */
+  const retryButtonRef = useRef<HTMLButtonElement | null>(null);
 
   // ── useId: unique, stable ID for aria-labelledby ──────────────────────────
-  // No two simultaneously-mounted instances share this id (React 18+ guarantee).
   const titleId = useId();
 
-  // ── AC7: navigate — stable identity via useCallback([]) ──────────────────
+  // ── navigate: stable identity via useCallback([]) ─────────────────────────
   //
   // CRITICAL — functional update form:
   //   Because useCallback(fn, []) closes over the *initial* render's state,
   //   reading state.entries directly would always see [] (stale closure).
   //   The setState(prev => ...) functional form reads prev at dispatch time.
   const navigate = useCallback((requestedPath: string | undefined): void => {
-    // Step 1: abort any prior in-flight request
+    // Step 1: record the path being requested in the dedicated ref (AC2).
+    // Must be set BEFORE setState so any synchronous reader sees the new value.
+    lastAttemptedPathRef.current = requestedPath ?? '';
+
+    // Step 2: abort any prior in-flight request
     controllerRef.current?.abort();
 
-    // Step 2: create new controller; capture signal in local closure
+    // Step 3: create new controller; capture signal in local closure.
     // IMPORTANT: signal is captured here — never read from controllerRef.current.signal
     // inside .then()/.catch(), because the ref may be reassigned by a subsequent call.
     const controller = new AbortController();
     controllerRef.current = controller;
     const signal = controller.signal;
 
-    // Step 3: dispatch functional state update
+    // Step 4: dispatch functional state update
     setState(prev => ({
       status: prev.entries.length === 0 ? 'initial-loading' : 'loading',
       isLoading: true,
@@ -246,30 +321,51 @@ export function DirectoryPickerModal({
       currentPath: prev.currentPath,
       lastAttemptedPath: requestedPath ?? '',
       error: null,
+      errorKey: prev.errorKey,
     }));
 
-    // Step 4: issue request with locally-captured signal
+    // Step 5: issue request with locally-captured signal
     void browseDirectory(requestedPath, signal).then(
-      // Step 5: success handler
-      (response: BrowseDirectoryResponse) => {
+      // Step 6: success handler — validate before committing to state
+      (rawResponse: BrowseDirectoryResponse) => {
         if (signal.aborted) return;
 
+        // Cast to unknown for runtime structural validation.
+        // browseDirectory is typed but the server (or test stub) may return
+        // structurally invalid data.  Catching all invalid shapes here prevents
+        // partial / undefined-access errors downstream and satisfies AC1.
+        const responseAsUnknown: unknown = rawResponse;
+        if (!isValidBrowseResponse(responseAsUnknown)) {
+          setState(prev => ({
+            status: 'error',
+            isLoading: false,
+            entries: prev.entries,
+            parent: prev.parent,
+            currentPath: prev.currentPath,
+            lastAttemptedPath: prev.lastAttemptedPath,
+            error: new Error('Invalid response from server'),
+            errorKey: prev.errorKey + 1,
+          }));
+          return;
+        }
+
+        // rawResponse is now narrowed to BrowseDirectoryResponse
         setState(prev => ({
           status: 'success',
           isLoading: false,
-          entries: response.entries,
-          parent: response.parent ?? null,
-          // If response.path is nullish (malformed server response), fall back to
-          // lastAttemptedPath so currentPath is never null/undefined (prevents AT
-          // from announcing the '…' fallback after a successful navigation).
-          currentPath: response.path ?? prev.lastAttemptedPath,
+          entries: rawResponse.entries,
+          parent: rawResponse.parent ?? null,
+          currentPath: rawResponse.path,
           lastAttemptedPath: prev.lastAttemptedPath,
           error: null,
+          errorKey: prev.errorKey,
         }));
       },
 
-      // Step 6: error handler
+      // Step 7: rejection handler
       (error: unknown) => {
+        // Abort errors are intentional (user navigated away or component unmounted).
+        // Do not transition to error state for these.
         if (signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
           return;
         }
@@ -285,12 +381,68 @@ export function DirectoryPickerModal({
           currentPath: prev.currentPath,
           lastAttemptedPath: prev.lastAttemptedPath,
           error: storedError,
+          errorKey: prev.errorKey + 1,
         }));
       },
     );
   }, []); // empty deps: navigate never needs to close over reactive render values
 
-  // ── AC5: Mount effect — initial navigation ────────────────────────────────
+  // ── handleClose: abort + returnFocusRef null-guard + onClose ─────────────
+  //
+  // Called by Escape keydown and any other close path.
+  // Performs focus restoration BEFORE the portal unmounts (per AC6/AC7) so
+  // the focus call reaches the DOM element while it is still connected.
+  //
+  // Null-guard conditions per AC7 (any true → fall back to document.body):
+  //   - returnFocusRef.current is null
+  //   - document.contains(returnFocusRef.current) returns false
+  //   - element has the disabled attribute
+  //   - element has the hidden attribute
+  //   - element.closest('[inert]') !== null
+  //   - element.getAttribute('aria-hidden') === 'true'
+  const handleClose = useCallback((): void => {
+    // Abort any in-flight navigation request (AC7).
+    controllerRef.current?.abort();
+
+    // Focus restoration with null-guard (AC6/AC7).
+    const target = returnFocusRef.current;
+    const canFocus =
+      target !== null &&
+      document.contains(target) &&
+      !target.disabled &&
+      !target.hidden &&
+      target.closest('[inert]') === null &&
+      target.getAttribute('aria-hidden') !== 'true';
+
+    if (canFocus) {
+      // `target` is non-null here by the canFocus condition above.
+      // The non-null assertion is safe: `target !== null` is the first operand.
+      target.focus();
+    } else {
+      document.body.focus();
+    }
+
+    // Mark focus as handled so the useLayoutEffect cleanup does not attempt a
+    // second (redundant) focus call when the portal is unmounted.
+    focusRestoredRef.current = true;
+    onClose();
+  }, [onClose, returnFocusRef]);
+
+  // ── handleRetry: re-issue the last failed navigation (AC2/AC8) ────────────
+  //
+  // Reads from lastAttemptedPathRef.current (the dedicated ref), NOT from
+  // state.currentPath.  This is the core guarantee of AC2: Retry always
+  // re-issues the path that failed, even if currentPath differs (e.g., last
+  // successful path is /home, failed attempt was /home/foo → Retry calls /home/foo).
+  const handleRetry = useCallback((): void => {
+    const path = lastAttemptedPathRef.current;
+    // An empty string means the attempted path was the root (undefined/'' both
+    // map to root in browseDirectory).  Pass undefined for root to match the
+    // original navigate(undefined) call from the mount effect.
+    navigate(path !== '' ? path : undefined);
+  }, [navigate]);
+
+  // ── Mount effect — initial navigation ────────────────────────────────────
   useEffect(() => {
     const trimmed = (initialPathRef.current ?? '').trim();
     navigate(trimmed !== '' ? trimmed : undefined);
@@ -300,50 +452,64 @@ export function DirectoryPickerModal({
     };
   }, [navigate]); // navigate is stable (useCallback with []) — effect runs only once
 
-  // ── AC3 (b-2): useLayoutEffect — focus management ─────────────────────────
+  // ── Retry-button focus effect (AC10) ──────────────────────────────────────
+  // Fires whenever errorKey increments (i.e., on each new error state entry,
+  // including repeated consecutive failures).  By the time this effect runs,
+  // the error container has been (re-)mounted with the new key, and
+  // retryButtonRef.current points to the new Retry button DOM node.
+  useEffect(() => {
+    if (state.status === 'error' && retryButtonRef.current !== null) {
+      retryButtonRef.current.focus();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.errorKey]); // intentionally omits state.status: errorKey only changes on error entry
+
+  // ── useLayoutEffect — focus management ───────────────────────────────────
   // useLayoutEffect fires synchronously after DOM mutations, before paint,
   // preventing a visible flash where the dialog is rendered but focus hasn't moved.
-  // (useEffect would fire after paint and is not acceptable per the spec.)
   //
-  // StrictMode: mount → unmount → remount.  On unmount, cleanup restores focus
-  // to prevFocusRef.current.  On remount, prevFocusRef re-captures the restored
-  // element.  Final unmount (user dismiss) correctly returns to the original target.
+  // StrictMode: mount → unmount → remount.  On first cleanup, focusRestoredRef
+  // is false (handleClose was not called), so we restore to prevFocusRef.  On
+  // remount, prevFocusRef re-captures the (now restored) element.  On the final
+  // unmount (user dismiss via handleClose), focusRestoredRef is true and the
+  // cleanup is a no-op, preventing a double focus call.
   useLayoutEffect(() => {
-    // Capture currently-focused element for return on unmount
     prevFocusRef.current = document.activeElement as HTMLElement;
-    // Move focus inside the dialog (tabIndex={-1} makes it programmatically focusable)
     containerRef.current?.focus();
 
     return () => {
-      // Restore focus: prefer the captured element if still in DOM; fall back to body
-      if (prevFocusRef.current && document.contains(prevFocusRef.current)) {
-        prevFocusRef.current.focus();
-      } else {
-        document.body.focus();
+      if (!focusRestoredRef.current) {
+        // handleClose has not run — restore focus ourselves.
+        if (prevFocusRef.current !== null && document.contains(prevFocusRef.current)) {
+          prevFocusRef.current.focus();
+        } else {
+          document.body.focus();
+        }
       }
+      // If focusRestoredRef.current is true, handleClose already handled focus.
     };
   }, []); // empty deps: runs once on mount, cleanup runs once on unmount
 
-  // ── AC4 + AC5 (b-2): useEffect — keyboard handlers ───────────────────────
-  // Handles both Escape (close) and Tab/Shift+Tab (focus trap).
-  // Registered on containerRef.current so the listener is scoped to the dialog.
-  // Runs fresh when onClose changes to avoid stale closure on the callback.
+  // ── useEffect — keyboard handlers (Escape + Tab focus trap) ──────────────
+  // Escape calls handleClose (abort + returnFocusRef null-guard + onClose).
+  // Tab/Shift+Tab cycles through focusable descendants without escaping.
+  // Re-registered when handleClose changes (i.e., when onClose changes).
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
     const handleKeyDown = (event: KeyboardEvent): void => {
-      // ── Escape: close the modal ───────────────────────────────────────────
+      // ── Escape: abort, restore focus, close modal ──────────────────────
       // Closes even when isLoading=true — refusing dismissal during loading
       // would constitute a WCAG 2.1.2 (No Keyboard Trap) failure.
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
-        onClose();
+        handleClose();
         return;
       }
 
-      // ── Tab: focus trap ───────────────────────────────────────────────────
+      // ── Tab: focus trap ───────────────────────────────────────────────
       // Query runs on every keydown (not cached) so newly added <li> items
       // from TASK-002b-Aa-ii are automatically included in the trap boundary.
       if (event.key === 'Tab') {
@@ -352,7 +518,6 @@ export function DirectoryPickerModal({
         );
 
         // Zero focusable descendants: block Tab, keep focus on container.
-        // Do not throw or move focus outside the dialog.
         if (focusable.length === 0) {
           event.preventDefault();
           return;
@@ -368,14 +533,12 @@ export function DirectoryPickerModal({
             event.preventDefault();
             last.focus();
           }
-          // else: Shift+Tab inside the modal — propagate normally
         } else {
           // Tab: wrap forwards from last (or container) to first
           if (active === last || active === container) {
             event.preventDefault();
             first.focus();
           }
-          // else: Tab inside the modal — propagate normally
         }
       }
     };
@@ -384,15 +547,13 @@ export function DirectoryPickerModal({
     return () => {
       container.removeEventListener('keydown', handleKeyDown);
     };
-  }, [onClose]);
+  }, [handleClose]); // handleClose captures onClose + returnFocusRef
 
-  // ── AC10 (b-2): useEffect — aria-hidden on #root ─────────────────────────
+  // ── useEffect — aria-hidden on #root ─────────────────────────────────────
   // Prevents NVDA virtual-cursor navigation outside the modal in Firefox.
-  // Assumption: host application root element selector is '#root'
-  // (default Vite React scaffold). Update if the host uses a different root ID.
   useEffect(() => {
     const root = document.getElementById('root');
-    if (!root) return; // no-op if root element is absent
+    if (!root) return;
 
     root.setAttribute('aria-hidden', 'true');
     return () => {
@@ -401,28 +562,25 @@ export function DirectoryPickerModal({
   }, []);
 
   // ── Up button: render condition and click handler ─────────────────────────
-  // `!= null` covers both null and undefined via abstract equality, handling
-  // malformed API responses where the `parent` field is absent from JSON.
-  // Note: \s may not match \u00A0 (non-breaking space) in all environments;
-  // use .trim().length > 0 instead if NBSP is a realistic parent value.
   const showUpButton =
     state.parent != null && !/^\s*$/.test(state.parent);
 
   const handleUpClick = (): void => {
-    // Read state via ref at event time to prevent stale-closure navigation.
     const current = stateRef.current;
-    // Double-guard: disabled attribute prevents most invocations, but this
-    // functional guard handles any React render-cycle gap between click and
-    // the disabled-attribute render.
     if (current.isLoading) return;
     if (current.parent != null && !/^\s*$/.test(current.parent)) {
       navigate(current.parent);
     }
   };
 
+  // ── displayPath: '' → '/' per AC3 ────────────────────────────────────────
+  // When the very first navigation fails and currentPath is still '' (no
+  // initialPath was provided), the path display must show '/' not blank.
+  // If initialPath was a non-empty string that failed, currentPath already
+  // reflects the trimmed initialPath value from the lazy initializer.
+  const displayPath = state.currentPath !== '' ? state.currentPath : '/';
+
   // ── Guard: not SSR-compatible ─────────────────────────────────────────────
-  // document.body is always non-null in browser/jsdom environments.
-  // This guard satisfies TypeScript's nullable type without crashing in SSR.
   if (!document.body) return null;
 
   // ── Portal render ─────────────────────────────────────────────────────────
@@ -435,30 +593,22 @@ export function DirectoryPickerModal({
       aria-labelledby={titleId}
     >
       {/*
-       * Title: accessible name = "Browse Directories: <currentPath>"
+       * Title: accessible name = "Browse Directories: <displayPath>"
        *
        * The visually-hidden span is read by AT but invisible on screen.
-       * The ?? '\u2026' fallback prevents AT from announcing 'null' or empty
-       * text during idle/initial-loading states (e.g., when the test injects
-       * state with currentPath: null).
-       *
-       * data-testid='current-path-display' is the test query target for
-       * path-display assertions.
+       * data-testid='current-path-display' is on the inner span so that
+       * textContent assertions see only the path value (e.g. '/', '/home'),
+       * not the visually-hidden prefix text.
        */}
-      <h2 id={titleId} data-testid="current-path-display">
+      <h2 id={titleId}>
         <span className="visually-hidden">Browse Directories: </span>
-        {state.currentPath ?? '\u2026'}
+        <span data-testid="current-path-display">{displayPath}</span>
       </h2>
 
       {/*
        * Up button: absent from DOM (not just hidden) when parent is null/empty.
-       *
        * Disabled during loading to prevent concurrent navigations.
        * Enabled in error state to allow upward navigation as an escape path.
-       *
-       * aria-label includes visible text 'Up' as a substring of the accessible
-       * name, satisfying WCAG 2.5.3 Label in Name.
-       * '\u2013' = en dash (U+2013).
        */}
       {showUpButton && (
         <button
@@ -472,47 +622,91 @@ export function DirectoryPickerModal({
       )}
 
       {/*
-       * Directory listing: unconditional in all state branches.
+       * Directory listing container: unconditional in all state branches.
        *
-       * aria-label='Directory contents' gives AT a meaningful name even when
-       * the list is empty (avoids announcing confusing 'list, 0 items').
+       * Changed from <ul> to <div> so that non-list children (error container,
+       * loading indicator, empty message) can be valid HTML descendants.
+       * Entry list items from TASK-002b-Aa-ii will be rendered inside a <ul>
+       * nested within this div.
        *
        * aria-busy='true' during loading; attribute removed entirely (undefined)
        * when not loading. React removes DOM attributes when value is undefined.
-       * Passing boolean false or string 'false' leaves aria-busy="false" in the
-       * DOM, which some AT implementations treat as a distinct state from absence.
-       *
-       * Children (<li> entry items) are added in TASK-002b-Aa-ii.
        */}
-      <ul
+      <div
         data-testid="directory-listing"
         aria-label="Directory contents"
         aria-busy={state.isLoading ? 'true' : undefined}
-      />
+      >
+        {/*
+         * Loading indicator: conditional mount (not CSS visibility toggle).
+         *
+         * Moved inside data-testid='directory-listing' per AC8.
+         * data-testid='loading-indicator' allows direct test query.
+         *
+         * role='status' creates an ARIA live region.  Conditional mounting
+         * (not CSS toggling) forces AT to re-announce 'Loading…' on each new
+         * navigation.
+         */}
+        {state.isLoading && (
+          <div data-testid="loading-indicator" role="status">Loading…</div>
+        )}
 
-      {/*
-       * Loading indicator: conditional mount (not CSS visibility toggle).
-       *
-       * Rendered as a SIBLING of <ul>, never a child.
-       *
-       * role='status' creates an ARIA live region. Text content 'Loading\u2026'
-       * (U+2026 HORIZONTAL ELLIPSIS, not three period characters) is the
-       * announced value. aria-label-only does not create a live region.
-       *
-       * Conditional mounting (not CSS toggling) forces AT to re-announce
-       * 'Loading…' on each new navigation — a CSS-toggled element whose text
-       * content doesn't change would not trigger a live-region announcement
-       * on repeat navigations.
-       *
-       * JAWS trade-off: JAWS may miss live-region announcements when element
-       * and content appear simultaneously on mount. If JAWS support is required,
-       * always-render the element with conditional text instead:
-       *   <div role='status'>{state.isLoading ? 'Loading\u2026' : ''}</div>
-       * Resolve this trade-off with the team before shipping.
-       */}
-      {state.isLoading && (
-        <div role="status">Loading…</div>
-      )}
+        {/*
+         * Error state container (AC1/AC5).
+         *
+         * role='alert' causes AT to announce the content immediately upon
+         * mount — suitable for error messages that need immediate attention.
+         *
+         * key={state.errorKey}: React unmounts and remounts this div on each
+         * new errorKey value.  This guarantees a fresh role='alert' insertion
+         * into the DOM on repeated consecutive failures, triggering a new
+         * screen-reader announcement even when the error message text is
+         * unchanged.
+         *
+         * The error container is unmounted during loading (state.isLoading is
+         * true, state.status is not 'error'), so the conditional rendering
+         * also provides structural removal of data-testid='retry-button'
+         * during in-flight retries — a second click is structurally impossible.
+         */}
+        {state.status === 'error' && (
+          <div role="alert" key={state.errorKey}>
+            {/*
+             * Error message: single element with exact textContent.
+             * Not split across child nodes per AC1.
+             */}
+            <p>Failed to load directory. Please try again.</p>
+            {/*
+             * Retry button (AC1/AC8):
+             *   - visible text and accessible name are both 'Retry'
+             *   - data-testid='retry-button' for test queries
+             *   - ref={retryButtonRef} so the focus effect (AC10) can focus it
+             *   - onClick calls handleRetry which reads lastAttemptedPathRef.current
+             */}
+            <button
+              type="button"
+              data-testid="retry-button"
+              ref={retryButtonRef}
+              onClick={handleRetry}
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {/*
+         * Empty directory state (AC9).
+         * Shown only after a successful navigation that returned zero entries.
+         * Absent in all other states (loading, error, initial-loading, idle).
+         */}
+        {state.status === 'success' && state.entries.length === 0 && (
+          <p data-testid="empty-directory-message">This directory is empty.</p>
+        )}
+
+        {/*
+         * Entry list items are rendered here in TASK-002b-Aa-ii.
+         * Deferred: entry rendering (directory + file items with navigation).
+         */}
+      </div>
     </div>
   );
 
