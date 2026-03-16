@@ -20,8 +20,7 @@ function [] = EMC_ctf_refine_from_star(star_file_path, stack_file_path, ...
 %       'warmup_iterations'        - Warmup iterations (default: 3)
 %       'astigmatism_angle_range'  - Max astigmatism angle change in radians (default: pi/4)
 %       'z_offset_bound_factor'    - Z offset bound multiplier (default: 5)
-%       'n_debug_particles'        - Particles for angle convention debug (default: 20)
-%       'debug_angle_convention'    - Run angle convention debug (default: false)
+%       'exit_after_first_tilt'     - Exit after first tilt for testing (default: false)
 %
 % BEHAVIORS TO WATCH:
 %   - ADAM score_history should increase monotonically after warmup; oscillation = lr too high
@@ -59,29 +58,32 @@ fprintf('  Reference volume size: [%d, %d, %d]\n', ref_vol_size(1), ref_vol_size
 % Create interpolator for reference volume
 ref_interp = interpolator(ref_vol, [0,0,0], [0,0,0], 'SPIDER', 'inv', 'C1');
 
-%% ===== Stage C: Euler angle convention debug =====
+%% ===== Stage C: Compute CTFSIZE and masks =====
 
-if opts.debug_angle_convention
-  best_permutation = run_angle_convention_debug(particles, stack_mrc, tile_size, ...
-      ref_interp, ref_vol_size, opts.n_debug_particles);
-else
-  % Default: use negated angles (original e1,e2,e3 from rotm2eul)
-  best_permutation = 'B';
-  fprintf('Skipping angle convention debug, using default permutation B [-psi,-theta,-phi]\n');
-end
+% Compute FFT-friendly CTFSIZE (~2x tile_size) for proper Fourier-space CTF operations
+% (Reference: BH_synthetic_mapBack.m lines 1171-1177)
+CTFSIZE = BH_multi_iterator([2.*tile_size, 1], 'fourier');
+CTFSIZE = CTFSIZE(1:2);
+padCTF = BH_multi_padVal(tile_size, CTFSIZE);
+ctfOrigin = emc_get_origin_index(CTFSIZE);
+fprintf('  tile_size=[%d,%d] -> CTFSIZE=[%d,%d] (FFT-friendly, ~2x)\n', ...
+    tile_size(1), tile_size(2), CTFSIZE(1), CTFSIZE(2));
+
+% Data mask at tile_size: soft-edge cosine taper for edge treatment
+% TODO: when particle_radius is available, use it to inform mask radius
+soft_mask = create_2d_soft_mask(tile_size, 7);
+
+% CTF mask at CTFSIZE: soft-edge sphere applied after padding
+% The -7 gives a 7-pixel soft edge taper at the boundary of the padded region
+ctfMask = gpuArray(BH_mask3d('sphere', CTFSIZE, ctfOrigin - 7, [0,0], '2d'));
+
+% TODO: Add peak search mask at CTFSIZE for CC peak finding
+% (Reference: BH_synthetic_mapBack.m line 1190 uses EMC_gaussianKernel)
 
 %% ===== Stage D: Group particles by tilt, sort by ascending |tilt_angle| =====
 
-all_tilt_names = {particles.original_image_filename};
-[unique_tilt_names, ~, tilt_group_indices] = unique(all_tilt_names);
+[unique_tilt_names, tilt_group_indices, tilt_angles_per_group] = group_particles_by_tilt(particles);
 n_tilt_groups = length(unique_tilt_names);
-
-% Get tilt angle per group from the first particle in each group
-tilt_angles_per_group = zeros(n_tilt_groups, 1);
-for group_index = 1:n_tilt_groups
-  members = find(tilt_group_indices == group_index);
-  tilt_angles_per_group(group_index) = particles(members(1)).tilt_angle;
-end
 [~, ascending_tilt_order] = sort(abs(tilt_angles_per_group));
 
 fprintf('  %d tilt groups, processing in ascending |tilt| order\n', n_tilt_groups);
@@ -89,13 +91,15 @@ fprintf('  %d tilt groups, processing in ascending |tilt| order\n', n_tilt_group
 %% ===== Stage E: Per-tilt refinement loop =====
 
 % Storage for refined values (indexed by particle order in star file)
+% Initialize to zeros - unprocessed particles will have zeros to expose failures
 refined_defocus_1 = zeros(n_total_particles, 1);
 refined_defocus_2 = zeros(n_total_particles, 1);
 refined_astigmatism_angle = zeros(n_total_particles, 1);
 refined_shift_x = zeros(n_total_particles, 1);
 refined_shift_y = zeros(n_total_particles, 1);
 refined_scores = zeros(n_total_particles, 1);
-refined_occupancy = 100.0 * ones(n_total_particles, 1);
+refined_occupancy = zeros(n_total_particles, 1);
+processed_mask = false(n_total_particles, 1);
 
 % Tilt-dependent scoring accumulators
 baseline_median_score = [];
@@ -119,8 +123,6 @@ for sorted_index = 1:n_tilt_groups
 
   fprintf('  Refining tilt %s (angle %.1f deg, %d particles)...\n', ...
     current_tilt_name, current_tilt_angle, n_particles_this_tilt);
-
-  try
 
   % Determine consecutive slice range for batch loading
   slice_indices = [particles(member_indices).position_in_stack];
@@ -149,13 +151,24 @@ for sorted_index = 1:n_tilt_groups
     p = particles(member_indices(particle_index));
     local_slice = p.position_in_stack - first_slice + 1;
 
-    data_tiles{particle_index} = gpuArray(tilt_data(:,:,local_slice));
+    % Tile preparation matching reference (BH_synthetic_mapBack.m lines 1527-1543):
+    % 1. Apply soft mask at tile_size
+    % 2. Mean subtract + RMS normalize
+    % 3. Pad to CTFSIZE with singleTaper + apply ctfMask
+    data_tile = soft_mask .* gpuArray(tilt_data(:,:,local_slice));
+    data_tile = data_tile - mean(data_tile(:));
+    data_tile = data_tile ./ rms(data_tile(:));
+    data_tiles{particle_index} = ctfMask .* BH_padZeros3d(data_tile, 'fwd', padCTF, 'GPU', 'singleTaper');
 
     % Generate reference projection: rotate volume, project along Z
-    angles = apply_best_permutation(p.psi, p.theta, p.phi, best_permutation);
+    % Euler angle convention: [phi, theta, psi] (permutation C, confirmed by debug)
+    angles = [p.phi, p.theta, p.psi];
     rotated_vol = ref_interp.interp3d(angles, [0,0,0], 'SPIDER', 'inv', 'C1');
     ref_projection = sum(rotated_vol, 3);
-    ref_tiles{particle_index} = center_crop_or_pad(ref_projection, tile_size);
+    ref_tile = soft_mask .* center_crop_or_pad(ref_projection, tile_size);
+    ref_tile = ref_tile - mean(ref_tile(:));
+    ref_tile = ref_tile ./ rms(ref_tile(:));
+    ref_tiles{particle_index} = ctfMask .* BH_padZeros3d(ref_tile, 'fwd', padCTF, 'GPU', 'singleTaper');
 
     % Shifts are stored in Angstroms in the star file, convert to pixels
     initial_shifts(particle_index, :) = [p.x_shift / pixel_size_angstroms, ...
@@ -176,16 +189,17 @@ for sorted_index = 1:n_tilt_groups
   refinement_options.maximum_iterations = opts.maximum_iterations;
   refinement_options.upsample_factor = opts.upsample_factor;
   refinement_options.upsample_window = opts.upsample_window;
-  refinement_options.CTFSIZE = tile_size;
+  refinement_options.CTFSIZE = CTFSIZE;
   refinement_options.use_phase_compensated_correlation = false;
   refinement_options.warmup_iterations = opts.warmup_iterations;
   refinement_options.lowpass_cutoff = opts.lowpass_cutoff;
   refinement_options.astigmatism_angle_range = opts.astigmatism_angle_range;
   refinement_options.z_offset_bound_factor = opts.z_offset_bound_factor;
-  refinement_options.peak_search_radius = floor(tile_size / 4);
-  refinement_options.maximum_xy_shift = max(floor(tile_size / 4));
+  refinement_options.peak_search_radius = floor(CTFSIZE ./ 4);
+  refinement_options.maximum_xy_shift = max(floor(CTFSIZE ./ 4));
 
-  % Run ADAM refinement for this tilt
+  % Run ADAM refinement for this tilt (try/catch so one bad tilt doesn't kill the run)
+  try
   tilt_results = EMC_refine_tilt_ctf(data_tiles, ref_tiles, ctf_params_for_tilt, ...
       initial_shifts, refinement_options);
 
@@ -212,10 +226,31 @@ for sorted_index = 1:n_tilt_groups
     refined_shift_x(idx) = tilt_results.shift_x(particle_index) * pixel_size_angstroms;
     refined_shift_y(idx) = tilt_results.shift_y(particle_index) * pixel_size_angstroms;
     refined_scores(idx) = tilt_results.per_particle_scores(particle_index);
+    processed_mask(idx) = true;
   end
 
   % Tilt-dependent scoring (cos^alpha model)
   tilt_scores = tilt_results.per_particle_scores;
+  % REVERT_NAN_DEBUG: trace NaN source
+  n_nan_scores = sum(isnan(tilt_scores));
+  if n_nan_scores > 0
+    fprintf('  [NAN_DEBUG] %d/%d particle scores are NaN for tilt %s\n', ...
+        n_nan_scores, length(tilt_scores), current_tilt_name);
+    fprintf('  [NAN_DEBUG] tilt_scores = [%s]\n', sprintf('%.6g ', tilt_scores));
+    fprintf('  [NAN_DEBUG] delta_defocus=%.1f, delta_astig=%.1f, delta_angle=%.4f\n', ...
+        tilt_results.delta_defocus_tilt, tilt_results.delta_half_astigmatism, ...
+        tilt_results.delta_astigmatism_angle);
+    fprintf('  [NAN_DEBUG] shift_x = [%s]\n', sprintf('%.4f ', tilt_results.shift_x));
+    fprintf('  [NAN_DEBUG] shift_y = [%s]\n', sprintf('%.4f ', tilt_results.shift_y));
+    for nan_i = 1:length(tilt_scores)
+      if isnan(tilt_scores(nan_i))
+        p_nan = particles(member_indices(nan_i));
+        fprintf('  [NAN_DEBUG] particle %d: df1=%.1f df2=%.1f ast_angle=%.2f pos=%d\n', ...
+            nan_i, p_nan.defocus_1, p_nan.defocus_2, p_nan.defocus_angle, p_nan.position_in_stack);
+      end
+    end
+    error('NaN scores detected — see NAN_DEBUG output above');
+  end
   if abs(current_tilt_angle) < 10
     baseline_median_score = median(tilt_scores);
     score_threshold = prctile(tilt_scores, 10);
@@ -227,7 +262,6 @@ for sorted_index = 1:n_tilt_groups
       log_cos = log(cos(angles_rad));
       valid = isfinite(log_ratio) & isfinite(log_cos) & log_cos ~= 0;
       if any(valid)
-        % Solve log_ratio = alpha * log_cos for alpha (MATLAB \ = least-squares solve)
         alpha_fit = log_cos(valid) \ log_ratio(valid);
       else
         alpha_fit = 1;
@@ -239,11 +273,12 @@ for sorted_index = 1:n_tilt_groups
     end
   end
 
-  % Mark particles below threshold with occupancy=0
+  % Set occupancy: 100 for particles above threshold, 0 otherwise
   for particle_index = 1:n_particles_this_tilt
     idx = member_indices(particle_index);
-    if refined_scores(idx) < score_threshold
-      refined_occupancy(idx) = 0;
+    score = refined_scores(idx);
+    if isfinite(score) && score >= score_threshold
+      refined_occupancy(idx) = 100;
     end
   end
 
@@ -261,18 +296,45 @@ for sorted_index = 1:n_tilt_groups
   % Clear GPU memory for this tilt group
   clear data_tiles ref_tiles;
 
+  % Early exit option for testing — exits after N tilts
+  if opts.exit_after_first_tilt && sorted_index >= 20
+    fprintf('  [DEBUG] Early exit after %d tilts (exit_after_first_tilt=true)\n', sorted_index);
+    break;
+  end
+
   catch ME
+    fprintf(2, '\n!!! Tilt %s failed !!!\n', current_tilt_name);
+    fprintf(2, '  Error: %s\n', ME.message);
+    for stack_i = 1:length(ME.stack)
+      fprintf(2, '  in %s (line %d)\n', ME.stack(stack_i).name, ME.stack(stack_i).line);
+    end
     warning('EMC_ctf_refine_from_star:tiltFailed', ...
         'Tilt %s failed: %s — skipping', current_tilt_name, ME.message);
   end
 end
 
 %% ===== Summary statistics =====
-defocus_corrections = refined_defocus_1 - arrayfun(@(p) p.defocus_1, particles(:));
-fprintf('  Defocus corrections: mean=%.1f A, std=%.1f A\n', mean(defocus_corrections), std(defocus_corrections));
-n_rejected = sum(refined_occupancy == 0);
-fprintf('  Particles rejected: %d / %d (%.1f%%)\n', n_rejected, n_total_particles, ...
-    100 * n_rejected / max(n_total_particles, 1));
+n_processed = sum(processed_mask);
+n_unprocessed = n_total_particles - n_processed;
+fprintf('\n=== Refinement Summary ===\n');
+fprintf('  Particles processed:   %d / %d (%.1f%%)\n', n_processed, n_total_particles, ...
+    100 * n_processed / max(n_total_particles, 1));
+fprintf('  Particles unprocessed: %d / %d (%.1f%%)\n', n_unprocessed, n_total_particles, ...
+    100 * n_unprocessed / max(n_total_particles, 1));
+
+if n_processed > 0
+  defocus_corrections = refined_defocus_1(processed_mask) - arrayfun(@(p) p.defocus_1, particles(processed_mask)');
+  fprintf('  Defocus corrections (processed only): mean=%.1f A, std=%.1f A\n', ...
+      mean(defocus_corrections), std(defocus_corrections));
+end
+
+n_rejected = sum(refined_occupancy == 0 & processed_mask);
+fprintf('  Particles rejected (score threshold): %d / %d processed (%.1f%%)\n', ...
+    n_rejected, n_processed, 100 * n_rejected / max(n_processed, 1));
+
+if n_unprocessed > 0
+  fprintf('  WARNING: %d particles have zeros (unprocessed or failed)\n', n_unprocessed);
+end
 
 %% ===== Stage F: Write refined star file =====
 
@@ -300,8 +362,7 @@ function opts = parse_options(args)
   opts.warmup_iterations = 3;
   opts.astigmatism_angle_range = pi/4;
   opts.z_offset_bound_factor = 5;
-  opts.n_debug_particles = 20;
-  opts.debug_angle_convention = false;
+  opts.exit_after_first_tilt = false;
 
   i = 1;
   while i <= length(args)
@@ -310,7 +371,14 @@ function opts = parse_options(args)
       if i + 1 <= length(args)
         val = args{i+1};
         if ischar(val) || isstring(val)
-          val = str2double(val);
+          val_str = lower(char(val));
+          if strcmp(val_str, 'true') || strcmp(val_str, '1')
+            val = true;
+          elseif strcmp(val_str, 'false') || strcmp(val_str, '0')
+            val = false;
+          else
+            val = str2double(val);
+          end
         end
         if isfield(opts, key)
           opts.(key) = val;
@@ -419,107 +487,38 @@ function [particles, header_lines] = parse_star_file(path)
 end
 
 
-function best_permutation = run_angle_convention_debug(particles, stack_mrc, tile_size, ...
-    ref_interp, ref_vol_size, n_debug_particles)
-% Test 4 Euler angle permutations to determine the correct mapping.
+function mask = create_2d_soft_mask(tile_size, taper_width)
+% Create 2D soft-edge cylindrical mask with cosine taper.
+  radius = floor(min(tile_size) ./ 2) - taper_width;
+  origin = emc_get_origin_index(tile_size);
+  [gx, gy] = ndgrid(1:tile_size(1), 1:tile_size(2));
+  dist = sqrt((gx - origin(1)).^2 + (gy - origin(2)).^2);
 
-  fprintf('\n=== Euler Angle Convention Debug ===\n');
+  mask = ones(tile_size, 'single');
+  taper_region = (dist > radius) & (dist <= radius + taper_width);
+  mask(taper_region) = 0.5 .* (1 + cos(pi .* (dist(taper_region) - radius) ./ taper_width));
+  mask(dist > radius + taper_width) = 0;
+  mask = gpuArray(mask);
+end
 
-  % Find tilt group with smallest |tilt_angle|
+
+function [unique_names, group_indices, angles_per_group] = group_particles_by_tilt(particles)
+% Group particles by tilt image filename and extract tilt angle per group.
+%
+% Returns:
+%   unique_names     - cell array of unique tilt image filenames
+%   group_indices    - Nx1 array mapping each particle to its group index
+%   angles_per_group - Mx1 array of tilt angles (from first particle in each group)
+
   all_tilt_names = {particles.original_image_filename};
-  [unique_tilt_names, ~, tilt_group_indices] = unique(all_tilt_names);
-  n_groups = length(unique_tilt_names);
+  [unique_names, ~, group_indices] = unique(all_tilt_names);
+  n_groups = length(unique_names);
 
-  tilt_angles_per_group = zeros(n_groups, 1);
+  angles_per_group = zeros(n_groups, 1);
   for g = 1:n_groups
-    members = find(tilt_group_indices == g);
-    tilt_angles_per_group(g) = particles(members(1)).tilt_angle;
+    members = find(group_indices == g);
+    angles_per_group(g) = particles(members(1)).tilt_angle;
   end
-  [~, best_group_idx] = min(abs(tilt_angles_per_group));
-  best_tilt_members = find(tilt_group_indices == best_group_idx);
-
-  % Select random subset
-  n_available = length(best_tilt_members);
-  n_test = min(n_debug_particles, n_available);
-  rng_indices = randperm(n_available, n_test);
-  test_indices = best_tilt_members(rng_indices);
-
-  fprintf('Testing %d particles at tilt angle %.1f deg\n', n_test, ...
-      tilt_angles_per_group(best_group_idx));
-
-  % Permutation labels and transformation functions
-  perm_labels = {'[psi,theta,phi]', '[-psi,-theta,-phi]', '[phi,theta,psi]', '[-phi,-theta,-psi]'};
-  perm_ids = {'A', 'B', 'C', 'D'};
-  scores = zeros(4, n_test);
-
-  for pi_idx = 1:n_test
-    p = particles(test_indices(pi_idx));
-    slice_idx = p.position_in_stack;
-
-    data_tile = gpuArray(single(OPEN_IMG('single', stack_mrc, ...
-        [1, tile_size(1)], [1, tile_size(2)], slice_idx, 'keep')));
-
-    % Normalize data tile for NCC
-    data_tile = data_tile - mean(data_tile(:));
-    data_std = std(data_tile(:));
-    if data_std > 0
-      data_tile = data_tile / data_std;
-    end
-
-    for perm = 1:4
-      angles = apply_permutation_by_id(p.psi, p.theta, p.phi, perm_ids{perm});
-      rotated_vol = ref_interp.interp3d(angles, [0,0,0], 'SPIDER', 'inv', 'C1');
-      ref_projection = sum(rotated_vol, 3);
-      ref_tile = center_crop_or_pad(ref_projection, tile_size);
-
-      % Normalize reference for NCC
-      ref_tile = ref_tile - mean(ref_tile(:));
-      ref_std = std(ref_tile(:));
-      if ref_std > 0
-        ref_tile = ref_tile / ref_std;
-      end
-
-      % Normalized cross-correlation
-      scores(perm, pi_idx) = gather(sum(data_tile(:) .* ref_tile(:)) / numel(data_tile));
-    end
-  end
-
-  % Print results
-  mean_scores = mean(scores, 2);
-  std_scores = std(scores, 0, 2);
-  for perm = 1:4
-    fprintf('  %-25s: mean_score = %.4f (std %.4f)\n', perm_labels{perm}, mean_scores(perm), std_scores(perm));
-  end
-
-  [~, best_idx] = max(mean_scores);
-  best_permutation = perm_ids{best_idx};
-  fprintf('Best angle permutation: %s %s\n\n', best_permutation, perm_labels{best_idx});
-
-  % Early exit so user can inspect diagnostic output before full refinement
-  error('Early exit after angle convention debug -- review results before proceeding');
-end
-
-
-function angles = apply_permutation_by_id(psi, theta, phi, perm_id)
-% Apply one of the 4 angle permutations identified by letter ID.
-  switch perm_id
-    case 'A'
-      angles = [psi, theta, phi];
-    case 'B'
-      angles = [-psi, -theta, -phi];
-    case 'C'
-      angles = [phi, theta, psi];
-    case 'D'
-      angles = [-phi, -theta, -psi];
-    otherwise
-      error('Unknown permutation ID: %s', perm_id);
-  end
-end
-
-
-function angles = apply_best_permutation(psi, theta, phi, best_permutation)
-% Apply the best angle permutation determined by the debug block.
-  angles = apply_permutation_by_id(psi, theta, phi, best_permutation);
 end
 
 

@@ -448,3 +448,19 @@ Developer: Completed 2026-03-15T12:00:00Z (TASK-002b-Aa-i-b-1)
   - Updated filesystem.ts: FilesystemBrowseResponse → BrowseDirectoryResponse; entries get path field
   - Updated useDirectoryNavigation.ts: import/validate BrowseDirectoryResponse; validate path not type
   - tsc --noEmit: zero errors; all 35 Python backend tests pass
+
+Developer: Completed 2026-03-16
+  Task: TASK-002b-Aa-1 — filesystem.ts: FilesystemBrowseResponse interface + browseDirectory stub
+  - Rewrote filesystem.ts from scratch to satisfy all acceptance criteria
+  - Key fix: pre-abort uses `signal?.aborted === true` (strict equality, not truthy)
+    so `{ aborted: 1 }` does NOT trigger the guard per spec
+  - Removed all signal.addEventListener / signal.onabort usage (forbidden by spec)
+  - Removed setTimeout delay — success path uses Promise.resolve() directly
+  - Kept exact canned-map lookup: no trim/toLowerCase/replace normalization
+  - '' and undefined map to root key '/', unknown paths fall back to root response
+  - JSDoc documents cache-miss behavior (result.path === '/' for any miss)
+  - Cross-runtime AbortError comment: check error.name === 'AbortError', not instanceof
+  - No semicolons — matches sibling files (client.ts, types.ts, parameters.ts)
+  - Compiles cleanly under strict tsconfig (noUncheckedIndexedAccess handled with
+    type assertion on always-present ROOT_KEY)
+  - No default export, all public exports are named

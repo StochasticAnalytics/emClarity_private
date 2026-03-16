@@ -110,6 +110,11 @@ classdef adamOptimizer < handle
             obj.learning_rates = lr;
         end
 
+        function scale_learning_rates(obj, factor)
+            % Multiply all learning rates by a scalar factor.
+            obj.learning_rates = obj.learning_rates * factor;
+        end
+
         function set_bounds(obj, lb, ub)
             % Set parameter bounds. Use -inf/inf for unconstrained dimensions.
             lb = lb(:);

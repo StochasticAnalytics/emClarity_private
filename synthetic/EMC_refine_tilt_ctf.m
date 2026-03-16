@@ -96,21 +96,13 @@ for i = 1:n_particles
 end
 
 % Compute peak mask
-peak_mask = compute_peak_mask(CTFSIZE, get_opt(options, 'peak_search_radius', floor(CTFSIZE/4)));
+peak_mask = compute_peak_mask(CTFSIZE, get_opt(options, 'peak_search_radius', floor(CTFSIZE./4)));
 
 % Initialize ADAM parameter vector:
 %   [delta_defocus_tilt, delta_half_astigmatism, delta_astigmatism_angle, delta_z(1..N)]
 n_params = 3 + n_particles;
 initial_params = zeros(n_params, 1);
 optimizer = adamOptimizer(initial_params);
-
-% Per-parameter learning rates
-learning_rates = zeros(n_params, 1);
-learning_rates(1) = 50;      % delta_defocus_tilt (Angstroms)
-learning_rates(2) = 10;      % delta_half_astigmatism (Angstroms)
-learning_rates(3) = 0.05;    % delta_astigmatism_angle (radians)
-learning_rates(4:end) = 0.5; % delta_z per particle (Angstroms)
-optimizer.set_learning_rates(learning_rates);
 
 % Per-parameter bounds
 maximum_xy_shift = max(get_opt(options, 'maximum_xy_shift', 10));
@@ -120,12 +112,21 @@ lower_bounds = [-defocus_search_range; -defocus_search_range/2; -astigmatism_ang
 upper_bounds = [ defocus_search_range;  defocus_search_range/2;  astigmatism_angle_range;  z_offset_bound * ones(n_particles, 1)];
 optimizer.set_bounds(lower_bounds, upper_bounds);
 
-% Finite difference step sizes for numerical gradient
+% Scale learning rates from parameter bounds and iteration budget
+% auto_scale_learning_rate computes: lr = safety_factor * expected_range / n_iterations
+expected_ranges = zeros(n_params, 1);
+expected_ranges(1) = defocus_search_range;            % defocus tilt (A)
+expected_ranges(2) = defocus_search_range / 2;        % half astigmatism (A)
+expected_ranges(3) = astigmatism_angle_range;          % astigmatism angle (rad)
+expected_ranges(4:end) = z_offset_bound;              % delta_z per particle (A)
+optimizer.auto_scale_learning_rate(expected_ranges, maximum_iterations, 3);
+
+% Finite difference step sizes: ~1% of expected range
 finite_difference_step = zeros(n_params, 1);
-finite_difference_step(1) = 50;    % defocus tilt: 50 Angstroms
-finite_difference_step(2) = 20;    % half astigmatism: 20 Angstroms
-finite_difference_step(3) = 0.01;  % astigmatism angle: 0.01 radians
-finite_difference_step(4:end) = 5; % delta_z: 5 Angstroms
+finite_difference_step(1) = max(10, defocus_search_range / 100);
+finite_difference_step(2) = max(5, defocus_search_range / 200);
+finite_difference_step(3) = max(0.005, astigmatism_angle_range / 50);
+finite_difference_step(4:end) = max(1, z_offset_bound / 100);
 
 % Store shifts (measured from CC peak, not optimized)
 current_shifts = initial_shifts;
@@ -160,8 +161,9 @@ for iteration = 1:maximum_iterations
     optimizer.add_score(total_score);
     score_history(end+1) = total_score; %#ok<AGROW>
 
-    % Check convergence
-    converged_flag = optimizer.has_converged(3, 0.001);
+    % Check convergence (require at least warmup + 3 full iterations)
+    min_iterations = warmup_iterations + 3;
+    converged_flag = (iteration >= min_iterations) && optimizer.has_converged(3, 0.001);
     fprintf('    iter %2d: score=%.6f, converged=%d\n', iteration, total_score, converged_flag);
     if converged_flag
         break;
@@ -274,8 +276,20 @@ for i = 1:n_particles
 
     % Apply CTF to reference and normalize
     reference_with_ctf = reference_fourier_transforms{i} .* ctf_image;
-    reference_with_ctf = reference_with_ctf ./ ...
-        sqrt(2 * sum(abs(reference_with_ctf(1:end-fourier_handle.invTrim,:)).^2, 'all'));
+    ref_norm = sqrt(2 * sum(abs(reference_with_ctf(1:end-fourier_handle.invTrim,:)).^2, 'all'));
+    % REVERT_NAN_DEBUG: check for zero/NaN norm before dividing
+    if ~isfinite(ref_norm) || ref_norm == 0
+        fprintf('  [NAN_DEBUG] particle %d: ref_norm=%.6g (df1=%.1f df2=%.1f ast=%.4f)\n', ...
+            i, ref_norm, effective_defocus_1, effective_defocus_2, effective_astigmatism_angle);
+        fprintf('  [NAN_DEBUG] ctf_image: min=%.6g max=%.6g nNaN=%d nInf=%d\n', ...
+            gather(min(ctf_image(:))), gather(max(ctf_image(:))), ...
+            gather(sum(isnan(ctf_image(:)))), gather(sum(isinf(ctf_image(:)))));
+        fprintf('  [NAN_DEBUG] ref_ft: min=%.6g max=%.6g nNaN=%d\n', ...
+            gather(min(abs(reference_fourier_transforms{i}(:)))), ...
+            gather(max(abs(reference_fourier_transforms{i}(:)))), ...
+            gather(sum(isnan(reference_fourier_transforms{i}(:)))));
+    end
+    reference_with_ctf = reference_with_ctf ./ ref_norm;
 
     % Cross-correlate
     cross_correlation_map = data_fourier_transforms{i} .* reference_with_ctf;
@@ -290,8 +304,12 @@ for i = 1:n_particles
     % Find peak with Fourier upsampling
     [peak_height, peak_position] = fourier_upsample_peak(cross_correlation_map, upsample_factor, upsample_window);
 
+    % Convert from image coordinates to shift relative to origin
+    origin = emc_get_origin_index(CTFSIZE);
+    shift_from_origin = peak_position - origin;
+
     per_particle_scores(i) = peak_height;
-    shifts(i,:) = gather(peak_position);
+    shifts(i,:) = gather(shift_from_origin);
 end
 
 total_score = gather(sum(per_particle_scores));
