@@ -11,26 +11,34 @@
  * Canned fake-tree (development stub)
  *
  * Lookup uses EXACT STRING MATCHING — no normalization, no case folding, no
- * trailing-slash collapsing. Notable edge-case examples:
- *   '/PROJECTS'       → root fallback  (case mismatch)
+ * trailing-slash collapsing, no leading-space trimming. Notable edge cases:
+ *   '/Projects'       → root fallback  (capital P — case mismatch)
  *   '/projects/'      → root fallback  (trailing slash NOT stripped)
- *   ' /projects'      → root fallback  (leading space NOT trimmed)
+ *   '/projects '      → root fallback  (trailing space NOT trimmed)
+ *   '//projects'      → root fallback  (double slash; no prefix matching)
  *   '/projects/alpha' → root fallback  (child path; no prefix matching)
+ *   '/home'           → root fallback  (appears in root entries but has no
+ *                                       dedicated canned entry)
+ *   '/etc'            → root fallback  (same as /home above)
  *
  * Canned paths and their outcomes:
  *
  *   undefined / ''    → { path: '/', parent: null,
- *                          entries: [projects, home, etc] }  (root fallback key)
+ *                          entries: [projects, home, etc] }  (root key)
  *   '/'               → same root response (explicit key in map)
  *   '/projects'       → { path: '/projects', parent: '/',
  *                          entries: [alpha, readme.txt] }
- *   <any other path>  → root response (fallback, same as undefined / '')
+ *   <any other path>  → root response (cache miss → fallback)
  *
- * AbortSignal takes priority over all canned outcomes:
- *   - Pre-aborted signal → DOMException('The operation was aborted.', 'AbortError'),
- *                          via Promise.reject() — no setTimeout is queued.
- *   - Mid-flight abort   → DOMException('The operation was aborted.', 'AbortError'),
- *                          via listener; clearTimeout() cancels the pending timer.
+ * Cache-miss detection: on a cache miss the returned object's `path` field
+ * is always `'/'` — NOT the originally requested path. Callers can detect a
+ * fallback by comparing `result.path` to the requested path. This is
+ * especially relevant for entries that appear in the root listing (`/home`,
+ * `/etc`) but have no dedicated canned response.
+ *
+ * AbortSignal: pre-abort check uses STRICT EQUALITY (`signal.aborted === true`,
+ * not merely truthy). `{ aborted: 1 }` does NOT trigger the guard because
+ * `1 === true` is false.
  * ---------------------------------------------------------------------------
  */
 
@@ -40,28 +48,27 @@
 
 /**
  * A single filesystem entry returned by the browse API.
- * Contains the entry name and its type on the server.
  */
 export interface DirectoryEntry {
-  name: string;
-  /** Filesystem type — only 'directory' and 'file' are valid; other values fail validation. */
-  type: 'directory' | 'file';
+  name: string
+  /** Filesystem type — only 'directory' and 'file' are valid. */
+  type: 'directory' | 'file'
 }
 
 /**
  * Response shape for a successful browseDirectory call.
  *
- * - `path`: the canonical absolute path of the directory that was listed
- * - `parent`: the parent directory's absolute path, or null if this is the root
- * - `entries`: child entries (both files and subdirectories) within this directory
+ * - `path`    the canonical absolute path of the directory that was listed
+ * - `parent`  the parent directory's absolute path, or null if this is root
+ * - `entries` child entries (both files and subdirectories) in this directory
  *
  * Note: `parent` may be absent in malformed server responses; all consumers
  * must treat `undefined` the same as `null` by coercing with `?? null`.
  */
 export interface FilesystemBrowseResponse {
-  path: string;
-  parent: string | null;
-  entries: DirectoryEntry[];
+  path: string
+  parent: string | null
+  entries: DirectoryEntry[]
 }
 
 // ---------------------------------------------------------------------------
@@ -76,10 +83,11 @@ const ROOT_RESPONSE: FilesystemBrowseResponse = {
     { name: 'home', type: 'directory' },
     { name: 'etc', type: 'directory' },
   ],
-};
+}
 
 /**
  * Canned success responses keyed by exact path string.
+ * Lookup is exact — no normalization is applied to the key.
  */
 const CANNED_MAP: Readonly<Record<string, FilesystemBrowseResponse>> = {
   '/': ROOT_RESPONSE,
@@ -91,7 +99,7 @@ const CANNED_MAP: Readonly<Record<string, FilesystemBrowseResponse>> = {
       { name: 'readme.txt', type: 'file' },
     ],
   },
-};
+}
 
 // ---------------------------------------------------------------------------
 // Deep-copy helper — ensures callers cannot mutate shared canned data
@@ -102,41 +110,7 @@ function deepCopy(response: FilesystemBrowseResponse): FilesystemBrowseResponse 
     path: response.path,
     parent: response.parent,
     entries: response.entries.map((e) => ({ name: e.name, type: e.type })),
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Test-only error injection
-// ---------------------------------------------------------------------------
-
-/** Module-level store for the injected stub error. null = no injection active. */
-let stubError: Error | null = null;
-
-/**
- * Inject an error to be thrown by the next non-aborted browseDirectory call.
- *
- * @testonly
- *
- * When set to a non-null Error, the **next non-aborted** browseDirectory call
- * (i.e., the first whose setTimeout callback fires without an abort) will reject
- * with that error and automatically reset the injection back to null. Only that
- * one call is affected; subsequent calls return canned data normally.
- *
- * Last-write-wins: calling __setStubError multiple times before any browseDirectory
- * call results in only the most recent value being active.
- *
- * Calling __setStubError(null) explicitly clears any pending injected error
- * without issuing a browseDirectory call.
- *
- * AbortSignal priority: if a call is aborted (either pre-abort or mid-flight),
- * the AbortError takes precedence and the injected error is NOT consumed —
- * it remains set for the next non-aborted call.
- *
- * Teardown: always call __setStubError(null) in afterEach to prevent cross-test
- * state pollution.
- */
-export function __setStubError(error: Error | null): void {
-  stubError = error;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -144,101 +118,56 @@ export function __setStubError(error: Error | null): void {
 // ---------------------------------------------------------------------------
 
 /**
- * Browse a server-side directory.
+ * Browse a server-side directory (development stub — returns canned data).
  *
  * @param path   Absolute path to browse. `undefined` and `''` are both
  *               equivalent and return the root response. Matching is exact
- *               and case-sensitive — no normalization is applied.
- * @param signal Optional AbortSignal. Abort is checked at three points:
- *               (1) Synchronously on call, before any async work.
- *                   If already aborted, rejects immediately via Promise.reject()
- *                   — no setTimeout is queued for that call.
- *               (2) Mid-flight, via `signal.addEventListener('abort', …, { once: true })`.
- *                   If the signal fires during the setTimeout delay, the promise
- *                   rejects with DOMException('The operation was aborted.', 'AbortError')
- *                   and the pending timer is cancelled via clearTimeout().
- *               (3) Inside the setTimeout callback itself (race-window protection):
- *                   if the abort event fired and cleared the { once: true } listener
- *                   just before the macrotask ran, the callback re-checks signal.aborted
- *                   and rejects rather than resolving.
+ *               and case-sensitive — no normalization is applied to `path`
+ *               before the canned-map lookup.
  *
- * @returns A **deep copy** of the matching canned response, so that callers
- *          mutating the returned `entries` array do not affect subsequent calls.
+ * @param signal Optional AbortSignal. The pre-abort check uses STRICT EQUALITY
+ *               (`signal.aborted === true`, not merely truthy). If already
+ *               aborted at call time the stub rejects immediately via
+ *               `Promise.reject()` — no event listener is attached and no
+ *               timer is queued.
+ *
+ *               AbortError guard in consumers should check `error.name === 'AbortError'`
+ *               (name-only, NOT `instanceof DOMException`) for cross-runtime
+ *               compatibility (e.g., Node.js environments without a global DOMException).
+ *
+ * @returns A **deep copy** of the matching canned response. On a cache miss
+ *          (any path not in the canned map) the returned object's `path` field
+ *          is `'/'` — NOT the originally requested path. Callers can detect the
+ *          fallback condition by comparing `result.path` to their requested path.
+ *          This is especially relevant for entries that appear in the root listing
+ *          (`/home`, `/etc`) but have no dedicated canned response — those paths
+ *          are cache misses and return the root response with `path: '/'`.
+ *
+ * @example
+ * const result = await browseDirectory('/home')
+ * if (result.path !== '/home') {
+ *   // cache miss — fell back to root response
+ * }
  */
 export function browseDirectory(
   path?: string,
   signal?: AbortSignal,
 ): Promise<FilesystemBrowseResponse> {
-  // ── Checkpoint 1: pre-delay abort check (synchronous) ────────────────────
-  // If signal is already aborted at call time, reject immediately via
-  // Promise.reject() — no setTimeout is queued for this call.
-  if (signal?.aborted) {
-    return Promise.reject(new DOMException('The operation was aborted.', 'AbortError'));
+  // Pre-abort check — strict equality: `signal.aborted === true` (not truthy).
+  // `{ aborted: 1 }` does NOT trigger this guard because `1 === true` is false.
+  // No event listener is attached; this stub only checks at call time.
+  if (signal?.aborted === true) {
+    return Promise.reject(new DOMException('The operation was aborted.', 'AbortError'))
   }
 
-  // ── Resolve the canned outcome for this path ──────────────────────────────
-  // Exact string matching — undefined and '' both map to the root key '/'.
-  const key = path === undefined || path === '' ? '/' : path;
+  // Map undefined and '' to the root key '/'.
+  // No normalization is applied — the path is used verbatim as the lookup key.
+  const key = path === undefined || path === '' ? '/' : path
 
-  // ── Build and return the deferred Promise ─────────────────────────────────
-  return new Promise<FilesystemBrowseResponse>((resolve, reject) => {
-    // Declare handle before rejectHandler so the closure captures the binding.
-    let handle: ReturnType<typeof setTimeout>;
+  // Exact lookup. On a cache miss fall back to the root response.
+  // CANNED_MAP['/'] is always present; the type assertion silences the
+  // `| undefined` widening introduced by noUncheckedIndexedAccess.
+  const canned = CANNED_MAP[key] ?? (CANNED_MAP['/'] as FilesystemBrowseResponse)
 
-    // ── Checkpoint 2: mid-flight abort listener ───────────────────────────
-    // Registered with { once: true } so it auto-removes when the abort event
-    // fires. clearTimeout() cancels the pending macrotask so the setTimeout
-    // callback cannot fire after the Promise has already settled (which would
-    // silently consume an injected __setStubError value).
-    const rejectHandler = (): void => {
-      clearTimeout(handle);
-      reject(new DOMException('The operation was aborted.', 'AbortError'));
-    };
-
-    if (signal) {
-      signal.addEventListener('abort', rejectHandler, { once: true });
-    }
-
-    // ── Macrotask delay (simulates network latency) ───────────────────────
-    // setTimeout (macrotask) ensures React StrictMode cleanup fires before
-    // the promise settles. Promise.resolve() (microtask) is not acceptable
-    // because it makes the mid-flight abort path non-exercisable.
-    handle = setTimeout(() => {
-      // Remove the abort listener before settling the promise on every
-      // outcome (both resolve and reject). This is required because { once }
-      // only cleans up when the abort event fires — it does NOT clean up on
-      // a successful resolution. Without explicit removal here, repeated
-      // successful calls accumulate listeners on the same signal.
-      if (signal) {
-        signal.removeEventListener('abort', rejectHandler);
-      }
-
-      // ── Checkpoint 3: race-window protection ──────────────────────────
-      // Handles the narrow window where the abort event fires (clearing the
-      // { once: true } listener) and then the macrotask fires before
-      // clearTimeout() had effect.
-      if (signal?.aborted) {
-        reject(new DOMException('The operation was aborted.', 'AbortError'));
-        return;
-      }
-
-      // ── Test-only error injection ─────────────────────────────────────
-      // Sample the injected error at macrotask-fire time. If set, consume it
-      // (reset to null) and reject with it. The injected error is only consumed
-      // by non-aborted calls (aborts return early before this point).
-      const injected = stubError;
-      if (injected !== null) {
-        stubError = null;
-        reject(injected);
-        return;
-      }
-
-      // ── Canned response lookup ────────────────────────────────────────
-      // All paths not in CANNED_MAP fall back to the root response.
-      // CANNED_MAP['/'] is always present; the non-null assertion silences
-      // the noUncheckedIndexedAccess widening to `| undefined`.
-      const canned = CANNED_MAP[key] ?? (CANNED_MAP['/'] as FilesystemBrowseResponse);
-      resolve(deepCopy(canned));
-    }, 0);
-  });
+  return Promise.resolve(deepCopy(canned))
 }
