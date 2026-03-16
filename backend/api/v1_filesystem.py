@@ -280,7 +280,7 @@ def browse_filesystem(
     except OSError as exc:
         # Catch remaining OS-level errors (e.g. EIO, ENAMETOOLONG from the
         # kernel) so they never bubble up as an unhandled 500.
-        log.warning("OS error scanning directory %s: %s", real_path, exc)
+        log.exception("OS error scanning directory %s", real_path)
         raise HTTPException(
             status_code=500,
             detail=f"I/O error reading directory: {display_path}",
