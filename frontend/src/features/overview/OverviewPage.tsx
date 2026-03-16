@@ -707,7 +707,8 @@ export function OverviewPage() {
             />
             <StatCard
               label="Tilt Series"
-              value={tiltCount !== undefined ? String(tiltCount) : '—'}
+              value={tiltCount !== null && tiltCount !== undefined ? String(tiltCount) : '—'}
+              sub={statistics !== undefined && tiltCount === null ? 'Available after import' : undefined}
             />
             <StatCard
               label="Particles"
