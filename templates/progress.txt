@@ -1,3 +1,32 @@
+Developer: Completed 2026-03-15 [TASK-002b-Aa-α-1b]
+  Task: TASK-002b-Aa-α-1b - DirectoryPickerModal + useDirectoryNavigation reconciliation
+  - Modal title changed to static 'Browse Filesystem'; data-testid="current-path-display" is a sibling
+  - Added data-testid="directory-picker-modal" and data-testid="error-message"
+  - Empty-state text 'No subdirectories' with directory-type entry filtering
+  - isLoading initialized to true (initial-loading state) for first synchronous render
+  - retryPath state as useState<undefined|string>(undefined); used in handleRetry closure
+  - directory-listing absent in error state; error container outside listing (mutually exclusive)
+  - handleRetry moves focus to container synchronously before navigate() to prevent focus loss
+  - Circular-nav guard trims both parent and response.path before comparing
+  - Parent trimmed at parse time; stored as effectiveParent
+  - Non-Error rejection guard checks instanceof Error before .name access
+  - isValidEntry: whitespace-only names trigger validation error
+  - isValidBrowseResponse: parent undefined treated as null (no validation error)
+  - validateResponse in hook: path empty string rejected, parent undefined as null,
+    whitespace name rejection, entry.type validation added
+  - TypeScript: 0 errors; all 35 backend tests pass
+
+Developer: Completed 2026-03-15 [TASK-002b-Aa-α-1a]
+  Task: TASK-002b-Aa-α-1a - filesystem.ts: rename interface, update schema, complete stub + cascade rename
+  - Renamed BrowseDirectoryResponse → FilesystemBrowseResponse in filesystem.ts, DirectoryPickerModal.tsx, and useDirectoryNavigation.ts
+  - Dropped path field from DirectoryEntry (entries now have name + type only); updated all canned data
+  - Made signal optional in browseDirectory(); fixed DOMException message to 'The operation was aborted.'
+  - Added clearTimeout(handle) in mid-flight abort handler + race-window re-check in setTimeout callback
+  - Added __setStubError export with @testonly JSDoc, last-write-wins, AbortSignal priority, afterEach teardown note
+  - Removed /error special-case (replaced by __setStubError injection mechanism)
+  - Removed entry.path validation from validateResponse() in useDirectoryNavigation.ts
+  - TypeScript compiles with zero errors after all changes
+
 Developer: Completed 2026-03-15
   Task: TASK-002b-Aa-2b-i - DirectoryPickerModal structural layer
   - Created DirectoryPickerModal.tsx: React portal to document.body with null-body guard
