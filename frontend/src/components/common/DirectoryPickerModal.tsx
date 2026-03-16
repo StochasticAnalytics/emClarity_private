@@ -83,17 +83,10 @@ export interface DirectoryPickerState {
   isLoading: boolean;
   /** [] before first success; preserved across loading/error transitions. */
   entries: DirectoryEntry[];
-  /** null until first success; from last resolved response's parent field. */
+  /** null until first success; from last resolved response's parent field (trimmed). */
   parent: string | null;
   /** trimmedInitialPath before first response; response.path after first success. */
   currentPath: string;
-  /**
-   * Most recently *requested* path, set on dispatch before response arrives.
-   * Distinct from currentPath: currentPath is updated only on success;
-   * lastAttemptedPath records what was asked for.
-   * Mirrored from lastAttemptedPathRef (useRef) for state-snapshot inspection.
-   */
-  lastAttemptedPath: string;
   /** Non-null iff status === 'error'. */
   error: Error | null;
   /**
@@ -172,7 +165,8 @@ function isValidEntry(entry: unknown): entry is DirectoryEntry {
   const e = entry as Record<string, unknown>;
   const name = e['name'];
   const type = e['type'];
-  if (typeof name !== 'string' || name === '') return false;
+  // Reject null, non-string, empty string, and whitespace-only names.
+  if (name == null || typeof name !== 'string' || name.trim() === '') return false;
   if (type !== 'directory' && type !== 'file') return false;
   return true;
 }
@@ -196,10 +190,11 @@ function isValidBrowseResponse(response: unknown): response is FilesystemBrowseR
   const path = r['path'];
   if (typeof path !== 'string' || path === '') return false;
 
-  // parent: must be present; null (root) or a string are both valid;
-  // undefined (missing field) and non-string non-null values are invalid.
+  // parent: null or a string are both valid; undefined (absent field) is
+  // treated as null (no Up button, no validation error) per AC.
+  // Only reject non-null, non-undefined, non-string values (e.g., number, boolean).
   const parent = r['parent'];
-  if (parent !== null && typeof parent !== 'string') return false;
+  if (parent !== undefined && parent !== null && typeof parent !== 'string') return false;
 
   // entries: must be a non-null array
   const entries = r['entries'];
@@ -239,33 +234,32 @@ export function DirectoryPickerModal({
   // ── initialPathRef: capture mount-time initialPath ────────────────────────
   const initialPathRef = useRef(initialPath);
 
-  // ── AC3: Single useState with lazy initializer ────────────────────────────
+  // ── State: main state machine ─────────────────────────────────────────────
+  // isLoading initialized to true so first synchronous render shows loading UI;
+  // no non-loading render is ever visible before the mount effect fires.
   const [state, setState] = useState<DirectoryPickerState>(() => {
     const trimmedInitialPath = (initialPath ?? '').trim();
     return {
-      status: 'idle',
-      isLoading: false,
+      status: 'initial-loading',
+      isLoading: true,
       entries: [],
       parent: null,
       currentPath: trimmedInitialPath,
-      lastAttemptedPath: trimmedInitialPath,
       error: null,
       errorKey: 0,
     };
   });
+
+  // ── retryPath: tracks exact argument passed to browseDirectory (AC) ────────
+  // undefined = root (no-argument call); string = trimmed path argument.
+  // Initialized to undefined (never null, never '').
+  const [retryPath, setRetryPath] = useState<undefined | string>(undefined);
 
   // ── stateRef: current state value at event time ───────────────────────────
   // Updated on every render so click handlers always read the latest state.
   const stateRef = useRef(state);
   stateRef.current = state;
 
-  // ── lastAttemptedPathRef: dedicated ref per AC2 ───────────────────────────
-  // Assigned the exact path string passed to browseDirectory at the moment
-  // each new navigation begins — BEFORE the setState call.  Distinct from
-  // state.currentPath (which is updated only from response.path on success).
-  // The Retry handler reads this ref so it always re-issues the failed path
-  // even when the component has re-rendered since the error occurred.
-  const lastAttemptedPathRef = useRef<string>('');
 
   // ── AbortController stored in ref, not state ─────────────────────────────
   const controllerRef = useRef<AbortController | null>(null);
@@ -298,9 +292,9 @@ export function DirectoryPickerModal({
   //   reading state.entries directly would always see [] (stale closure).
   //   The setState(prev => ...) functional form reads prev at dispatch time.
   const navigate = useCallback((requestedPath: string | undefined): void => {
-    // Step 1: record the path being requested in the dedicated ref (AC2).
-    // Must be set BEFORE setState so any synchronous reader sees the new value.
-    lastAttemptedPathRef.current = requestedPath ?? '';
+    // Step 1: queue retryPath state update.
+    // setRetryPath setter is stable (useState); safe to call from useCallback([]).
+    setRetryPath(requestedPath);
 
     // Step 2: abort any prior in-flight request
     controllerRef.current?.abort();
@@ -319,7 +313,6 @@ export function DirectoryPickerModal({
       entries: prev.entries,
       parent: prev.parent,
       currentPath: prev.currentPath,
-      lastAttemptedPath: requestedPath ?? '',
       error: null,
       errorKey: prev.errorKey,
     }));
@@ -342,33 +335,41 @@ export function DirectoryPickerModal({
             entries: prev.entries,
             parent: prev.parent,
             currentPath: prev.currentPath,
-            lastAttemptedPath: prev.lastAttemptedPath,
             error: new Error('Invalid response from server'),
             errorKey: prev.errorKey + 1,
           }));
           return;
         }
 
-        // rawResponse is now narrowed to FilesystemBrowseResponse
-        setState(prev => ({
+        // Trim parent once at parse time; store the trimmed value.
+        // Circular-nav guard: if trimmedParent equals trimmed path, treat as null
+        // (suppresses Up button for root or same-directory parent).
+        const rawParent = rawResponse.parent;
+        const trimmedParent = typeof rawParent === 'string' ? rawParent.trim() : null;
+        const trimmedPath = rawResponse.path.trim();
+        const effectiveParent =
+          trimmedParent !== null && trimmedParent !== '' && trimmedParent !== trimmedPath
+            ? trimmedParent
+            : null;
+
+        setState(_prev => ({
           status: 'success',
           isLoading: false,
           entries: rawResponse.entries,
-          parent: rawResponse.parent ?? null,
+          parent: effectiveParent,
           currentPath: rawResponse.path,
-          lastAttemptedPath: prev.lastAttemptedPath,
           error: null,
-          errorKey: prev.errorKey,
+          errorKey: _prev.errorKey,
         }));
       },
 
       // Step 7: rejection handler
       (error: unknown) => {
-        // Abort errors are intentional (user navigated away or component unmounted).
-        // Do not transition to error state for these.
-        if (signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
-          return;
-        }
+        // Guard against non-Error rejection values before accessing .name.
+        // AbortError exceptions are intentional; silently ignore them.
+        if (error instanceof Error && error.name === 'AbortError') return;
+        // signal.aborted is the reliable backstop for all abort scenarios.
+        if (signal.aborted) return;
 
         const storedError =
           error instanceof Error ? error : new Error(String(error ?? 'Unknown error'));
@@ -379,7 +380,6 @@ export function DirectoryPickerModal({
           entries: prev.entries,
           parent: prev.parent,
           currentPath: prev.currentPath,
-          lastAttemptedPath: prev.lastAttemptedPath,
           error: storedError,
           errorKey: prev.errorKey + 1,
         }));
@@ -428,19 +428,21 @@ export function DirectoryPickerModal({
     onClose();
   }, [onClose, returnFocusRef]);
 
-  // ── handleRetry: re-issue the last failed navigation (AC2/AC8) ────────────
+  // ── handleRetry: re-issue the last failed navigation ─────────────────────
   //
-  // Reads from lastAttemptedPathRef.current (the dedicated ref), NOT from
-  // state.currentPath.  This is the core guarantee of AC2: Retry always
-  // re-issues the path that failed, even if currentPath differs (e.g., last
-  // successful path is /home, failed attempt was /home/foo → Retry calls /home/foo).
+  // Reads from retryPath state (via closure) — recreated when retryPath changes,
+  // so by the time the Retry button is visible the closure always holds the
+  // correct failed-request path.
+  //
+  // Focus is moved synchronously to the modal container BEFORE navigate() is
+  // called — this prevents focus falling to document.body when the Retry
+  // button is unmounted during the loading-state transition.
   const handleRetry = useCallback((): void => {
-    const path = lastAttemptedPathRef.current;
-    // An empty string means the attempted path was the root (undefined/'' both
-    // map to root in browseDirectory).  Pass undefined for root to match the
-    // original navigate(undefined) call from the mount effect.
-    navigate(path !== '' ? path : undefined);
-  }, [navigate]);
+    // Move focus to container synchronously, before the button unmounts.
+    containerRef.current?.focus();
+    // retryPath is undefined (root) or a trimmed path string.
+    navigate(retryPath);
+  }, [navigate, retryPath]);
 
   // ── Mount effect — initial navigation ────────────────────────────────────
   useEffect(() => {
@@ -562,13 +564,14 @@ export function DirectoryPickerModal({
   }, []);
 
   // ── Up button: render condition and click handler ─────────────────────────
-  const showUpButton =
-    state.parent != null && !/^\s*$/.test(state.parent);
+  // state.parent is already trimmed (stored trimmed in success handler).
+  // Only show Up button when parent is a non-null, non-empty string.
+  const showUpButton = state.parent !== null && state.parent !== '';
 
   const handleUpClick = (): void => {
     const current = stateRef.current;
     if (current.isLoading) return;
-    if (current.parent != null && !/^\s*$/.test(current.parent)) {
+    if (current.parent !== null && current.parent !== '') {
       navigate(current.parent);
     }
   };
@@ -591,29 +594,28 @@ export function DirectoryPickerModal({
       tabIndex={-1}
       ref={containerRef}
       aria-labelledby={titleId}
+      data-testid="directory-picker-modal"
     >
       {/*
-       * Title: accessible name = "Browse Directories: <displayPath>"
+       * Title: static string 'Browse Filesystem' — never concatenated with path.
        *
-       * The visually-hidden span is read by AT but invisible on screen.
-       * data-testid='current-path-display' is on the inner span so that
-       * textContent assertions see only the path value (e.g. '/', '/home'),
-       * not the visually-hidden prefix text.
+       * data-testid='current-path-display' is a sibling element so that
+       * textContent assertions on the title see exactly 'Browse Filesystem'
+       * while path display assertions see only the path value (e.g. '/', '/home').
+       * Both elements are present in all states (loading, error, empty, data).
        */}
-      <h2 id={titleId}>
-        <span className="visually-hidden">Browse Directories: </span>
-        <span data-testid="current-path-display">{displayPath}</span>
-      </h2>
+      <h2 id={titleId}>Browse Filesystem</h2>
+      <span data-testid="current-path-display">{displayPath}</span>
 
       {/*
        * Up button: absent from DOM (not just hidden) when parent is null/empty.
        * Disabled during loading to prevent concurrent navigations.
-       * Enabled in error state to allow upward navigation as an escape path.
        */}
       {showUpButton && (
         <button
           type="button"
-          aria-label={'Up \u2013 Go to parent directory'}
+          data-testid="up-button"
+          aria-label="Go to parent directory"
           disabled={state.isLoading}
           onClick={handleUpClick}
         >
@@ -622,91 +624,81 @@ export function DirectoryPickerModal({
       )}
 
       {/*
-       * Directory listing container: unconditional in all state branches.
+       * Error state container.
        *
-       * Changed from <ul> to <div> so that non-list children (error container,
-       * loading indicator, empty message) can be valid HTML descendants.
-       * Entry list items from TASK-002b-Aa-ii will be rendered inside a <ul>
-       * nested within this div.
+       * role='alert' causes AT to announce the content immediately upon mount.
        *
-       * aria-busy='true' during loading; attribute removed entirely (undefined)
-       * when not loading. React removes DOM attributes when value is undefined.
+       * key={state.errorKey}: React unmounts and remounts this div on each new
+       * errorKey value, guaranteeing a fresh role='alert' DOM insertion on
+       * repeated consecutive failures — triggering a new screen-reader
+       * announcement even when the error message text is unchanged.
+       *
+       * Rendered only when status === 'error'.  The directory-listing container
+       * is absent from the DOM while in error state (mutually exclusive branches).
+       * data-testid='retry-button' is therefore also absent during loading because
+       * loading sets status to 'loading' (not 'error').
        */}
-      <div
-        data-testid="directory-listing"
-        aria-label="Directory contents"
-        aria-busy={state.isLoading ? 'true' : undefined}
-      >
-        {/*
-         * Loading indicator: conditional mount (not CSS visibility toggle).
-         *
-         * Moved inside data-testid='directory-listing' per AC8.
-         * data-testid='loading-indicator' allows direct test query.
-         *
-         * role='status' creates an ARIA live region.  Conditional mounting
-         * (not CSS toggling) forces AT to re-announce 'Loading…' on each new
-         * navigation.
-         */}
-        {state.isLoading && (
-          <div data-testid="loading-indicator" role="status">Loading…</div>
-        )}
+      {state.status === 'error' && (
+        <div role="alert" key={state.errorKey}>
+          {/*
+           * Error message: single <p> with exact textContent and data-testid.
+           */}
+          <p data-testid="error-message">Failed to load directory. Please try again.</p>
+          {/*
+           * Retry button:
+           *   - data-testid='retry-button' for test queries
+           *   - ref={retryButtonRef} so the focus effect can focus it on entry
+           *   - onClick moves focus to container then re-issues the failed request
+           */}
+          <button
+            type="button"
+            data-testid="retry-button"
+            ref={retryButtonRef}
+            onClick={handleRetry}
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
-        {/*
-         * Error state container (AC1/AC5).
-         *
-         * role='alert' causes AT to announce the content immediately upon
-         * mount — suitable for error messages that need immediate attention.
-         *
-         * key={state.errorKey}: React unmounts and remounts this div on each
-         * new errorKey value.  This guarantees a fresh role='alert' insertion
-         * into the DOM on repeated consecutive failures, triggering a new
-         * screen-reader announcement even when the error message text is
-         * unchanged.
-         *
-         * The error container is unmounted during loading (state.isLoading is
-         * true, state.status is not 'error'), so the conditional rendering
-         * also provides structural removal of data-testid='retry-button'
-         * during in-flight retries — a second click is structurally impossible.
-         */}
-        {state.status === 'error' && (
-          <div role="alert" key={state.errorKey}>
-            {/*
-             * Error message: single element with exact textContent.
-             * Not split across child nodes per AC1.
-             */}
-            <p>Failed to load directory. Please try again.</p>
-            {/*
-             * Retry button (AC1/AC8):
-             *   - visible text and accessible name are both 'Retry'
-             *   - data-testid='retry-button' for test queries
-             *   - ref={retryButtonRef} so the focus effect (AC10) can focus it
-             *   - onClick calls handleRetry which reads lastAttemptedPathRef.current
-             */}
-            <button
-              type="button"
-              data-testid="retry-button"
-              ref={retryButtonRef}
-              onClick={handleRetry}
-            >
-              Retry
-            </button>
-          </div>
-        )}
+      {/*
+       * Directory listing container: present in all non-error states
+       * (initial-loading, loading, success, idle).  Absent only in error state.
+       *
+       * aria-busy='true' during loading; attribute absent when settled.
+       * React removes DOM attributes when value is undefined.
+       */}
+      {state.status !== 'error' && (
+        <div
+          data-testid="directory-listing"
+          aria-label="Directory contents"
+          aria-busy={state.isLoading ? 'true' : undefined}
+        >
+          {/*
+           * Loading indicator: conditionally mounted (not CSS-toggled).
+           * role='status' with textContent 'Loading…' (Unicode ellipsis U+2026).
+           */}
+          {state.isLoading && (
+            <div data-testid="loading-indicator" role="status">{'Loading\u2026'}</div>
+          )}
 
-        {/*
-         * Empty directory state (AC9).
-         * Shown only after a successful navigation that returned zero entries.
-         * Absent in all other states (loading, error, initial-loading, idle).
-         */}
-        {state.status === 'success' && state.entries.length === 0 && (
-          <p data-testid="empty-directory-message">This directory is empty.</p>
-        )}
+          {/*
+           * 'No subdirectories' message: shown when successful response contains
+           * no directory-type entries (files-only or empty).
+           * When entries contains only files, file divs (from α-2) and this
+           * message are both present simultaneously.
+           */}
+          {state.status === 'success' &&
+            state.entries.filter(e => e.type === 'directory').length === 0 && (
+              <p>No subdirectories</p>
+            )}
 
-        {/*
-         * Entry list items are rendered here in TASK-002b-Aa-ii.
-         * Deferred: entry rendering (directory + file items with navigation).
-         */}
-      </div>
+          {/*
+           * Entry list items are rendered here in TASK-002b-Aa-α-2.
+           * Deferred: directory button + file div rendering with navigation.
+           */}
+        </div>
+      )}
     </div>
   );
 

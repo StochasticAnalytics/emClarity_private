@@ -33,16 +33,17 @@ function validateResponse(response: unknown): response is FilesystemBrowseRespon
 
   const r = response as Record<string, unknown>;
 
-  // path must be a string (rejects missing key, numbers, null, etc.)
+  // path must be a non-empty string (rejects missing key, numbers, null, '').
   const path: unknown = r['path'];
-  if (typeof path !== 'string') {
+  if (typeof path !== 'string' || path === '') {
     return false;
   }
 
-  // parent must be exactly a string or null.
-  // undefined (key absent or set to undefined) is explicitly rejected.
+  // parent: null or a string are both valid; undefined (absent field) is treated
+  // as null — no validation error for a missing parent key.
+  // Reject non-null, non-undefined, non-string values (e.g., number, boolean).
   const parent: unknown = r['parent'];
-  if (parent !== null && typeof parent !== 'string') {
+  if (parent !== undefined && parent !== null && typeof parent !== 'string') {
     return false;
   }
 
@@ -52,18 +53,24 @@ function validateResponse(response: unknown): response is FilesystemBrowseRespon
     return false;
   }
 
-  // Each entry must be a plain non-null object with a valid name.
-  // This check precedes any .name access to prevent TypeError crashes.
+  // Each entry must be a plain non-null object with valid name and type fields.
+  // Checks are ordered to prevent TypeError crashes on malformed entries.
   for (const entry of entries) {
     if (entry === null || typeof entry !== 'object') {
       return false;
     }
     const e = entry as Record<string, unknown>;
 
-    // name: must be a string (null, undefined, and non-strings are all rejected
-    // by the typeof check alone; no separate null guard is needed)
+    // name: must be a non-empty, non-whitespace-only string.
+    // Rejects null, undefined, non-strings, empty strings, and whitespace-only.
     const name: unknown = e['name'];
-    if (typeof name !== 'string') {
+    if (name == null || typeof name !== 'string' || name.trim() === '') {
+      return false;
+    }
+
+    // type: must be exactly 'directory' or 'file' (checks entry.type, not entry.path).
+    const type: unknown = e['type'];
+    if (type !== 'directory' && type !== 'file') {
       return false;
     }
   }
