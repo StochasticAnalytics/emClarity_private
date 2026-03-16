@@ -166,6 +166,7 @@ function ProfileList({ profiles, selectedId, onSelect, onCreate, onDelete }: Pro
         <button
           type="button"
           onClick={onCreate}
+          aria-label="Create new profile"
           title="Create new profile"
           className="flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
         >
@@ -175,25 +176,31 @@ function ProfileList({ profiles, selectedId, onSelect, onCreate, onDelete }: Pro
       </div>
 
       {/* Profile list */}
-      <ul role="listbox" aria-label="Run profiles" className="flex-1 overflow-y-auto py-1">
+      <ul aria-label="Run profiles" className="flex-1 overflow-y-auto py-1">
         {profiles.map((profile) => {
           const isSelected = profile.id === selectedId
           const isPendingDelete = deleteConfirmId === profile.id
           return (
-            <li key={profile.id} role="option" aria-selected={isSelected}>
+            <li key={profile.id}>
               <div
                 className={[
-                  'group flex items-center justify-between px-3 py-2 cursor-pointer transition-colors',
+                  'group flex items-center justify-between px-3 py-2 transition-colors',
                   isSelected
                     ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-900 dark:text-blue-100'
                     : 'hover:bg-gray-50 dark:hover:bg-gray-800/50 text-gray-800 dark:text-gray-200',
                 ].join(' ')}
-                onClick={() => {
-                  onSelect(profile.id)
-                  setDeleteConfirmId(null)
-                }}
               >
-                <span className="text-sm truncate flex-1 min-w-0">{profile.name}</span>
+                <button
+                  type="button"
+                  className="text-sm truncate flex-1 min-w-0 text-left cursor-pointer"
+                  aria-pressed={isSelected}
+                  onClick={() => {
+                    onSelect(profile.id)
+                    setDeleteConfirmId(null)
+                  }}
+                >
+                  {profile.name}
+                </button>
 
                 <button
                   type="button"

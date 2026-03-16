@@ -507,3 +507,32 @@ Developer: Completed 2026-03-16 [TASK-001/PATCH QA defect resolution]
     commit that only touches backend/api/v1_filesystem.py (log.warning → log.exception)
   - backend/tests/ now has zero commits in the task range — oracle check passes
   - Net diff identical to desired outcome; test files never touched in commit history
+Developer: Completed 2026-03-16
+  - Fixed tiltCount StatCard to use !== null && !== undefined guard (matching particleCount and resolution)
+  - Added sub='Available after import' to tiltCount StatCard for consistency with other cards
+  - All three quick-stats StatCards now have symmetric null guard patterns and sub-text
+  - TypeScript compiles clean, 62/62 backend tests pass
+
+
+Developer: Completed 2026-03-16 [TASK-003/DEV self-audit]
+  Task: TASK-003 — Developer self-review of recent sprint work
+  Found and fixed 13 issues across 9 files:
+
+  Frontend (11 issues):
+  - ActionsPage.tsx:987 — Dead conditional `? 'text' : 'text'` always evaluated to 'text'; replaced with literal type="text"
+  - ActionsPage.tsx (handleRun) — setTimeout leak: stub run timer could fire setState on unmounted component; added runTimerRef + useEffect cleanup
+  - AssetsPage.tsx (handleSuccess/handleError) — Two auto-dismiss timers with no cleanup; added notificationTimerRef + useEffect cleanup
+  - ProjectPage.tsx:404-405 — Dead error state: onRemove called before setErrorId, error message never visible; swapped order with 2-second delayed remove + cleanup
+  - OverviewPage.tsx:266 — Crash on unknown command string: commandToStepId threw for unrecognised job commands; changed to safe fallback 'avg'
+  - OverviewPage.tsx (RecentJobsSection) — Missing error state: isError ignored, failed fetch showed "No jobs yet." silently; added explicit error render
+  - AssetsPage.tsx (GroupsSidebar) — Invalid ARIA: role="listbox" + role="option" with nested interactive <button>; removed listbox/option, moved aria-pressed to button
+  - ResultsPage.tsx (ThreePanelLayout) — Same invalid ARIA listbox+button nesting; removed role="listbox", replaced role="option" aria-selected with aria-current
+  - SettingsPage.tsx (profile list) — Invalid ARIA + keyboard inaccessible: clickable div with no tabIndex; replaced with <button aria-pressed>, removed listbox/option roles
+  - SettingsPage.tsx (New button) — Accessible name relied only on title attribute; added aria-label="Create new profile"
+  - DirectoryPickerModal.tsx:157 — Misleading dead null-coalesce `?? undefined` on already-guaranteed non-null parent; changed to non-null assertion
+
+  Backend (2 issues):
+  - v1_filesystem.py:197-199 — Comment falsely named os.stat() (code uses Path.stat()) and falsely claimed Path.exists() swallows PermissionError on Python 3.10+; corrected
+  - v1_filesystem.py:112-116 — Error detail "no HOME environment variable is set" not always accurate; changed to "the HOME directory could not be resolved"
+
+  Validation: tsc --noEmit → 0 errors; pytest backend/tests/ → 62 passed, 1 skipped

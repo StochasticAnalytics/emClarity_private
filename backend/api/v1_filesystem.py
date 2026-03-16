@@ -111,7 +111,7 @@ def _validate_browse_path(path: str | None) -> _BrowsePath:
                 status_code=500,
                 detail=(
                     "Cannot determine user home directory: "
-                    "no HOME environment variable is set"
+                    "the HOME directory could not be resolved"
                 ),
             ) from exc
         real = Path(os.path.realpath(str(home)))
@@ -193,10 +193,12 @@ def browse_filesystem(
     display_path = browse_path.display
 
     # --- Existence check -----------------------------------------------------------
-    # Use os.stat() rather than Path.exists() because Path.exists() swallows
-    # PermissionError (returns False) on Python 3.10+, which would incorrectly
-    # produce a 404 instead of a 403 when the caller lacks permission to stat the
-    # path (e.g. a non-traversable parent directory).
+    # Use Path.stat() rather than Path.exists() because Path.exists() catches
+    # OSError internally and returns False for errors it ignores (ENOENT,
+    # ENOTDIR, EBADF, ELOOP).  If we used Path.exists() we would need a
+    # second stat() call anyway to distinguish 404 from 403.  Calling
+    # Path.stat() directly lets us catch PermissionError and other OSErrors
+    # once, in the right layer, with the right HTTP status codes.
     try:
         path_stat = real_path.stat()
     except PermissionError:

@@ -154,7 +154,7 @@ export function DirectoryPickerModal({
           {data?.parent != null && (
             <button
               type="button"
-              onClick={() => navigate(data.parent ?? undefined)}
+              onClick={() => navigate(data.parent!)}
               aria-label="Go to parent directory"
               className="shrink-0 rounded px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-300 dark:hover:bg-gray-800"
             >

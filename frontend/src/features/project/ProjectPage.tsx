@@ -388,7 +388,15 @@ interface RecentProjectsListProps {
 function RecentProjectsList({ projects, onOpen, onRemove }: RecentProjectsListProps) {
   const [loadingId, setLoadingId] = useState<string | null>(null)
   const [errorId, setErrorId] = useState<string | null>(null)
+  const removeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  useEffect(() => {
+    return () => {
+      if (removeTimerRef.current !== null) clearTimeout(removeTimerRef.current)
+    }
+  }, [])
+
+  // Early return must be after all hooks to satisfy the Rules of Hooks.
   if (projects.length === 0) return null
 
   const handleOpen = async (id: string, name: string, directory: string) => {
@@ -400,9 +408,14 @@ function RecentProjectsList({ projects, onOpen, onRemove }: RecentProjectsListPr
       onOpen(id, name, directory)
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
-        // Backend restarted or project was deleted — remove stale entry
-        onRemove(id)
+        // Show error on the entry first, then remove it after a brief delay
+        // so the user sees the "not found" message before it disappears.
         setErrorId(id)
+        if (removeTimerRef.current !== null) clearTimeout(removeTimerRef.current)
+        removeTimerRef.current = setTimeout(() => {
+          removeTimerRef.current = null
+          onRemove(id)
+        }, 2000)
       }
     } finally {
       setLoadingId(null)

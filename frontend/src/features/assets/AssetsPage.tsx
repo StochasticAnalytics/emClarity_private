@@ -17,7 +17,7 @@
  * The Tilt Series tab refactors the existing TiltSeriesPage logic.
  * Other tabs show correct column headers with placeholder data.
  */
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { useParams, Navigate } from 'react-router-dom'
 import { DEMO_PROJECT_ID } from '@/constants'
 import {
@@ -190,14 +190,15 @@ function GroupsSidebar({
           Groups
         </span>
       </div>
-      <ul className="flex-1 overflow-y-auto py-1" role="listbox" aria-label="Filter by group">
+      <ul className="flex-1 overflow-y-auto py-1" aria-label="Filter by group">
         {groups.map((group) => {
           const isActive = group.id === activeGroup
           return (
-            <li key={group.id} role="option" aria-selected={isActive}>
+            <li key={group.id}>
               <button
                 type="button"
                 onClick={() => onGroupChange(group.id)}
+                aria-pressed={isActive}
                 className={[
                   'w-full flex items-center justify-between px-3 py-1.5 text-sm text-left transition-colors',
                   isActive
@@ -1194,15 +1195,30 @@ export function AssetsPage() {
   const isDemo = projectId === DEMO_PROJECT_ID
   const [activeTab, setActiveTab] = useState<AssetTabId>('tilt-series')
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const notificationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (notificationTimerRef.current !== null) clearTimeout(notificationTimerRef.current)
+    }
+  }, [])
 
   const handleSuccess = useCallback((message: string) => {
+    if (notificationTimerRef.current !== null) clearTimeout(notificationTimerRef.current)
     setNotification({ type: 'success', message })
-    setTimeout(() => setNotification(null), 5000)
+    notificationTimerRef.current = setTimeout(() => {
+      notificationTimerRef.current = null
+      setNotification(null)
+    }, 5000)
   }, [])
 
   const handleError = useCallback((message: string) => {
+    if (notificationTimerRef.current !== null) clearTimeout(notificationTimerRef.current)
     setNotification({ type: 'error', message })
-    setTimeout(() => setNotification(null), 8000)
+    notificationTimerRef.current = setTimeout(() => {
+      notificationTimerRef.current = null
+      setNotification(null)
+    }, 8000)
   }, [])
 
   if (!projectId) {

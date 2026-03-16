@@ -134,7 +134,7 @@ function ThreePanelLayout({
               {listLabel}
             </p>
           </div>
-          <ul role="listbox" aria-label={listLabel} className="flex-1 overflow-y-auto py-1">
+          <ul aria-label={listLabel} className="flex-1 overflow-y-auto py-1">
             {listItems.length === 0 ? (
               <li className="px-3 py-3 text-xs text-gray-400 dark:text-gray-500 italic">
                 No items available
@@ -157,8 +157,7 @@ function ThreePanelLayout({
                       </label>
                     )}
                     <button
-                      role="option"
-                      aria-selected={isSelected}
+                      aria-current={isSelected ? 'true' : undefined}
                       type="button"
                       className={
                         'flex-1 flex items-center text-left px-2 py-2 text-sm transition-colors ' +

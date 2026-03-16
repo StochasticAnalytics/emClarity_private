@@ -984,7 +984,7 @@ function ParameterField({ param, value, onChange }: ParameterFieldProps) {
         ) : (
           <input
             id={id}
-            type={param.type === 'numeric' ? 'text' : 'text'}
+            type="text"
             inputMode={param.type === 'numeric' ? 'decimal' : 'text'}
             placeholder={placeholder}
             value={value}
@@ -1358,6 +1358,14 @@ export function ActionsPage() {
 
   const activeTab = ACTION_TABS.find((t) => t.id === activeTabId) ?? ACTION_TABS[0]
 
+  // Track stub run timer so it can be cleared on unmount
+  const runTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    return () => {
+      if (runTimerRef.current !== null) clearTimeout(runTimerRef.current)
+    }
+  }, [])
+
   const handleValueChange = useCallback(
     (paramName: string, value: string) => {
       setTabValues((prev) => ({
@@ -1379,12 +1387,14 @@ export function ActionsPage() {
   }, [activeTabId])
 
   const handleRun = useCallback(() => {
+    if (runTimerRef.current !== null) clearTimeout(runTimerRef.current)
     setRunState((prev) => ({
       ...prev,
       [activeTabId]: { running: true, message: null },
     }))
     // Stub: simulate brief delay then show stub message
-    setTimeout(() => {
+    runTimerRef.current = setTimeout(() => {
+      runTimerRef.current = null
       setRunState((prev) => ({
         ...prev,
         [activeTabId]: {

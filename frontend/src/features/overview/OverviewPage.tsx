@@ -263,7 +263,7 @@ function commandToStepId(command: string): string {
     // Post-cycle step
     case 'reconstruct': return 'final'
     default:
-      throw new Error(`commandToStepId: unrecognised command "${command}"`)
+      return 'avg'
   }
 }
 
@@ -503,7 +503,7 @@ interface RecentJobsSectionProps {
 }
 
 function RecentJobsSection({ projectId, onJobsLoaded }: RecentJobsSectionProps) {
-  const { data: allJobs, isLoading } = useApiQuery<Job[]>(
+  const { data: allJobs, isLoading, isError } = useApiQuery<Job[]>(
     ['overview-recent-jobs', projectId],
     `/api/v1/jobs?project_id=${projectId}`,
   )
@@ -523,6 +523,14 @@ function RecentJobsSection({ projectId, onJobsLoaded }: RecentJobsSectionProps) 
         <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
         Loading recent jobs…
       </div>
+    )
+  }
+
+  if (isError) {
+    return (
+      <p className="py-4 text-sm text-red-600 dark:text-red-400">
+        Failed to load recent jobs. Check that the backend is running.
+      </p>
     )
   }
 
