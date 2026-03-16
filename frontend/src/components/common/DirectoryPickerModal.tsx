@@ -47,6 +47,7 @@ import {
 import type { ReactPortal, RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { browseDirectory } from '@/api/filesystem';
+import { NO_SUBDIRECTORIES } from './directoryPickerConstants';
 
 // ---------------------------------------------------------------------------
 // Re-exported types (consumed by sub-tasks Aa-ii and Ab without re-defining)
@@ -419,6 +420,36 @@ export function DirectoryPickerModal({
     navigate(retryPath);
   }, [navigate, retryPath]);
 
+  // ── handleEntryNavigate: navigate into a directory entry ─────────────────
+  //
+  // Constructs the full absolute path from the current path and the entry name,
+  // then navigates to it.
+  //
+  // Focus is moved synchronously to the modal container BEFORE navigate() is
+  // called — this prevents focus falling to document.body when the directory
+  // button's `disabled` prop becomes true on the subsequent render (the browser
+  // moves focus away from disabled buttons).
+  //
+  // Path construction rules (no encoding/transformation applied):
+  //   currentPath === '/'  → '/' + entryName        (avoids double-slash)
+  //   otherwise            → currentPath + '/' + entryName
+  //
+  // No debounce/throttle/guard needed: directory buttons are rendered with
+  // `disabled={state.isLoading}`, so the user cannot click them during a
+  // pending request.  The AbortController abort in navigate() is the sole
+  // protection against in-flight duplicate requests (per spec).
+  const handleEntryNavigate = useCallback((entryName: string): void => {
+    // Move focus to container synchronously before navigate() sets isLoading=true,
+    // preventing the browser from moving focus to document.body when the button
+    // gains the `disabled` attribute on the next render.
+    containerRef.current?.focus();
+
+    const currentPath = stateRef.current.currentPath;
+    // Avoid double-slash: '/' + name, not '/' + '/' + name.
+    const newPath = currentPath === '/' ? '/' + entryName : currentPath + '/' + entryName;
+    navigate(newPath);
+  }, [navigate]); // navigate is stable (useCallback with [])
+
   // ── Mount effect — initial navigation ────────────────────────────────────
   useEffect(() => {
     const trimmed = (initialPathRef.current ?? '').trim();
@@ -551,6 +582,26 @@ export function DirectoryPickerModal({
     }
   };
 
+  // ── directoryEntries: single derived variable for No-subdirectories + buttons ──
+  //
+  // This single derived variable drives both the 'No subdirectories' condition
+  // and the <button> render loop, ensuring both code paths use identical filter
+  // predicates (per spec: no predicate duplication allowed).
+  //
+  // Filter predicate:
+  //   - `e.type === 'directory'`: exclude file-type entries
+  //   - `e.name.trim() !== ''`: defense-in-depth whitespace guard at render time
+  //     (isValidEntry is the primary validation layer and rejects whitespace names
+  //     before they reach state.entries; this render filter is an explicit second
+  //     layer, not dead code, per spec).
+  //
+  // `?? []`: defensive null/undefined guard — state.entries is always an array
+  // in normal operation, but this guard ensures correct behavior if somehow null
+  // or undefined reaches the render path (treated identically to empty array).
+  const directoryEntries = (state.entries ?? []).filter(
+    e => e.type === 'directory' && e.name.trim() !== '',
+  );
+
   // ── displayPath: '' → '/' per AC3 ────────────────────────────────────────
   // When the very first navigation fails and currentPath is still '' (no
   // initialPath was provided), the path display must show '/' not blank.
@@ -658,20 +709,82 @@ export function DirectoryPickerModal({
           )}
 
           {/*
-           * 'No subdirectories' message: shown when successful response contains
-           * no directory-type entries (files-only or empty).
-           * When entries contains only files, file divs (from α-2) and this
-           * message are both present simultaneously.
+           * File entries: plain <div> elements — non-interactive, informational.
+           *
+           * Requirements per spec:
+           *   - Element type: <div> (not <button>, <a>, <li>, or any other element)
+           *   - No ARIA role, no aria-disabled, no onClick, no onKeyDown
+           *   - Not in the tab order (tabIndex prop omitted entirely — React omits
+           *     undefined props from the DOM; do NOT pass tabIndex={-1})
+           *   - Keys: entry.name + '-' + index (handles duplicate names)
+           *   - Rendered in API-response order; no client-side sorting
+           *   - Rendered during 'success' and 'loading' states (stale-form display)
+           *
+           * Text content via React's rendering (not dangerouslySetInnerHTML):
+           * names containing <, >, &, or script strings render as literal text.
            */}
-          {state.status === 'success' &&
-            state.entries.filter(e => e.type === 'directory').length === 0 && (
-              <p>No subdirectories</p>
+          {(state.status === 'success' || state.status === 'loading') &&
+            (state.entries ?? [])
+              .filter(e => e.type !== 'directory')
+              .map((entry, index) => (
+                <div key={entry.name + '-' + index}>
+                  {entry.name}
+                </div>
+              ))}
+
+          {/*
+           * 'No subdirectories' message: rendered when the listing contains no
+           * navigable subdirectory entries after whitespace filtering.
+           *
+           * Co-presence rule: when entries contains only file-type items,
+           * both the file <div> elements above AND this message are rendered
+           * simultaneously — files remain visible while this text communicates
+           * that no directory navigation is available.
+           *
+           * Uses the NO_SUBDIRECTORIES constant (no hard-coded string duplication).
+           *
+           * Driven by the same `directoryEntries` derived variable as the
+           * <button> render loop below — identical filter predicates guaranteed.
+           */}
+          {(state.status === 'success' || state.status === 'loading') &&
+            directoryEntries.length === 0 && (
+              <p>{NO_SUBDIRECTORIES}</p>
             )}
 
           {/*
-           * Entry list items are rendered here in TASK-002b-Aa-α-2.
-           * Deferred: directory button + file div rendering with navigation.
+           * Directory entries: native <button> elements with navigation.
+           *
+           * Requirements per spec:
+           *   - Element type: <button> (not <div role="button"> or any other element)
+           *   - Text content via React's rendering (not dangerouslySetInnerHTML):
+           *     XSS-safe — names with <, >, &, or script strings render as literal text
+           *   - Keyboard: Enter and Space navigate (implicit native <button> semantics;
+           *     no onKeyDown handler required)
+           *   - Keys: entry.name + '-' + index (handles duplicate names)
+           *   - disabled={state.isLoading}: attribute present during loading,
+           *     absent when not loading (buttons become enabled after response)
+           *   - onClick: moves focus to container BEFORE navigate() sets isLoading=true
+           *     (prevents browser moving focus to document.body on button disable);
+           *     then calls handleEntryNavigate(entry.name) to construct the absolute
+           *     path and invoke navigate()
+           *   - Rendered in API-response order; no client-side sorting
+           *   - Rendered during 'success' and 'loading' states (stale-form display)
+           *
+           * Path construction (in handleEntryNavigate):
+           *   currentPath === '/'  → '/' + entry.name       (no double-slash)
+           *   otherwise            → currentPath + '/' + entry.name
            */}
+          {(state.status === 'success' || state.status === 'loading') &&
+            directoryEntries.map((entry, index) => (
+              <button
+                key={entry.name + '-' + index}
+                type="button"
+                disabled={state.isLoading}
+                onClick={() => handleEntryNavigate(entry.name)}
+              >
+                {entry.name}
+              </button>
+            ))}
         </div>
       )}
     </div>
