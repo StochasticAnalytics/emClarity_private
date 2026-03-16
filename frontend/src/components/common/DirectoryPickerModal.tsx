@@ -73,6 +73,7 @@ export function DirectoryPickerModal({
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        e.stopPropagation()
         onClose()
         return
       }
