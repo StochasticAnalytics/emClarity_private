@@ -88,6 +88,7 @@ export function DirectoryPickerModal({
       if (focusable.length === 0) return
       const first = focusable[0]
       const last = focusable[focusable.length - 1]
+      if (!first || !last) return
       if (e.shiftKey) {
         if (document.activeElement === first) {
           e.preventDefault()
@@ -107,7 +108,7 @@ export function DirectoryPickerModal({
 
   if (!isOpen) return null
 
-  const directories = data?.entries.filter((e) => e.type === 'directory') ?? []
+  const directories = (data?.entries ?? []).filter((e) => e.type === 'directory')
 
   return (
     /* Backdrop */

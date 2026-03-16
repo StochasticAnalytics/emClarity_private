@@ -509,6 +509,7 @@ function NewProjectDialog({ isOpen, onClose, onCreated }: NewProjectDialogProps)
 
       const first = focusableList[0]
       const last = focusableList[focusableList.length - 1]
+      if (!first || !last) return
 
       if (e.shiftKey) {
         if (document.activeElement === first) {
