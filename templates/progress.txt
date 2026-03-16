@@ -1,3 +1,18 @@
+Developer: Completed 2026-03-15 [TASK-002b-Aa-α-2]
+  Task: TASK-002b-Aa-α-2 - DirectoryPickerModal entry rendering (directory buttons + file divs)
+  - Created directoryPickerConstants.ts exporting NO_SUBDIRECTORIES constant
+  - Added handleEntryNavigate: constructs absolute path (root '/' avoids double-slash),
+    moves focus to containerRef before navigate() to prevent focus loss on button disable
+  - Added directoryEntries derived variable: single variable driving both No-subdirectories
+    condition and button render loop (identical filter predicates: type==='directory' && name.trim()!=='')
+  - Directory <button> elements: disabled={isLoading}, keys as name+'-'+index, text via React
+    rendering (XSS-safe), implicit keyboard nav via native button semantics (no onKeyDown)
+  - File <div> elements: no ARIA role, no onClick, no onKeyDown, no tabIndex prop
+  - Both types render during 'success' and 'loading' (stale-form display)
+  - No subdirectories co-present with file divs when zero directory entries remain
+  - Replaced hardcoded string with NO_SUBDIRECTORIES import (no string duplication)
+  - 35 backend tests pass; vitest passes (passWithNoTests=true); TypeScript errors pre-existing
+
 Developer: Completed 2026-03-15 [TASK-002b-Aa-α-1b]
   Task: TASK-002b-Aa-α-1b - DirectoryPickerModal + useDirectoryNavigation reconciliation
   - Modal title changed to static 'Browse Filesystem'; data-testid="current-path-display" is a sibling
