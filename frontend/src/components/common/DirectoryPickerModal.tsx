@@ -50,8 +50,8 @@ import { browseDirectory } from '@/api/filesystem';
 // Re-exported types (consumed by sub-tasks Aa-ii and Ab without re-defining)
 // ---------------------------------------------------------------------------
 
-export type { BrowseDirectoryResponse, DirectoryEntry } from '@/api/filesystem';
-import type { BrowseDirectoryResponse, DirectoryEntry } from '@/api/filesystem';
+export type { FilesystemBrowseResponse, DirectoryEntry } from '@/api/filesystem';
+import type { FilesystemBrowseResponse, DirectoryEntry } from '@/api/filesystem';
 
 // ---------------------------------------------------------------------------
 // State machine types
@@ -188,7 +188,7 @@ function isValidEntry(entry: unknown): entry is DirectoryEntry {
  *
  * Per AC: one invalid entry fails the entire response — no partial rendering.
  */
-function isValidBrowseResponse(response: unknown): response is BrowseDirectoryResponse {
+function isValidBrowseResponse(response: unknown): response is FilesystemBrowseResponse {
   if (response === null || typeof response !== 'object') return false;
   const r = response as Record<string, unknown>;
 
@@ -327,7 +327,7 @@ export function DirectoryPickerModal({
     // Step 5: issue request with locally-captured signal
     void browseDirectory(requestedPath, signal).then(
       // Step 6: success handler — validate before committing to state
-      (rawResponse: BrowseDirectoryResponse) => {
+      (rawResponse: FilesystemBrowseResponse) => {
         if (signal.aborted) return;
 
         // Cast to unknown for runtime structural validation.
@@ -349,7 +349,7 @@ export function DirectoryPickerModal({
           return;
         }
 
-        // rawResponse is now narrowed to BrowseDirectoryResponse
+        // rawResponse is now narrowed to FilesystemBrowseResponse
         setState(prev => ({
           status: 'success',
           isLoading: false,

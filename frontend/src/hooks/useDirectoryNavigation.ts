@@ -7,10 +7,10 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { browseDirectory, type BrowseDirectoryResponse } from '@/api/filesystem';
+import { browseDirectory, type FilesystemBrowseResponse } from '@/api/filesystem';
 
 // Re-export so consumers (Aa-2b, etc.) can type props without re-declaring shape.
-export type { BrowseDirectoryResponse };
+export type { FilesystemBrowseResponse };
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -25,7 +25,7 @@ const ERROR_MESSAGE = 'Failed to load directory. Please try again.' as const;
 // throw if a prior check had failed.
 // ---------------------------------------------------------------------------
 
-function validateResponse(response: unknown): response is BrowseDirectoryResponse {
+function validateResponse(response: unknown): response is FilesystemBrowseResponse {
   // Zeroth check: must be a non-null object (catches null, primitives, undefined)
   if (response === null || typeof response !== 'object') {
     return false;
@@ -52,8 +52,8 @@ function validateResponse(response: unknown): response is BrowseDirectoryRespons
     return false;
   }
 
-  // Each entry must be a plain non-null object with valid name and path.
-  // This check precedes any .name or .path access to prevent TypeError crashes.
+  // Each entry must be a plain non-null object with a valid name.
+  // This check precedes any .name access to prevent TypeError crashes.
   for (const entry of entries) {
     if (entry === null || typeof entry !== 'object') {
       return false;
@@ -64,12 +64,6 @@ function validateResponse(response: unknown): response is BrowseDirectoryRespons
     // by the typeof check alone; no separate null guard is needed)
     const name: unknown = e['name'];
     if (typeof name !== 'string') {
-      return false;
-    }
-
-    // path: must be a string (validates the DirectoryEntry.path field)
-    const entryPath: unknown = e['path'];
-    if (typeof entryPath !== 'string') {
       return false;
     }
   }
@@ -98,7 +92,7 @@ export interface UseDirectoryNavigationReturn {
    */
   errorMessage: string | null;
   /** The full last-successful response, preserved through errors. null before first success. */
-  lastGoodData: BrowseDirectoryResponse | null;
+  lastGoodData: FilesystemBrowseResponse | null;
   /** response.path of the last success, substituting '/' for ''. null before first success. */
   successPath: string | null;
   /** response.entries.length of the last success. null before first success. */
@@ -128,7 +122,7 @@ export function useDirectoryNavigation(
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [retryInFlight, setRetryInFlight] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [lastGoodData, setLastGoodData] = useState<BrowseDirectoryResponse | null>(null);
+  const [lastGoodData, setLastGoodData] = useState<FilesystemBrowseResponse | null>(null);
   const [successPath, setSuccessPath] = useState<string | null>(null);
   const [successItemCount, setSuccessItemCount] = useState<number | null>(null);
   // currentPath is initialised to the trimmed prop value (never raw/null).
@@ -196,14 +190,14 @@ export function useDirectoryNavigation(
       }
 
       // ── Issue the request ─────────────────────────────────────────────────
-      const promise: Promise<BrowseDirectoryResponse> =
+      const promise: Promise<FilesystemBrowseResponse> =
         pathArg !== null
           ? browseDirectory(pathArg, signal)
           : browseDirectory(undefined, signal);
 
       // ── Handle success ────────────────────────────────────────────────────
       void promise.then(
-        (response: BrowseDirectoryResponse) => {
+        (response: FilesystemBrowseResponse) => {
           // Abort guard before ANY setState call.
           if (signal.aborted) return;
 
