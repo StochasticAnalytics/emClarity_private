@@ -37,10 +37,10 @@ interface ProjectResponse {
 const createProjectSchema = z.object({
   name: z.string().min(1, 'Project name is required'),
   directory: z.string().min(1, 'Directory path is required'),
-  PIXEL_SIZE: z.number().positive('Must be a positive value'),
-  Cs: z.number().positive('Must be a positive value'),
-  VOLTAGE: z.number().positive('Must be a positive value'),
-  AMPCONT: z.number().min(0, 'Must be ≥ 0').max(1, 'Must be ≤ 1'),
+  PIXEL_SIZE: z.coerce.number().positive('Must be a positive value'),
+  Cs: z.coerce.number().positive('Must be a positive value'),
+  VOLTAGE: z.coerce.number().positive('Must be a positive value'),
+  AMPCONT: z.coerce.number().min(0, 'Must be ≥ 0').max(1, 'Must be ≤ 1'),
 })
 
 type CreateProjectFormValues = z.infer<typeof createProjectSchema>
