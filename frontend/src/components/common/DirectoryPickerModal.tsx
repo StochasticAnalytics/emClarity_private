@@ -8,20 +8,12 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { browseDirectory, type FilesystemBrowseResponse } from '@/api/filesystem.ts'
 import { ApiError } from '@/api/client.ts'
 
-// ---------------------------------------------------------------------------
-// Props
-// ---------------------------------------------------------------------------
-
 export interface DirectoryPickerModalProps {
   isOpen: boolean
   onSelect: (path: string) => void
   onClose: () => void
   initialPath?: string
 }
-
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
 
 export function DirectoryPickerModal({
   isOpen,
