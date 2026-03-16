@@ -79,7 +79,10 @@ spherical_aberration_mm  = ctf_params.spherical_aberration_mm;
 amplitude_contrast       = ctf_params.amplitude_contrast;
 tilt_angle_degrees       = ctf_params.tilt_angle_degrees;
 
+vt = get_opt(options, 'verbose_timing', false);
+
 % Pre-compute FFTs of data and reference tiles
+t_fft_pre = tic;
 fourier_handle = fourierTransformer(randn(CTFSIZE, 'single', 'gpuArray'));
 
 data_fourier_transforms = cell(n_particles, 1);
@@ -97,6 +100,7 @@ end
 
 % Compute peak mask
 peak_mask = compute_peak_mask(CTFSIZE, get_opt(options, 'peak_search_radius', floor(CTFSIZE./4)));
+if vt, fprintf('      [T] FFT precompute (%d particles): %.3f s\n', n_particles, toc(t_fft_pre)); end
 
 % Initialize ADAM parameter vector:
 %   [delta_defocus_tilt, delta_half_astigmatism, delta_astigmatism_angle, delta_z(1..N)]
@@ -108,8 +112,10 @@ optimizer = adamOptimizer(initial_params);
 maximum_xy_shift = max(get_opt(options, 'maximum_xy_shift', 10));
 z_offset_bound = get_opt(options, 'z_offset_bound_factor', 5) * maximum_xy_shift * pixel_size_angstroms;
 astigmatism_angle_range = get_opt(options, 'astigmatism_angle_range', pi/4);
-lower_bounds = [-defocus_search_range; -defocus_search_range/2; -astigmatism_angle_range; -z_offset_bound * ones(n_particles, 1)];
-upper_bounds = [ defocus_search_range;  defocus_search_range/2;  astigmatism_angle_range;  z_offset_bound * ones(n_particles, 1)];
+% ADAM bounds: astigmatism angle uses pi/2 (widest); per-particle adaptive
+% clamping inside evaluate_score_and_shifts applies the actual constraint
+lower_bounds = [-defocus_search_range; -defocus_search_range/2; -pi/2; -z_offset_bound * ones(n_particles, 1)];
+upper_bounds = [ defocus_search_range;  defocus_search_range/2;  pi/2;  z_offset_bound * ones(n_particles, 1)];
 optimizer.set_bounds(lower_bounds, upper_bounds);
 
 % Scale learning rates from parameter bounds and iteration budget
@@ -117,7 +123,7 @@ optimizer.set_bounds(lower_bounds, upper_bounds);
 expected_ranges = zeros(n_params, 1);
 expected_ranges(1) = defocus_search_range;            % defocus tilt (A)
 expected_ranges(2) = defocus_search_range / 2;        % half astigmatism (A)
-expected_ranges(3) = astigmatism_angle_range;          % astigmatism angle (rad)
+expected_ranges(3) = pi/2;                              % astigmatism angle (rad) — widened, adaptive per-particle clamping applies
 expected_ranges(4:end) = z_offset_bound;              % delta_z per particle (A)
 optimizer.auto_scale_learning_rate(expected_ranges, maximum_iterations, 3);
 
@@ -134,6 +140,7 @@ per_particle_scores = zeros(n_particles, 1);
 score_history = [];
 
 for iteration = 1:maximum_iterations
+    t_iter = tic;
     params = optimizer.get_current_parameters();
 
     % Determine which parameters to optimize this iteration
@@ -144,11 +151,14 @@ for iteration = 1:maximum_iterations
     end
 
     % Evaluate score at current parameters and measure shifts
+    t_score = tic;
     [total_score, per_particle_scores, current_shifts] = evaluate_score_and_shifts( ...
         params, data_fourier_transforms, reference_fourier_transforms, ctf_params, ...
         fourier_handle, CTFSIZE, pixel_size_angstroms, wavelength_angstroms, ...
         spherical_aberration_mm, amplitude_contrast, tilt_angle_degrees, ...
-        use_phase_compensated_correlation, peak_mask, upsample_factor, upsample_window, n_particles);
+        use_phase_compensated_correlation, peak_mask, upsample_factor, upsample_window, n_particles, ...
+            defocus_search_range, astigmatism_angle_range);
+    t_score_elapsed = toc(t_score);
 
     % Guard against non-finite scores (indicates degenerate CTF or data)
     if ~isfinite(total_score)
@@ -178,6 +188,7 @@ for iteration = 1:maximum_iterations
     end
 
     % Compute gradients via central finite differences
+    t_grad = tic;
     gradient = zeros(n_params, 1);
     for parameter_index = active_indices
         params_plus = params;
@@ -190,19 +201,26 @@ for iteration = 1:maximum_iterations
             params_plus, data_fourier_transforms, reference_fourier_transforms, ctf_params, ...
             fourier_handle, CTFSIZE, pixel_size_angstroms, wavelength_angstroms, ...
             spherical_aberration_mm, amplitude_contrast, tilt_angle_degrees, ...
-            use_phase_compensated_correlation, peak_mask, upsample_factor, upsample_window, n_particles);
+            use_phase_compensated_correlation, peak_mask, upsample_factor, upsample_window, n_particles, ...
+            defocus_search_range, astigmatism_angle_range);
 
         [score_minus, ~, ~] = evaluate_score_and_shifts( ...
             params_minus, data_fourier_transforms, reference_fourier_transforms, ctf_params, ...
             fourier_handle, CTFSIZE, pixel_size_angstroms, wavelength_angstroms, ...
             spherical_aberration_mm, amplitude_contrast, tilt_angle_degrees, ...
-            use_phase_compensated_correlation, peak_mask, upsample_factor, upsample_window, n_particles);
+            use_phase_compensated_correlation, peak_mask, upsample_factor, upsample_window, n_particles, ...
+            defocus_search_range, astigmatism_angle_range);
 
         % Negative gradient because ADAM minimizes but we want to maximize score
         gradient(parameter_index) = -(score_plus - score_minus) / (2 * finite_difference_step(parameter_index));
     end
 
+    t_grad_elapsed = toc(t_grad);
     optimizer.update(gradient);
+    if vt
+        fprintf('      [T] iter %2d: score_eval=%.3f s, grad(%d params)=%.3f s, total=%.3f s\n', ...
+            iteration, t_score_elapsed, length(active_indices), t_grad_elapsed, toc(t_iter));
+    end
 end
 
 % Final evaluation
@@ -211,7 +229,8 @@ final_params = optimizer.get_current_parameters();
     final_params, data_fourier_transforms, reference_fourier_transforms, ctf_params, ...
     fourier_handle, CTFSIZE, pixel_size_angstroms, wavelength_angstroms, ...
     spherical_aberration_mm, amplitude_contrast, tilt_angle_degrees, ...
-    use_phase_compensated_correlation, peak_mask, upsample_factor, upsample_window, n_particles);
+    use_phase_compensated_correlation, peak_mask, upsample_factor, upsample_window, n_particles, ...
+            defocus_search_range, astigmatism_angle_range);
 
 % Package results
 results.delta_defocus_tilt       = final_params(1);
@@ -234,7 +253,8 @@ function [total_score, per_particle_scores, shifts] = evaluate_score_and_shifts(
     params, data_fourier_transforms, reference_fourier_transforms, ctf_params, ...
     fourier_handle, CTFSIZE, pixel_size_angstroms, wavelength_angstroms, ...
     spherical_aberration_mm, amplitude_contrast, tilt_angle_degrees, ...
-    use_phase_compensated_correlation, peak_mask, upsample_factor, upsample_window, n_particles)
+    use_phase_compensated_correlation, peak_mask, upsample_factor, upsample_window, n_particles, ...
+    defocus_search_range, astigmatism_angle_range)
 % Evaluate the total CC score and measure per-particle X/Y shifts from CC peaks.
 
 delta_defocus_tilt       = params(1);
@@ -247,25 +267,30 @@ shifts = zeros(n_particles, 2);
 
 for i = 1:n_particles
     % Effective defocus for this particle
-    effective_defocus_1 = ctf_params.defocus_mean(i) + ctf_params.half_astigmatism(i) + ...
-        delta_half_astigmatism + delta_defocus_tilt + delta_z(i) * cosd(tilt_angle_degrees);
-    effective_defocus_2 = ctf_params.defocus_mean(i) - ctf_params.half_astigmatism(i) - ...
-        delta_half_astigmatism + delta_defocus_tilt + delta_z(i) * cosd(tilt_angle_degrees);
-    effective_astigmatism_angle = ctf_params.astigmatism_angle(i) + delta_astigmatism_angle;
+    dz_contribution = delta_z(i) * cosd(tilt_angle_degrees);
+    effective_defocus_mean = ctf_params.defocus_mean(i) + delta_defocus_tilt + dz_contribution;
+    effective_half_astig = ctf_params.half_astigmatism(i) + delta_half_astigmatism;
 
-    % Defocus sign/ordering validation (overfocus convention: both df > 0, df2 <= df1)
-    if effective_defocus_1 < 0
-        warning('EMC_refine_tilt_ctf:negativeDf1', ...
-            'Particle %d: effective_defocus_1 = %.1f A < 0 (underfocus)', i, effective_defocus_1);
-    end
-    if effective_defocus_2 < 0
-        warning('EMC_refine_tilt_ctf:negativeDf2', ...
-            'Particle %d: effective_defocus_2 = %.1f A < 0 (underfocus)', i, effective_defocus_2);
-    end
+    effective_defocus_1 = effective_defocus_mean + effective_half_astig;
+    effective_defocus_2 = effective_defocus_mean - effective_half_astig;
+
+    % Adaptive astigmatism angle constraint (per-particle)
+    % When |half_astig/defocus_mean| is small, angle is poorly defined → allow full pi/2
+    % When ratio >= 5% of defocus, angle is well-constrained → use tighter range
+    astig_fraction = abs(effective_half_astig) / max(abs(effective_defocus_mean), 1);
+    effective_angle_range = pi/2 - (pi/2 - astigmatism_angle_range) * min(astig_fraction / 0.05, 1);
+    clamped_delta_angle = max(-effective_angle_range, min(delta_astigmatism_angle, effective_angle_range));
+    effective_astigmatism_angle = ctf_params.astigmatism_angle(i) + clamped_delta_angle;
+
+    % Enforce df1 >= df2. If violated, swap and rotate angle by pi/2
+    % (physically equivalent CTF). Penalty pushes optimizer away from boundary.
+    df_ordering_penalty = 0;
     if effective_defocus_2 > effective_defocus_1
-        warning('EMC_refine_tilt_ctf:dfOrdering', ...
-            'Particle %d: df2 (%.1f) > df1 (%.1f) — convention expects df2 <= df1', ...
-            i, effective_defocus_2, effective_defocus_1);
+        tmp = effective_defocus_1;
+        effective_defocus_1 = effective_defocus_2;
+        effective_defocus_2 = tmp;
+        effective_astigmatism_angle = effective_astigmatism_angle + pi/2;
+        df_ordering_penalty = (effective_defocus_1 - effective_defocus_2) / max(defocus_search_range, 1);
     end
 
     % Compute CTF via mexCTF
@@ -301,14 +326,20 @@ for i = 1:n_particles
     end
     cross_correlation_map = peak_mask .* real(fourier_handle.invFFT(cross_correlation_map));
 
-    % Find peak with Fourier upsampling
-    [peak_height, peak_position] = fourier_upsample_peak(cross_correlation_map, upsample_factor, upsample_window);
+    % Find peak (with optional Fourier upsampling)
+    if upsample_factor > 1
+      [peak_height, peak_position] = fourier_upsample_peak(cross_correlation_map, upsample_factor, upsample_window);
+    else
+      [peak_height, max_idx] = max(cross_correlation_map(:));
+      [px, py] = ind2sub(size(cross_correlation_map), max_idx);
+      peak_position = [px, py];
+    end
 
     % Convert from image coordinates to shift relative to origin
     origin = emc_get_origin_index(CTFSIZE);
     shift_from_origin = peak_position - origin;
 
-    per_particle_scores(i) = peak_height;
+    per_particle_scores(i) = peak_height - df_ordering_penalty;
     shifts(i,:) = gather(shift_from_origin);
 end
 

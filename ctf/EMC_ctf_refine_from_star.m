@@ -21,6 +21,10 @@ function [] = EMC_ctf_refine_from_star(star_file_path, stack_file_path, ...
 %       'astigmatism_angle_range'  - Max astigmatism angle change in radians (default: pi/4)
 %       'z_offset_bound_factor'    - Z offset bound multiplier (default: 5)
 %       'exit_after_first_tilt'     - Exit after first tilt for testing (default: false)
+%       'verbose_timing'           - Print per-section timing (default: false)
+%       'gpu_ids'                  - GPU device IDs (1-indexed), comma-separated string
+%                                    e.g. '1,2,5' for 3 GPUs. Default '1' (single GPU)
+%       'workers_per_gpu'          - Parallel workers per GPU (default: 3)
 %
 % BEHAVIORS TO WATCH:
 %   - ADAM score_history should increase monotonically after warmup; oscillation = lr too high
@@ -43,25 +47,22 @@ fprintf('  Output:        %s\n', output_star_path);
 n_total_particles = length(particles);
 fprintf('  Parsed %d particles from star file\n', n_total_particles);
 
-%% ===== Stage B: Load stack + reference volume =====
+%% ===== Stage B: Read stack header (CPU only — file handles created per worker) =====
 
-stack_mrc = MRCImage(stack_file_path, 0);
-stack_header = getHeader(stack_mrc);
+stack_mrc_tmp = MRCImage(stack_file_path, 0);
+stack_header = getHeader(stack_mrc_tmp);
 tile_size = [stack_header.nX, stack_header.nY];
 fprintf('  Stack tile size: [%d, %d], %d slices\n', tile_size(1), tile_size(2), stack_header.nZ);
+clear stack_mrc_tmp;
 
-% FIXME: Add half-set reference support if this process works
-ref_vol = gpuArray(single(OPEN_IMG('single', reference_volume_path)));
-ref_vol_size = size(ref_vol);
+% Check reference volume size (CPU read)
+ref_vol_tmp = single(OPEN_IMG('single', reference_volume_path));
+ref_vol_size = size(ref_vol_tmp);
 fprintf('  Reference volume size: [%d, %d, %d]\n', ref_vol_size(1), ref_vol_size(2), ref_vol_size(3));
+clear ref_vol_tmp;
 
-% Create interpolator for reference volume
-ref_interp = interpolator(ref_vol, [0,0,0], [0,0,0], 'SPIDER', 'inv', 'C1');
+%% ===== Stage C: Compute CTFSIZE and padding (CPU-only, small arrays) =====
 
-%% ===== Stage C: Compute CTFSIZE and masks =====
-
-% Compute FFT-friendly CTFSIZE (~2x tile_size) for proper Fourier-space CTF operations
-% (Reference: BH_synthetic_mapBack.m lines 1171-1177)
 CTFSIZE = BH_multi_iterator([2.*tile_size, 1], 'fourier');
 CTFSIZE = CTFSIZE(1:2);
 padCTF = BH_multi_padVal(tile_size, CTFSIZE);
@@ -69,42 +70,11 @@ ctfOrigin = emc_get_origin_index(CTFSIZE);
 fprintf('  tile_size=[%d,%d] -> CTFSIZE=[%d,%d] (FFT-friendly, ~2x)\n', ...
     tile_size(1), tile_size(2), CTFSIZE(1), CTFSIZE(2));
 
-% Data mask at tile_size: soft-edge cosine taper for edge treatment
-% TODO: when particle_radius is available, use it to inform mask radius
-soft_mask = create_2d_soft_mask(tile_size, 7);
-
-% CTF mask at CTFSIZE: soft-edge sphere applied after padding
-% The -7 gives a 7-pixel soft edge taper at the boundary of the padded region
-ctfMask = gpuArray(BH_mask3d('sphere', CTFSIZE, ctfOrigin - 7, [0,0], '2d'));
-
-% TODO: Add peak search mask at CTFSIZE for CC peak finding
-% (Reference: BH_synthetic_mapBack.m line 1190 uses EMC_gaussianKernel)
-
-%% ===== Stage D: Group particles by tilt, sort by ascending |tilt_angle| =====
+%% ===== Stage D: Group particles by tilt, extract per-particle arrays =====
 
 [unique_tilt_names, tilt_group_indices, tilt_angles_per_group] = group_particles_by_tilt(particles);
 n_tilt_groups = length(unique_tilt_names);
-[~, ascending_tilt_order] = sort(abs(tilt_angles_per_group));
-
-fprintf('  %d tilt groups, processing in ascending |tilt| order\n', n_tilt_groups);
-
-%% ===== Stage E: Per-tilt refinement loop =====
-
-% Storage for refined values (indexed by particle order in star file)
-% Initialize to zeros - unprocessed particles will have zeros to expose failures
-refined_defocus_1 = zeros(n_total_particles, 1);
-refined_defocus_2 = zeros(n_total_particles, 1);
-refined_astigmatism_angle = zeros(n_total_particles, 1);
-refined_shift_x = zeros(n_total_particles, 1);
-refined_shift_y = zeros(n_total_particles, 1);
-refined_scores = zeros(n_total_particles, 1);
-refined_occupancy = zeros(n_total_particles, 1);
-processed_mask = false(n_total_particles, 1);
-
-% Tilt-dependent scoring accumulators
-baseline_median_score = [];
-accumulated_angle_score_pairs = zeros(n_tilt_groups, 2);
-n_accumulated_pairs = 0;
+fprintf('  %d tilt groups\n', n_tilt_groups);
 
 % Get microscope parameters from first particle (constant across stack)
 pixel_size_angstroms = particles(1).pixel_size;
@@ -114,202 +84,284 @@ wavelength_angstroms = 12.2643 / sqrt(voltage_volts * (1 + voltage_volts * 0.978
 cs_mm = particles(1).cs_mm;
 amplitude_contrast = particles(1).amplitude_contrast;
 
-for sorted_index = 1:n_tilt_groups
-  group_index = ascending_tilt_order(sorted_index);
-  current_tilt_name = unique_tilt_names{group_index};
-  member_indices = find(tilt_group_indices == group_index);
-  n_particles_this_tilt = length(member_indices);
-  current_tilt_angle = tilt_angles_per_group(group_index);
+% Extract per-particle data into plain arrays (parfor can't index into struct arrays)
+all_positions = [particles.position_in_stack]';
+all_psi = [particles.psi]';
+all_theta = [particles.theta]';
+all_phi = [particles.phi]';
+all_x_shift = [particles.x_shift]';
+all_y_shift = [particles.y_shift]';
+all_df1 = [particles.defocus_1]';
+all_df2 = [particles.defocus_2]';
+all_df_angle = [particles.defocus_angle]';
 
-  fprintf('  Refining tilt %s (angle %.1f deg, %d particles)...\n', ...
-    current_tilt_name, current_tilt_angle, n_particles_this_tilt);
+% Pre-compute per-tilt-group member lists and particle counts
+tilt_group_members = cell(n_tilt_groups, 1);
+particles_per_group = zeros(n_tilt_groups, 1);
+for g = 1:n_tilt_groups
+  tilt_group_members{g} = find(tilt_group_indices == g);
+  particles_per_group(g) = length(tilt_group_members{g});
+end
 
-  % Determine consecutive slice range for batch loading
-  slice_indices = [particles(member_indices).position_in_stack];
-  first_slice = min(slice_indices);
-  last_slice = max(slice_indices);
+%% ===== Stage E: Setup parallel workers =====
 
-  % Batch-load data tiles from stack
-  tilt_data = single(OPEN_IMG('single', stack_mrc, [1,tile_size(1)], [1,tile_size(2)], [first_slice, last_slice], 'keep'));
+% Parse GPU IDs (may be string, numeric, or logical if parser converted '1' to true)
+if ischar(opts.gpu_ids) || isstring(opts.gpu_ids)
+  gpu_ids = EMC_str2double(opts.gpu_ids);
+else
+  gpu_ids = double(opts.gpu_ids);  % double() handles logical (true→1) and numeric
+end
+if isempty(gpu_ids) || (isscalar(gpu_ids) && gpu_ids == 0)
+  gpu_ids = [1];
+end
+n_gpus = length(gpu_ids);
+n_workers = n_gpus * opts.workers_per_gpu;
 
-  % Build data and reference tile cell arrays
-  data_tiles = cell(n_particles_this_tilt, 1);
-  ref_tiles = cell(n_particles_this_tilt, 1);
-  initial_shifts = zeros(n_particles_this_tilt, 2);
+% Limit tilt groups for testing
+if opts.exit_after_first_tilt
+  n_tilt_groups = min(n_tilt_groups, 20);
+  fprintf('  [DEBUG] Limiting to %d tilt groups (exit_after_first_tilt=true)\n', n_tilt_groups);
+end
 
-  ctf_params_for_tilt = struct();
-  ctf_params_for_tilt.defocus_mean = zeros(n_particles_this_tilt, 1);
-  ctf_params_for_tilt.half_astigmatism = zeros(n_particles_this_tilt, 1);
-  ctf_params_for_tilt.astigmatism_angle = zeros(n_particles_this_tilt, 1);
-  ctf_params_for_tilt.pixel_size_angstroms = pixel_size_angstroms;
-  ctf_params_for_tilt.wavelength_angstroms = wavelength_angstroms;
-  ctf_params_for_tilt.spherical_aberration_mm = cs_mm;
-  ctf_params_for_tilt.amplitude_contrast = amplitude_contrast;
-  ctf_params_for_tilt.tilt_angle_degrees = current_tilt_angle;
+fprintf('  GPUs: [%s], %d workers (%d per GPU)\n', ...
+    num2str(gpu_ids), n_workers, opts.workers_per_gpu);
 
-  for particle_index = 1:n_particles_this_tilt
-    p = particles(member_indices(particle_index));
-    local_slice = p.position_in_stack - first_slice + 1;
+% Load-balanced assignment: sort tilt groups by descending particle count,
+% then round-robin assign to workers so each gets similar total work
+[~, sort_order] = sort(particles_per_group, 'descend');
+worker_assignments = cell(n_workers, 1);
+for i = 1:n_tilt_groups
+  worker_idx = mod(i - 1, n_workers) + 1;
+  worker_assignments{worker_idx} = [worker_assignments{worker_idx}, sort_order(i)];
+end
 
-    % Tile preparation matching reference (BH_synthetic_mapBack.m lines 1527-1543):
-    % 1. Apply soft mask at tile_size
-    % 2. Mean subtract + RMS normalize
-    % 3. Pad to CTFSIZE with singleTaper + apply ctfMask
-    data_tile = soft_mask .* gpuArray(tilt_data(:,:,local_slice));
-    data_tile = data_tile - mean(data_tile(:));
-    data_tile = data_tile ./ rms(data_tile(:));
-    data_tiles{particle_index} = ctfMask .* BH_padZeros3d(data_tile, 'fwd', padCTF, 'GPU', 'singleTaper');
+% Report load balance
+for w = 1:n_workers
+  n_tilts_w = length(worker_assignments{w});
+  n_particles_w = sum(particles_per_group(worker_assignments{w}));
+  fprintf('    Worker %d: %d tilts, %d particles, GPU %d\n', ...
+      w, n_tilts_w, n_particles_w, gpu_ids(mod(w - 1, n_gpus) + 1));
+end
 
-    % Generate reference projection: rotate volume, project along Z
-    % Euler angle convention: [phi, theta, psi] (permutation C, confirmed by debug)
-    angles = [p.phi, p.theta, p.psi];
-    rotated_vol = ref_interp.interp3d(angles, [0,0,0], 'SPIDER', 'inv', 'C1');
-    ref_projection = sum(rotated_vol, 3);
-    ref_tile = soft_mask .* center_crop_or_pad(ref_projection, tile_size);
-    ref_tile = ref_tile - mean(ref_tile(:));
-    ref_tile = ref_tile ./ rms(ref_tile(:));
-    ref_tiles{particle_index} = ctfMask .* BH_padZeros3d(ref_tile, 'fwd', padCTF, 'GPU', 'singleTaper');
+% Build refinement options struct (CPU scalars, safe to broadcast)
+refinement_options = struct();
+refinement_options.defocus_search_range = opts.defocus_search_range;
+refinement_options.maximum_iterations = opts.maximum_iterations;
+refinement_options.upsample_factor = opts.upsample_factor;
+refinement_options.upsample_window = opts.upsample_window;
+refinement_options.CTFSIZE = CTFSIZE;
+refinement_options.use_phase_compensated_correlation = false;
+refinement_options.warmup_iterations = opts.warmup_iterations;
+refinement_options.lowpass_cutoff = opts.lowpass_cutoff;
+refinement_options.astigmatism_angle_range = opts.astigmatism_angle_range;
+refinement_options.z_offset_bound_factor = opts.z_offset_bound_factor;
+refinement_options.peak_search_radius = floor(CTFSIZE ./ 4);
+refinement_options.maximum_xy_shift = max(floor(CTFSIZE ./ 4));
+refinement_options.verbose_timing = opts.verbose_timing;
 
-    % Shifts are stored in Angstroms in the star file, convert to pixels
-    initial_shifts(particle_index, :) = [p.x_shift / pixel_size_angstroms, ...
-                                          p.y_shift / pixel_size_angstroms];
+EMC_parpool(n_workers);
 
-    % CTF params: defocus_mean = (df1+df2)/2, half_astig = (df1-df2)/2
-    ctf_params_for_tilt.defocus_mean(particle_index) = (p.defocus_1 + p.defocus_2) / 2;
-    ctf_params_for_tilt.half_astigmatism(particle_index) = (p.defocus_1 - p.defocus_2) / 2;
-    ctf_params_for_tilt.astigmatism_angle(particle_index) = p.defocus_angle * pi / 180;
+%% ===== Stage F: Parallel refinement =====
+
+% TODO: Tilt-dependent occupancy scoring (removed to enable parallelization)
+%
+% The intent: CC scores drop as a function of tilt angle due to increased
+% specimen thickness / foreshortening. We expect this to follow approximately
+% cos^alpha(tilt_angle). If a whole tilt has anomalously low scores relative
+% to this model, it likely means that tilt image is garbage and all its
+% particles should get occupancy=0.
+%
+% What was here:
+%   - Process tilts in ascending |tilt_angle| order
+%   - Use low-tilt (~0 deg) median score as baseline
+%   - Accumulate (angle, median_score) pairs across tilts
+%   - Fit alpha from log(score_ratio) = alpha * log(cos(angle))
+%   - Set score_threshold = expected_score * 0.3 for each tilt
+%   - Reject particles below threshold (occupancy=0)
+%
+% To re-enable: run refinement in parallel (as below), then apply the scoring
+% model as a sequential post-processing step over the collected results.
+% Sort results by |tilt_angle|, compute baseline from low-tilt groups,
+% fit cos^alpha model, apply threshold to high-tilt groups.
+
+worker_results = cell(n_workers, 1);
+
+for iWorker = 1:n_workers % revert parfor
+  % GPU assignment: round-robin across GPUs visible to this worker
+  % Workers may see a different number of GPUs than the parent (depends on
+  % CUDA_VISIBLE_DEVICES inheritance). Use gpuDeviceCount to detect what's available.
+  n_visible_gpus = gpuDeviceCount;
+  if n_visible_gpus == 0
+    error('Worker %d: no GPU visible. Set CUDA_VISIBLE_DEVICES before launching MATLAB.', iWorker);
   end
+  local_gpu_id = mod(iWorker - 1, n_visible_gpus) + 1;
+  gpuDevice(local_gpu_id);
 
-  % Clear batch data from CPU
-  clear tilt_data;
+  vt = opts.verbose_timing;
+  t_worker_start = tic;
+  % Each worker creates ALL GPU objects fresh — no shared GPU state
+  local_soft_mask = create_2d_soft_mask(tile_size, 7);
+  local_ctf_mask = gpuArray(BH_mask3d('sphere', CTFSIZE, ctfOrigin - 7, [0,0], '2d'));
+  local_ref_vol = gpuArray(single(OPEN_IMG('single', reference_volume_path)));
+  local_ref_interp = interpolator(local_ref_vol, [0,0,0], [0,0,0], 'SPIDER', 'inv', 'C1');
+  local_stack_mrc = MRCImage(stack_file_path, 0);
+  if vt, fprintf('  [W%d][T] GPU setup: %.3f s\n', iWorker, toc(t_worker_start)); end
 
-  % Prepare refinement options
-  refinement_options = struct();
-  refinement_options.defocus_search_range = opts.defocus_search_range;
-  refinement_options.maximum_iterations = opts.maximum_iterations;
-  refinement_options.upsample_factor = opts.upsample_factor;
-  refinement_options.upsample_window = opts.upsample_window;
-  refinement_options.CTFSIZE = CTFSIZE;
-  refinement_options.use_phase_compensated_correlation = false;
-  refinement_options.warmup_iterations = opts.warmup_iterations;
-  refinement_options.lowpass_cutoff = opts.lowpass_cutoff;
-  refinement_options.astigmatism_angle_range = opts.astigmatism_angle_range;
-  refinement_options.z_offset_bound_factor = opts.z_offset_bound_factor;
-  refinement_options.peak_search_radius = floor(CTFSIZE ./ 4);
-  refinement_options.maximum_xy_shift = max(floor(CTFSIZE ./ 4));
+  my_tilts = worker_assignments{iWorker};
+  local_results = cell(length(my_tilts), 1);
 
-  % Run ADAM refinement for this tilt (try/catch so one bad tilt doesn't kill the run)
-  try
-  tilt_results = EMC_refine_tilt_ctf(data_tiles, ref_tiles, ctf_params_for_tilt, ...
-      initial_shifts, refinement_options);
+  for j = 1:length(my_tilts)
+    tilt_idx = my_tilts(j);
+    member_indices = tilt_group_members{tilt_idx};
+    current_tilt_angle = tilt_angles_per_group(tilt_idx);
+    current_tilt_name = unique_tilt_names{tilt_idx};
+    n_particles_this_tilt = length(member_indices);
 
-  % Store refined values for each particle
-  for particle_index = 1:n_particles_this_tilt
-    idx = member_indices(particle_index);
-    p = particles(idx);
+    try
 
-    % Apply per-tilt defocus offset and per-particle dz
-    particle_dz = 0;
-    if ~isempty(tilt_results.delta_z) && particle_index <= length(tilt_results.delta_z)
-      particle_dz = tilt_results.delta_z(particle_index);
+    t_tilt_start = tic;
+    fprintf('  [W%d] Refining tilt %s (angle %.1f deg, %d particles)...\n', ...
+        iWorker, current_tilt_name, current_tilt_angle, n_particles_this_tilt);
+
+    % Determine slice range for batch loading
+    t_io = tic;
+    slice_indices = all_positions(member_indices);
+    first_slice = min(slice_indices);
+    last_slice = max(slice_indices);
+
+    % Batch-load data tiles from stack
+    tilt_data = single(OPEN_IMG('single', local_stack_mrc, ...
+        [1,tile_size(1)], [1,tile_size(2)], [first_slice, last_slice], 'keep'));
+    if vt, fprintf('    [W%d][T] IO load: %.3f s\n', iWorker, toc(t_io)); end
+
+    % Build data and reference tile cell arrays
+    data_tiles = cell(n_particles_this_tilt, 1);
+    ref_tiles = cell(n_particles_this_tilt, 1);
+    initial_shifts = zeros(n_particles_this_tilt, 2);
+
+    ctf_params_for_tilt = struct();
+    ctf_params_for_tilt.defocus_mean = zeros(n_particles_this_tilt, 1);
+    ctf_params_for_tilt.half_astigmatism = zeros(n_particles_this_tilt, 1);
+    ctf_params_for_tilt.astigmatism_angle = zeros(n_particles_this_tilt, 1);
+    ctf_params_for_tilt.pixel_size_angstroms = pixel_size_angstroms;
+    ctf_params_for_tilt.wavelength_angstroms = wavelength_angstroms;
+    ctf_params_for_tilt.spherical_aberration_mm = cs_mm;
+    ctf_params_for_tilt.amplitude_contrast = amplitude_contrast;
+    ctf_params_for_tilt.tilt_angle_degrees = current_tilt_angle;
+
+    t_tile_prep = tic;
+    for particle_index = 1:n_particles_this_tilt
+      idx = member_indices(particle_index);
+      local_slice = all_positions(idx) - first_slice + 1;
+
+      % Tile preparation (reference: BH_synthetic_mapBack.m lines 1527-1543)
+      data_tile = local_soft_mask .* gpuArray(tilt_data(:,:,local_slice));
+      data_tile = data_tile - mean(data_tile(:));
+      data_tile = data_tile ./ rms(data_tile(:));
+      data_tiles{particle_index} = local_ctf_mask .* BH_padZeros3d(data_tile, 'fwd', padCTF, 'GPU', 'singleTaper');
+
+      % Reference projection: [phi, theta, psi] convention (permutation C)
+      angles = [all_phi(idx), all_theta(idx), all_psi(idx)];
+      rotated_vol = local_ref_interp.interp3d(angles, [0,0,0], 'SPIDER', 'inv', 'C1');
+      ref_projection = sum(rotated_vol, 3);
+      ref_tile = local_soft_mask .* center_crop_or_pad(ref_projection, tile_size);
+      ref_tile = ref_tile - mean(ref_tile(:));
+      ref_tile = ref_tile ./ rms(ref_tile(:));
+      ref_tiles{particle_index} = local_ctf_mask .* BH_padZeros3d(ref_tile, 'fwd', padCTF, 'GPU', 'singleTaper');
+
+      initial_shifts(particle_index, :) = [all_x_shift(idx) / pixel_size_angstroms, ...
+                                            all_y_shift(idx) / pixel_size_angstroms];
+
+      ctf_params_for_tilt.defocus_mean(particle_index) = (all_df1(idx) + all_df2(idx)) / 2;
+      ctf_params_for_tilt.half_astigmatism(particle_index) = (all_df1(idx) - all_df2(idx)) / 2;
+      ctf_params_for_tilt.astigmatism_angle(particle_index) = all_df_angle(idx) * pi / 180;
     end
-    defocus_correction = tilt_results.delta_defocus_tilt + particle_dz * cosd(current_tilt_angle);
+    if vt, fprintf('    [W%d][T] tile prep (%d particles): %.3f s\n', iWorker, n_particles_this_tilt, toc(t_tile_prep)); end
 
-    defocus_mean = (p.defocus_1 + p.defocus_2) / 2;
-    half_astig = (p.defocus_1 - p.defocus_2) / 2;
+    tilt_data = []; %#ok<NASGU>
 
-    refined_defocus_1(idx) = defocus_mean + half_astig + ...
-        tilt_results.delta_half_astigmatism + defocus_correction;
-    refined_defocus_2(idx) = defocus_mean - half_astig - ...
-        tilt_results.delta_half_astigmatism + defocus_correction;
-    refined_astigmatism_angle(idx) = (p.defocus_angle * pi/180 + tilt_results.delta_astigmatism_angle) * 180 / pi;
-    refined_shift_x(idx) = tilt_results.shift_x(particle_index) * pixel_size_angstroms;
-    refined_shift_y(idx) = tilt_results.shift_y(particle_index) * pixel_size_angstroms;
-    refined_scores(idx) = tilt_results.per_particle_scores(particle_index);
-    processed_mask(idx) = true;
-  end
+    % Run ADAM refinement
+    t_refine = tic;
+    tilt_results = EMC_refine_tilt_ctf(data_tiles, ref_tiles, ctf_params_for_tilt, ...
+        initial_shifts, refinement_options);
+    if vt, fprintf('    [W%d][T] refinement: %.3f s (%d iters)\n', iWorker, toc(t_refine), length(tilt_results.score_history)); end
 
-  % Tilt-dependent scoring (cos^alpha model)
-  tilt_scores = tilt_results.per_particle_scores;
-  % REVERT_NAN_DEBUG: trace NaN source
-  n_nan_scores = sum(isnan(tilt_scores));
-  if n_nan_scores > 0
-    fprintf('  [NAN_DEBUG] %d/%d particle scores are NaN for tilt %s\n', ...
-        n_nan_scores, length(tilt_scores), current_tilt_name);
-    fprintf('  [NAN_DEBUG] tilt_scores = [%s]\n', sprintf('%.6g ', tilt_scores));
-    fprintf('  [NAN_DEBUG] delta_defocus=%.1f, delta_astig=%.1f, delta_angle=%.4f\n', ...
-        tilt_results.delta_defocus_tilt, tilt_results.delta_half_astigmatism, ...
-        tilt_results.delta_astigmatism_angle);
-    fprintf('  [NAN_DEBUG] shift_x = [%s]\n', sprintf('%.4f ', tilt_results.shift_x));
-    fprintf('  [NAN_DEBUG] shift_y = [%s]\n', sprintf('%.4f ', tilt_results.shift_y));
-    for nan_i = 1:length(tilt_scores)
-      if isnan(tilt_scores(nan_i))
-        p_nan = particles(member_indices(nan_i));
-        fprintf('  [NAN_DEBUG] particle %d: df1=%.1f df2=%.1f ast_angle=%.2f pos=%d\n', ...
-            nan_i, p_nan.defocus_1, p_nan.defocus_2, p_nan.defocus_angle, p_nan.position_in_stack);
+    fprintf('    [W%d] delta_defocus=%.1f A, delta_astig=%.1f A, delta_angle=%.3f rad, converged=%d', ...
+        iWorker, tilt_results.delta_defocus_tilt, tilt_results.delta_half_astigmatism, ...
+        tilt_results.delta_astigmatism_angle, tilt_results.converged);
+    if vt, fprintf(' (%.3f s total)', toc(t_tilt_start)); end
+    fprintf('\n');
+
+    local_results{j} = struct( ...
+        'tilt_idx', tilt_idx, ...
+        'member_indices', member_indices, ...
+        'tilt_angle', current_tilt_angle, ...
+        'tilt_name', current_tilt_name, ...
+        'n_particles', n_particles_this_tilt, ...
+        'tilt_results', tilt_results, ...
+        'success', true);
+
+    catch ME
+      fprintf(2, '\n!!! [W%d] Tilt %s failed: %s !!!\n', iWorker, current_tilt_name, ME.message);
+      for stack_i = 1:length(ME.stack)
+        fprintf(2, '  in %s (line %d)\n', ME.stack(stack_i).name, ME.stack(stack_i).line);
       end
-    end
-    error('NaN scores detected — see NAN_DEBUG output above');
-  end
-  if abs(current_tilt_angle) < 10
-    baseline_median_score = median(tilt_scores);
-    score_threshold = prctile(tilt_scores, 10);
-  else
-    if ~isempty(baseline_median_score) && n_accumulated_pairs > 0
-      pairs = accumulated_angle_score_pairs(1:n_accumulated_pairs, :);
-      angles_rad = pairs(:,1) * pi / 180;
-      log_ratio = log(pairs(:,2) / baseline_median_score);
-      log_cos = log(cos(angles_rad));
-      valid = isfinite(log_ratio) & isfinite(log_cos) & log_cos ~= 0;
-      if any(valid)
-        alpha_fit = log_cos(valid) \ log_ratio(valid);
-      else
-        alpha_fit = 1;
-      end
-      expected_score = baseline_median_score * cosd(current_tilt_angle)^alpha_fit;
-      score_threshold = expected_score * 0.3;
-    else
-      score_threshold = prctile(tilt_scores, 10);
+      local_results{j} = struct('tilt_idx', tilt_idx, 'success', false, ...
+          'error_message', ME.message, 'tilt_name', current_tilt_name);
     end
   end
 
-  % Set occupancy: 100 for particles above threshold, 0 otherwise
-  for particle_index = 1:n_particles_this_tilt
-    idx = member_indices(particle_index);
-    score = refined_scores(idx);
-    if isfinite(score) && score >= score_threshold
+  worker_results{iWorker} = local_results;
+end
+
+%% ===== Stage G: Unpack parallel results =====
+
+% Initialize from originals — unrefined particles keep their input values
+refined_defocus_1 = all_df1;
+refined_defocus_2 = all_df2;
+refined_astigmatism_angle = all_df_angle;
+refined_shift_x = all_x_shift;
+refined_shift_y = all_y_shift;
+refined_scores = zeros(n_total_particles, 1);
+refined_occupancy = 100 * ones(n_total_particles, 1);
+processed_mask = false(n_total_particles, 1);
+n_failed_tilts = 0;
+
+for iWorker = 1:n_workers
+  for j = 1:length(worker_results{iWorker})
+    r = worker_results{iWorker}{j};
+    if ~r.success
+      n_failed_tilts = n_failed_tilts + 1;
+      continue;
+    end
+
+    tilt_results = r.tilt_results;
+    member_indices = r.member_indices;
+    current_tilt_angle = r.tilt_angle;
+
+    for particle_index = 1:r.n_particles
+      idx = member_indices(particle_index);
+
+      particle_dz = 0;
+      if ~isempty(tilt_results.delta_z) && particle_index <= length(tilt_results.delta_z)
+        particle_dz = tilt_results.delta_z(particle_index);
+      end
+      defocus_correction = tilt_results.delta_defocus_tilt + particle_dz * cosd(current_tilt_angle);
+
+      defocus_mean = (all_df1(idx) + all_df2(idx)) / 2;
+      half_astig = (all_df1(idx) - all_df2(idx)) / 2;
+
+      refined_defocus_1(idx) = defocus_mean + half_astig + ...
+          tilt_results.delta_half_astigmatism + defocus_correction;
+      refined_defocus_2(idx) = defocus_mean - half_astig - ...
+          tilt_results.delta_half_astigmatism + defocus_correction;
+      refined_astigmatism_angle(idx) = (all_df_angle(idx) * pi/180 + tilt_results.delta_astigmatism_angle) * 180 / pi;
+      refined_shift_x(idx) = tilt_results.shift_x(particle_index) * pixel_size_angstroms;
+      refined_shift_y(idx) = tilt_results.shift_y(particle_index) * pixel_size_angstroms;
+      refined_scores(idx) = tilt_results.per_particle_scores(particle_index);
       refined_occupancy(idx) = 100;
+      processed_mask(idx) = true;
     end
-  end
-
-  % Accumulate for scoring model
-  kept_scores = tilt_scores(tilt_scores >= score_threshold);
-  if ~isempty(kept_scores)
-    n_accumulated_pairs = n_accumulated_pairs + 1;
-    accumulated_angle_score_pairs(n_accumulated_pairs, :) = [current_tilt_angle, median(kept_scores)];
-  end
-
-  fprintf('    delta_defocus=%.1f A, delta_astig=%.1f A, delta_angle=%.3f rad, converged=%d\n', ...
-    tilt_results.delta_defocus_tilt, tilt_results.delta_half_astigmatism, ...
-    tilt_results.delta_astigmatism_angle, tilt_results.converged);
-
-  % Clear GPU memory for this tilt group
-  clear data_tiles ref_tiles;
-
-  % Early exit option for testing — exits after N tilts
-  if opts.exit_after_first_tilt && sorted_index >= 20
-    fprintf('  [DEBUG] Early exit after %d tilts (exit_after_first_tilt=true)\n', sorted_index);
-    break;
-  end
-
-  catch ME
-    fprintf(2, '\n!!! Tilt %s failed !!!\n', current_tilt_name);
-    fprintf(2, '  Error: %s\n', ME.message);
-    for stack_i = 1:length(ME.stack)
-      fprintf(2, '  in %s (line %d)\n', ME.stack(stack_i).name, ME.stack(stack_i).line);
-    end
-    warning('EMC_ctf_refine_from_star:tiltFailed', ...
-        'Tilt %s failed: %s — skipping', current_tilt_name, ME.message);
   end
 end
 
@@ -317,20 +369,17 @@ end
 n_processed = sum(processed_mask);
 n_unprocessed = n_total_particles - n_processed;
 fprintf('\n=== Refinement Summary ===\n');
+fprintf('  Tilt groups: %d total, %d failed\n', n_tilt_groups, n_failed_tilts);
 fprintf('  Particles processed:   %d / %d (%.1f%%)\n', n_processed, n_total_particles, ...
     100 * n_processed / max(n_total_particles, 1));
 fprintf('  Particles unprocessed: %d / %d (%.1f%%)\n', n_unprocessed, n_total_particles, ...
     100 * n_unprocessed / max(n_total_particles, 1));
 
 if n_processed > 0
-  defocus_corrections = refined_defocus_1(processed_mask) - arrayfun(@(p) p.defocus_1, particles(processed_mask)');
+  defocus_corrections = refined_defocus_1(processed_mask) - all_df1(processed_mask);
   fprintf('  Defocus corrections (processed only): mean=%.1f A, std=%.1f A\n', ...
       mean(defocus_corrections), std(defocus_corrections));
 end
-
-n_rejected = sum(refined_occupancy == 0 & processed_mask);
-fprintf('  Particles rejected (score threshold): %d / %d processed (%.1f%%)\n', ...
-    n_rejected, n_processed, 100 * n_rejected / max(n_processed, 1));
 
 if n_unprocessed > 0
   fprintf('  WARNING: %d particles have zeros (unprocessed or failed)\n', n_unprocessed);
@@ -363,6 +412,9 @@ function opts = parse_options(args)
   opts.astigmatism_angle_range = pi/4;
   opts.z_offset_bound_factor = 5;
   opts.exit_after_first_tilt = false;
+  opts.verbose_timing = false;
+  opts.gpu_ids = '1';
+  opts.workers_per_gpu = 3;
 
   i = 1;
   while i <= length(args)
@@ -378,6 +430,10 @@ function opts = parse_options(args)
             val = false;
           else
             val = str2double(val);
+            if isnan(val)
+              % Handle vector syntax like '[1,2,5]' or '1,2,5'
+              val = str2num(char(args{i+1})); %#ok<ST2NM>
+            end
           end
         end
         if isfield(opts, key)
