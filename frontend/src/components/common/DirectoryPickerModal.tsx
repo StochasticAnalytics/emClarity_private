@@ -111,15 +111,11 @@ export function DirectoryPickerModal({
               ? ((rawBody as Record<string, unknown>).detail as string)
               : null
           message = detail ?? err.message
-        } else if (
-          err instanceof TypeError &&
-          // Catch cross-browser network / connection errors before a response is
-          // received.  Chrome/Firefox use messages like "Failed to fetch" or
-          // "NetworkError"; Safari uses "Load failed".  We narrow on the message
-          // so that programming TypeErrors (e.g. "Cannot read properties of null")
-          // are not misreported here.
-          /fetch|network|load failed/i.test(err.message)
-        ) {
+        } else if (err instanceof TypeError) {
+          // fetch() only throws TypeError for network-level failures (no response
+          // received).  Programming TypeErrors (e.g. "Cannot read properties of
+          // null") are caught before reaching this point, so no message-text guard
+          // is needed here.
           message = 'Cannot connect to server — is the backend running?'
         } else if (err instanceof Error) {
           message = err.message
@@ -132,22 +128,32 @@ export function DirectoryPickerModal({
       })
   }, [])
 
-  // Load initial directory when modal opens; restore focus when it closes.
+  // Save focus when the modal opens and restore it when it closes (WCAG 2.1
+  // SC 2.4.3).  This effect intentionally depends only on `isOpen` so that a
+  // caller passing a dynamic `initialPath` never triggers a spurious focus
+  // restoration mid-session.
   useEffect(() => {
     if (!isOpen) return
 
-    // Save the element that currently has focus so we can return to it on close.
     previousFocusRef.current = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null
+
+    return () => {
+      previousFocusRef.current?.focus()
+      previousFocusRef.current = null
+    }
+  }, [isOpen])
+
+  // Navigate to the initial path whenever the modal opens or `initialPath`
+  // changes.  Abort any in-flight request when the modal closes.
+  useEffect(() => {
+    if (!isOpen) return
 
     navigate(initialPath)
 
     return () => {
       abortRef.current?.abort()
-      // Restore focus to the element that triggered the modal (WCAG 2.1 SC 2.4.3).
-      previousFocusRef.current?.focus()
-      previousFocusRef.current = null
     }
   }, [isOpen, initialPath, navigate])
 
@@ -262,6 +268,7 @@ export function DirectoryPickerModal({
                 {idx === breadcrumbs.length - 1 ? (
                   /* Current segment — not clickable */
                   <span
+                    aria-current="page"
                     title={seg.path}
                     className="max-w-[120px] truncate font-mono text-xs font-medium text-gray-700 dark:text-gray-300"
                   >
