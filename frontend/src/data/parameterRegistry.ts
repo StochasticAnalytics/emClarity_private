@@ -57,8 +57,6 @@ export type ActionTabId = (typeof ACTION_TAB_IDS)[number]
 export const PARAMS_BY_TAB: Readonly<Record<ActionTabId, ReadonlySet<string>>> = {
   // Section 5, Table 3
   autoAlign: new Set([
-    'PIXEL_SIZE',
-    'beadDiameter',
     'autoAli_max_resolution',
     'autoAli_min_sampling_rate',
     'autoAli_max_sampling_rate',
@@ -74,12 +72,7 @@ export const PARAMS_BY_TAB: Readonly<Record<ActionTabId, ReadonlySet<string>>> =
 
   // Section 6, Table 4
   ctfEstimate: new Set([
-    'VOLTAGE',
-    'Cs',
-    'AMPCONT',
-    'PIXEL_SIZE',
     'SuperResolution',
-    'beadDiameter',
     'erase_beads_after_ctf',
     'CUM_e_DOSE',
     'doseAtMinTilt',
@@ -99,17 +92,14 @@ export const PARAMS_BY_TAB: Readonly<Record<ActionTabId, ReadonlySet<string>>> =
 
   // Section 7, Table 5
   selectSubregions: new Set([
-    'PIXEL_SIZE',
     'super_sample',
     'expand_lines',
   ]),
 
   // Section 8, Table 6
   templateSearch: new Set([
-    'PIXEL_SIZE',
     'SuperResolution',
     'Tmp_samplingRate',
-    'beadDiameter',
     'erase_beads_after_ctf',
     'applyExposureFilter',
     'super_sample',
@@ -139,7 +129,6 @@ export const PARAMS_BY_TAB: Readonly<Record<ActionTabId, ReadonlySet<string>>> =
 
   // Section 10, Table 8
   ctf3d: new Set([
-    'PIXEL_SIZE',
     'SuperResolution',
     'Ali_samplingRate',
     'useSurfaceFit',
@@ -152,7 +141,6 @@ export const PARAMS_BY_TAB: Readonly<Record<ActionTabId, ReadonlySet<string>>> =
 
   // Section 11, Table 9
   avg: new Set([
-    'PIXEL_SIZE',
     'SuperResolution',
     'Ali_samplingRate',
     'Ali_mType',
@@ -182,7 +170,6 @@ export const PARAMS_BY_TAB: Readonly<Record<ActionTabId, ReadonlySet<string>>> =
 
   // Section 12, Table 10
   alignRaw: new Set([
-    'PIXEL_SIZE',
     'SuperResolution',
     'Ali_samplingRate',
     'Ali_mType',
@@ -206,7 +193,6 @@ export const PARAMS_BY_TAB: Readonly<Record<ActionTabId, ReadonlySet<string>>> =
 
   // Section 13, Table 11
   tomoCPR: new Set([
-    'PIXEL_SIZE',
     'SuperResolution',
     'Ali_samplingRate',
     'Ali_mType',
@@ -245,7 +231,6 @@ export const PARAMS_BY_TAB: Readonly<Record<ActionTabId, ReadonlySet<string>>> =
 
   // Section 14, Table 12
   classification: new Set([
-    'PIXEL_SIZE',
     'SuperResolution',
     'Cls_samplingRate',
     'Ali_samplingRate',
@@ -274,7 +259,6 @@ export const PARAMS_BY_TAB: Readonly<Record<ActionTabId, ReadonlySet<string>>> =
 
   // Section 15 (same params as avg, Table 9)
   finalRecon: new Set([
-    'PIXEL_SIZE',
     'SuperResolution',
     'Ali_samplingRate',
     'Ali_mType',

@@ -383,9 +383,6 @@ const ACTION_TABS: ActionTabDef[] = [
       'Requires IMOD (tilt and tiltalign). Works with or without gold beads. ' +
       'If beadDiameter=0, beads are ignored but the .erase file is still generated.',
     params: [
-      // Required (starred)
-      { name: 'PIXEL_SIZE',                     group: 'Basic settings',   optional: false },
-      { name: 'beadDiameter',                   group: 'Basic settings',   optional: false },
       // Optional
       { name: 'autoAli_max_resolution',         group: 'Alignment settings', optional: true },
       { name: 'autoAli_min_sampling_rate',      group: 'Alignment settings', optional: true },
@@ -423,13 +420,8 @@ const ACTION_TABS: ActionTabDef[] = [
     ],
     params: [
       // Microscope settings (required *)
-      { name: 'VOLTAGE',               group: 'Microscope settings', optional: false },
-      { name: 'Cs',                    group: 'Microscope settings', optional: false },
-      { name: 'AMPCONT',               group: 'Microscope settings', optional: false },
-      { name: 'PIXEL_SIZE',            group: 'Microscope settings', optional: false },
       { name: 'SuperResolution',       group: 'Microscope settings', optional: false },
       // Fiducials (optional)
-      { name: 'beadDiameter',          group: 'Fiducials',           optional: true },
       { name: 'erase_beads_after_ctf', group: 'Fiducials',           optional: true },
       // Tilt-scheme (required *)
       { name: 'CUM_e_DOSE',            group: 'Tilt-scheme',         optional: false },
@@ -476,7 +468,6 @@ const ACTION_TABS: ActionTabDef[] = [
       'This step does NOT use a parameter file — it uses the recScript2.sh shell script.',
     params: [
       // Table 5 fields (recon.coords format — informational, not a param file)
-      { name: 'PIXEL_SIZE',  group: 'Reference parameters', optional: false },
       { name: 'super_sample',group: 'Reference parameters', optional: true  },
       { name: 'expand_lines', group: 'Reference parameters', optional: true },
     ],
@@ -508,11 +499,9 @@ const ACTION_TABS: ActionTabDef[] = [
       'After reviewing results in 3dmod, rename the output directory to convmap/.',
     params: [
       // Sampling (required *)
-      { name: 'PIXEL_SIZE',                           group: 'Sampling',               optional: false },
       { name: 'SuperResolution',                      group: 'Sampling',               optional: false },
       { name: 'Tmp_samplingRate',                     group: 'Sampling',               optional: false },
       // Tomogram reconstruction (mixed)
-      { name: 'beadDiameter',                         group: 'Tomogram reconstruction', optional: false },
       { name: 'erase_beads_after_ctf',                group: 'Tomogram reconstruction', optional: true },
       { name: 'applyExposureFilter',                  group: 'Tomogram reconstruction', optional: true },
       { name: 'super_sample',                         group: 'Tomogram reconstruction', optional: false },
@@ -594,7 +583,6 @@ const ACTION_TABS: ActionTabDef[] = [
       'emClarity will skip them. Remove existing reconstructions to force re-computation.',
     params: [
       // Microscope settings (required *)
-      { name: 'PIXEL_SIZE',            group: 'Microscope settings', optional: false },
       { name: 'SuperResolution',       group: 'Microscope settings', optional: false },
       { name: 'Ali_samplingRate',      group: 'Microscope settings', optional: false },
       // CTF correction (required *)
@@ -631,7 +619,6 @@ const ACTION_TABS: ActionTabDef[] = [
     ],
     params: [
       // Sampling (required *)
-      { name: 'PIXEL_SIZE',           group: 'Sampling',               optional: false },
       { name: 'SuperResolution',      group: 'Sampling',               optional: false },
       { name: 'Ali_samplingRate',     group: 'Sampling',               optional: false },
       // Mask (required *)
@@ -689,7 +676,6 @@ const ACTION_TABS: ActionTabDef[] = [
       'on different sub-regions in parallel for speed.',
     params: [
       // Sampling (required *)
-      { name: 'PIXEL_SIZE',       group: 'Sampling',       optional: false },
       { name: 'SuperResolution',  group: 'Sampling',       optional: false },
       { name: 'Ali_samplingRate', group: 'Sampling',       optional: false },
       // Mask (required *)
@@ -744,7 +730,6 @@ const ACTION_TABS: ActionTabDef[] = [
       'you must also run "emClarity ctf update" to apply the refined alignment.',
     params: [
       // Sampling (required *)
-      { name: 'PIXEL_SIZE',              group: 'Sampling',              optional: false },
       { name: 'SuperResolution',         group: 'Sampling',              optional: false },
       { name: 'Ali_samplingRate',        group: 'Sampling',              optional: false },
       // Fiducial alignment (required *)
@@ -814,7 +799,6 @@ const ACTION_TABS: ActionTabDef[] = [
       'for the classification cycle.',
     params: [
       // Sampling (required *)
-      { name: 'PIXEL_SIZE',             group: 'Sampling',  optional: false },
       { name: 'SuperResolution',        group: 'Sampling',  optional: false },
       { name: 'Cls_samplingRate',       group: 'Sampling',  optional: false },
       { name: 'Ali_samplingRate',       group: 'Sampling',  optional: false },
@@ -876,7 +860,6 @@ const ACTION_TABS: ActionTabDef[] = [
       'Assumes SuperResolution=0.',
     params: [
       // Same groups/params as avg (Tab 7) — reused for Final Reconstruction
-      { name: 'PIXEL_SIZE',           group: 'Sampling',               optional: false },
       { name: 'SuperResolution',      group: 'Sampling',               optional: false },
       { name: 'Ali_samplingRate',     group: 'Sampling',               optional: false },
       { name: 'Ali_mType',            group: 'Mask',                   optional: false },
