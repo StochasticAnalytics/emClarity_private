@@ -20,8 +20,10 @@ function [] = EMC_ctf_refine_from_star(star_file_path, stack_file_path, ...
 %       'shift_sigma'              - Gaussian penalty sigma for X/Y shifts in Angstroms (default: 5)
 %       'highpass_cutoff'          - Highpass cutoff in Angstroms (default: 400)
 %       'use_phase_compensated_correlation' - Phase-doubled correlation (default: false)
+%       'debug_tilt_list'          - Comma-separated tilt names to process (default: '' = all)
 %       'exit_after_n_tilts'     - Process only first N tilt groups, 0=all (default: 0)
 %       'verbose_timing'           - Print per-section timing (default: false)
+%       'debug_print'              - Print all option values after parsing (default: false)
 %       'gpu_ids'                  - GPU device IDs (1-indexed), comma-separated string
 %                                    e.g. '1,2,5' for 3 GPUs. Default '1' (single GPU)
 %       'workers_per_gpu'          - Parallel workers per GPU (default: 3)
@@ -42,6 +44,10 @@ fprintf('  Star file:     %s\n', star_file_path);
 fprintf('  Stack file:    %s\n', stack_file_path);
 fprintf('  Reference vol: %s\n', reference_volume_path);
 fprintf('  Output:        %s\n', output_star_path);
+
+if opts.debug_print
+  print_struct_fields('Options', opts);
+end
 
 [particles, header_lines] = parse_star_file(star_file_path);
 n_total_particles = length(particles);
@@ -117,6 +123,35 @@ end
 n_gpus = length(gpu_ids);
 n_workers = n_gpus * opts.workers_per_gpu;
 
+% Filter to specific tilt groups by name for debugging
+if ~isempty(opts.debug_tilt_list)
+  debug_names = strtrim(strsplit(opts.debug_tilt_list, ','));
+  keep_indices = [];
+  for di = 1:length(debug_names)
+    pattern = debug_names{di};
+    if pattern(end) == '*'
+      % Prefix match: 'H68_1_label_81_*' matches all tilts in that series
+      prefix = pattern(1:end-1);
+      match = find(strncmp(unique_tilt_names, prefix, length(prefix)));
+    else
+      match = find(strcmp(unique_tilt_names, pattern));
+    end
+    if ~isempty(match)
+      keep_indices = [keep_indices, match]; %#ok<AGROW>
+    else
+      fprintf('  [WARNING] debug_tilt_list: pattern "%s" matched no tilts, skipping\n', pattern);
+    end
+  end
+  keep_indices = unique(keep_indices);  % deduplicate in case patterns overlap
+  unique_tilt_names = unique_tilt_names(keep_indices);
+  tilt_angles_per_group = tilt_angles_per_group(keep_indices);
+  tilt_group_members = tilt_group_members(keep_indices);
+  particles_per_group = particles_per_group(keep_indices);
+  n_tilt_groups = length(keep_indices);
+  fprintf('  [DEBUG] debug_tilt_list: processing %d tilt groups: %s\n', ...
+      n_tilt_groups, strjoin(unique_tilt_names, ', '));
+end
+
 % Limit tilt groups for testing (0 = process all)
 if opts.exit_after_n_tilts > 0
   n_tilt_groups = min(n_tilt_groups, opts.exit_after_n_tilts);
@@ -161,6 +196,10 @@ refinement_options.global_only = opts.global_only;
 refinement_options.shift_sigma = opts.shift_sigma;
 refinement_options.verbose_timing = opts.verbose_timing;
 
+if opts.debug_print
+  print_struct_fields('Refinement Options (passed to EMC_refine_tilt_ctf)', refinement_options);
+end
+
 EMC_parpool(n_workers);
 
 %% ===== Stage F: Parallel refinement =====
@@ -188,18 +227,23 @@ EMC_parpool(n_workers);
 
 worker_results = cell(n_workers, 1);
 
+% Progress tracking via DataQueue — workers send updates, client accumulates
+if opts.enable_progress
+  progress_queue = parallel.pool.DataQueue;
+  update_progress(struct('total', n_tilt_groups));
+  afterEach(progress_queue, @(msg) update_progress(msg));
+else
+  progress_queue = [];
+end
+
 parfor iWorker = 1:n_workers % revert parfor
-  % GPU assignment: round-robin across GPUs visible to this worker
-  % Workers may see a different number of GPUs than the parent (depends on
-  % CUDA_VISIBLE_DEVICES inheritance). Use gpuDeviceCount to detect what's available.
-  n_visible_gpus = gpuDeviceCount;
-  if n_visible_gpus == 0
-    error('Worker %d: no GPU visible. Set CUDA_VISIBLE_DEVICES before launching MATLAB.', iWorker);
-  end
-  local_gpu_id = mod(iWorker - 1, n_visible_gpus) + 1;
+  fprintf('  [W%d] CUDA_VISIBLE_DEVICES=%s\n', iWorker, getenv('CUDA_VISIBLE_DEVICES'));
+  % GPU assignment: round-robin across parent-specified gpu_ids
+  % (matches BH_average3d / BH_alignRaw3d pattern — don't query gpuDeviceCount inside workers)
+  local_gpu_id = gpu_ids(mod(iWorker - 1, n_gpus) + 1);
   gpuDevice(local_gpu_id);
 
-  vt = opts.verbose_timing;
+  verbose_timing = opts.verbose_timing;
   t_worker_start = tic;
   % Each worker creates ALL GPU objects fresh — no shared GPU state
   local_soft_mask = create_2d_soft_mask(tile_size, 7);
@@ -207,7 +251,7 @@ parfor iWorker = 1:n_workers % revert parfor
   local_ref_vol = gpuArray(single(OPEN_IMG('single', reference_volume_path)));
   local_ref_interp = interpolator(local_ref_vol, [0,0,0], [0,0,0], 'SPIDER', 'inv', 'C1');
   local_stack_mrc = MRCImage(stack_file_path, 0);
-  if vt, fprintf('  [W%d][T] GPU setup: %.3f s\n', iWorker, toc(t_worker_start)); end
+  if verbose_timing, fprintf('  [W%d][T] GPU setup: %.3f s\n', iWorker, toc(t_worker_start)); end
 
   my_tilts = worker_assignments{iWorker};
   local_results = cell(length(my_tilts), 1);
@@ -220,8 +264,9 @@ parfor iWorker = 1:n_workers % revert parfor
     n_particles_this_tilt = length(member_indices);
 
     t_tilt_start = tic;
-    fprintf('  [W%d] Refining tilt %s (angle %.1f deg, %d particles)...\n', ...
-        iWorker, current_tilt_name, current_tilt_angle, n_particles_this_tilt);
+    fprintf('  [W%d] (%d/%d tilts, ~%.0f%%) Refining %s (angle %.1f deg, %d particles)...\n', ...
+        iWorker, j, length(my_tilts), 100 * j / length(my_tilts), ...
+        current_tilt_name, current_tilt_angle, n_particles_this_tilt);
 
     % Determine slice range for batch loading
     t_io = tic;
@@ -234,7 +279,7 @@ parfor iWorker = 1:n_workers % revert parfor
 
     % Batch-load data tiles from stack
     tilt_data = single(OPEN_IMG('single', local_stack_mrc, [], [], [first_slice, last_slice], 'keep'));
-    if vt, fprintf('    [W%d][T] IO load: %.3f s\n', iWorker, toc(t_io)); end
+    if verbose_timing, fprintf('    [W%d][T] IO load: %.3f s\n', iWorker, toc(t_io)); end
 
     % Build data and reference tile cell arrays
     data_tiles = cell(n_particles_this_tilt, 1);
@@ -278,7 +323,7 @@ parfor iWorker = 1:n_workers % revert parfor
       ctf_params_for_tilt.half_astigmatism(particle_index) = (all_df1(idx) - all_df2(idx)) / 2;
       ctf_params_for_tilt.astigmatism_angle(particle_index) = all_df_angle(idx) * pi / 180;
     end
-    if vt, fprintf('    [W%d][T] tile prep (%d particles): %.3f s\n', iWorker, n_particles_this_tilt, toc(t_tile_prep)); end
+    if verbose_timing, fprintf('    [W%d][T] tile prep (%d particles): %.3f s\n', iWorker, n_particles_this_tilt, toc(t_tile_prep)); end
 
     tilt_data = []; %#ok<NASGU>
 
@@ -286,12 +331,42 @@ parfor iWorker = 1:n_workers % revert parfor
     t_refine = tic;
     tilt_results = EMC_refine_tilt_ctf(data_tiles, ref_tiles, ctf_params_for_tilt, ...
         initial_shifts, refinement_options);
-    if vt, fprintf('    [W%d][T] refinement: %.3f s (%d iters)\n', iWorker, toc(t_refine), length(tilt_results.score_history)); end
+    if verbose_timing, fprintf('    [W%d][T] refinement: %.3f s (%d iters)\n', iWorker, toc(t_refine), length(tilt_results.score_history)); end
 
-    fprintf('    [W%d] delta_defocus=%.1f A, delta_astig=%.1f A, delta_angle=%.3f rad, converged=%d', ...
-        iWorker, tilt_results.delta_defocus_tilt, tilt_results.delta_half_astigmatism, ...
-        tilt_results.delta_astigmatism_angle, tilt_results.converged);
-    if vt, fprintf(' (%.3f s total)', toc(t_tilt_start)); end
+    % Flag parameters that hit their search bounds
+    df_range = refinement_options.defocus_search_range;
+    astig_bound = df_range / 2;
+    angle_bound = refinement_options.astigmatism_angle_range;
+    bound_tol = 0.99;  % within 1% of bound = saturated
+    flags = '';
+    if abs(tilt_results.delta_defocus_tilt) >= bound_tol * df_range
+      flags = [flags ' DEFOCUS_SAT'];
+    end
+    if abs(tilt_results.delta_half_astigmatism) >= bound_tol * astig_bound
+      flags = [flags ' ASTIG_SAT'];
+    end
+    if abs(tilt_results.delta_astigmatism_angle) >= bound_tol * angle_bound
+      flags = [flags ' ANGLE_SAT'];
+    end
+    n_iters = length(tilt_results.score_history);
+    score_mean = mean(tilt_results.per_particle_scores);
+    score_std = std(tilt_results.per_particle_scores);
+    initial_avg_defocus = mean(ctf_params_for_tilt.defocus_mean);
+    score_initial = tilt_results.score_history(1) / n_particles_this_tilt;
+    score_final = tilt_results.score_history(end) / n_particles_this_tilt;
+    if score_final ~= 0
+      score_change_pct = 100 * (score_final - score_initial) / score_final;
+    else
+      score_change_pct = 0;
+    end
+    fprintf('    [W%d] %s | angle=%.1f | %d particles | %d iters | initDF=%.0f dDF=%.1f dAstig=%.1f dAngle=%.1f deg | score=%.4f+/-%.4f dScore=%.1f%% | conv=%d', ...
+        iWorker, current_tilt_name, current_tilt_angle, n_particles_this_tilt, n_iters, ...
+        initial_avg_defocus, tilt_results.delta_defocus_tilt, tilt_results.delta_half_astigmatism, ...
+        tilt_results.delta_astigmatism_angle * 180/pi, score_mean, score_std, score_change_pct, tilt_results.converged);
+    if ~isempty(flags)
+      fprintf(' |%s', flags);
+    end
+    if verbose_timing, fprintf(' | %.3fs', toc(t_tilt_start)); end
     fprintf('\n');
 
     local_results{j} = struct( ...
@@ -301,9 +376,19 @@ parfor iWorker = 1:n_workers % revert parfor
         'tilt_name', current_tilt_name, ...
         'n_particles', n_particles_this_tilt, ...
         'tilt_results', tilt_results);
+
+    if ~isempty(progress_queue)
+      send(progress_queue, struct('saturated', ~isempty(flags)));
+    end
   end
 
   worker_results{iWorker} = local_results;
+end
+
+% Clean up parallel pool and re-initialize GPUs (matches BH_average3d / BH_alignRaw3d pattern)
+delete(gcp('nocreate'));
+for iGPU = 1:n_gpus
+  gpuDevice(gpu_ids(iGPU));
 end
 
 %% ===== Stage G: Unpack parallel results =====
@@ -350,12 +435,39 @@ end
 %% ===== Summary statistics =====
 n_processed = sum(processed_mask);
 n_unprocessed = n_total_particles - n_processed;
+n_tilts_total = 0;
+n_tilts_df_sat = 0;
+n_tilts_astig_sat = 0;
+n_tilts_angle_sat = 0;
+n_tilts_any_sat = 0;
+bound_tol = 0.99;
+df_range = refinement_options.defocus_search_range;
+angle_range = refinement_options.astigmatism_angle_range;
+for iW = 1:n_workers
+  for j = 1:length(worker_results{iW})
+    n_tilts_total = n_tilts_total + 1;
+    tr = worker_results{iW}{j}.tilt_results;
+    is_df = abs(tr.delta_defocus_tilt) >= bound_tol * df_range;
+    is_astig = abs(tr.delta_half_astigmatism) >= bound_tol * df_range / 2;
+    is_angle = abs(tr.delta_astigmatism_angle) >= bound_tol * angle_range;
+    n_tilts_df_sat = n_tilts_df_sat + is_df;
+    n_tilts_astig_sat = n_tilts_astig_sat + is_astig;
+    n_tilts_angle_sat = n_tilts_angle_sat + is_angle;
+    n_tilts_any_sat = n_tilts_any_sat + (is_df || is_astig || is_angle);
+  end
+end
+
 fprintf('\n=== Refinement Summary ===\n');
-fprintf('  Tilt groups: %d processed\n', n_tilt_groups);
+fprintf('  Tilt groups: %d processed\n', n_tilts_total);
 fprintf('  Particles processed:   %d / %d (%.1f%%)\n', n_processed, n_total_particles, ...
     100 * n_processed / max(n_total_particles, 1));
 fprintf('  Particles unprocessed: %d / %d (%.1f%%)\n', n_unprocessed, n_total_particles, ...
     100 * n_unprocessed / max(n_total_particles, 1));
+fprintf('  Saturation: %d / %d tilts (%.1f%%) hit any bound\n', ...
+    n_tilts_any_sat, n_tilts_total, 100 * n_tilts_any_sat / max(n_tilts_total, 1));
+fprintf('    Defocus:      %d (%.1f%%)\n', n_tilts_df_sat, 100 * n_tilts_df_sat / max(n_tilts_total, 1));
+fprintf('    Astigmatism:  %d (%.1f%%)\n', n_tilts_astig_sat, 100 * n_tilts_astig_sat / max(n_tilts_total, 1));
+fprintf('    Angle:        %d (%.1f%%)\n', n_tilts_angle_sat, 100 * n_tilts_angle_sat / max(n_tilts_total, 1));
 
 if n_processed > 0
   defocus_corrections = refined_defocus_1(processed_mask) - all_df1(processed_mask);
@@ -366,6 +478,83 @@ end
 if n_unprocessed > 0
   fprintf('  WARNING: %d particles have zeros (unprocessed or failed)\n', n_unprocessed);
 end
+
+%% ===== Per-tilt diagnostic log =====
+% Save a tab-delimited file with per-tilt diagnostics for post-processing
+% analysis (score outlier detection, saturation filtering, occupancy decisions).
+
+n_tilts_processed = 0;
+for iW = 1:n_workers
+  n_tilts_processed = n_tilts_processed + length(worker_results{iW});
+end
+
+diag = struct();
+diag.tilt_name = cell(n_tilts_processed, 1);
+diag.tilt_angle = zeros(n_tilts_processed, 1);
+diag.n_particles = zeros(n_tilts_processed, 1);
+diag.n_iters = zeros(n_tilts_processed, 1);
+diag.converged = false(n_tilts_processed, 1);
+diag.delta_df = zeros(n_tilts_processed, 1);
+diag.delta_astig = zeros(n_tilts_processed, 1);
+diag.delta_angle = zeros(n_tilts_processed, 1);
+diag.score_mean = zeros(n_tilts_processed, 1);
+diag.score_std = zeros(n_tilts_processed, 1);
+diag.score_min = zeros(n_tilts_processed, 1);
+diag.score_max = zeros(n_tilts_processed, 1);
+diag.df_sat = false(n_tilts_processed, 1);
+diag.astig_sat = false(n_tilts_processed, 1);
+diag.angle_sat = false(n_tilts_processed, 1);
+diag.score_change_pct = zeros(n_tilts_processed, 1);
+
+bound_tol = 0.99;
+df_range = refinement_options.defocus_search_range;
+angle_range = refinement_options.astigmatism_angle_range;
+
+row = 0;
+for iW = 1:n_workers
+  for j = 1:length(worker_results{iW})
+    row = row + 1;
+    r = worker_results{iW}{j};
+    tr = r.tilt_results;
+    diag.tilt_name{row} = r.tilt_name;
+    diag.tilt_angle(row) = r.tilt_angle;
+    diag.n_particles(row) = r.n_particles;
+    diag.n_iters(row) = length(tr.score_history);
+    diag.converged(row) = tr.converged;
+    diag.delta_df(row) = tr.delta_defocus_tilt;
+    diag.delta_astig(row) = tr.delta_half_astigmatism;
+    diag.delta_angle(row) = tr.delta_astigmatism_angle;
+    scores = tr.per_particle_scores;
+    diag.score_mean(row) = mean(scores);
+    diag.score_std(row) = std(scores);
+    diag.score_min(row) = min(scores);
+    diag.score_max(row) = max(scores);
+    diag.df_sat(row) = abs(tr.delta_defocus_tilt) >= bound_tol * df_range;
+    diag.astig_sat(row) = abs(tr.delta_half_astigmatism) >= bound_tol * df_range / 2;
+    diag.angle_sat(row) = abs(tr.delta_astigmatism_angle) >= bound_tol * angle_range;
+    s_init = tr.score_history(1) / r.n_particles;
+    s_final = tr.score_history(end) / r.n_particles;
+    if s_final ~= 0
+      diag.score_change_pct(row) = 100 * (s_final - s_init) / s_final;
+    end
+  end
+end
+
+[out_dir, out_base, ~] = fileparts(output_star_path);
+if isempty(out_dir), out_dir = '.'; end
+diag_path = fullfile(out_dir, [out_base '_diagnostics.txt']);
+fid = fopen(diag_path, 'w');
+fprintf(fid, 'tilt_name\ttilt_angle\tn_particles\tn_iters\tconverged\tdelta_df\tdelta_astig\tdelta_angle_deg\tscore_mean\tscore_std\tscore_min\tscore_max\tscore_change_pct\tdf_sat\tastig_sat\tangle_sat\n');
+for row = 1:n_tilts_processed
+  fprintf(fid, '%s\t%.2f\t%d\t%d\t%d\t%.1f\t%.1f\t%.1f\t%.6f\t%.6f\t%.6f\t%.6f\t%.1f\t%d\t%d\t%d\n', ...
+    diag.tilt_name{row}, diag.tilt_angle(row), diag.n_particles(row), ...
+    diag.n_iters(row), diag.converged(row), diag.delta_df(row), ...
+    diag.delta_astig(row), diag.delta_angle(row) * 180/pi, diag.score_mean(row), ...
+    diag.score_std(row), diag.score_min(row), diag.score_max(row), ...
+    diag.score_change_pct(row), diag.df_sat(row), diag.astig_sat(row), diag.angle_sat(row));
+end
+fclose(fid);
+fprintf('  Diagnostics: %s (%d tilt groups)\n', diag_path, n_tilts_processed);
 
 %% ===== Stage F: Write refined star file =====
 
@@ -395,8 +584,11 @@ function opts = parse_options(args)
   opts.shift_sigma = 5.0;       % Gaussian penalty sigma for X/Y shifts (Angstroms)
   opts.highpass_cutoff = 400;   % highpass cutoff in Angstroms for bandpass filter
   opts.use_phase_compensated_correlation = false;  % phase-doubled correlation (C * C/(|C| + eps))
+  opts.debug_tilt_list = '';    % comma-separated tilt names to process (empty = all)
   opts.exit_after_n_tilts = 0;  % 0 = process all, N = process first N tilt groups
   opts.verbose_timing = false;
+  opts.enable_progress = true;     % DataQueue progress tracking during parfor
+  opts.debug_print = false;       % print all option values after parsing
   opts.gpu_ids = '1';
   opts.workers_per_gpu = 3;
 
@@ -413,10 +605,16 @@ function opts = parse_options(args)
           elseif strcmp(val_str, 'false') || strcmp(val_str, '0')
             val = false;
           else
-            val = str2double(val);
-            if isnan(val)
+            num_val = str2double(val);
+            if ~isnan(num_val)
+              val = num_val;
+            else
               % Handle vector syntax like '[1,2,5]' or '1,2,5'
-              val = str2num(char(args{i+1})); %#ok<ST2NM>
+              num_val = str2num(char(args{i+1})); %#ok<ST2NM>
+              if ~isempty(num_val)
+                val = num_val;
+              end
+              % Otherwise keep val as the original string
             end
           end
         end
@@ -434,6 +632,49 @@ function opts = parse_options(args)
       i = i + 1;
     end
   end
+end
+
+
+function update_progress(msg)
+% DataQueue callback: accumulate progress from parfor workers.
+  persistent n_done n_sat n_total;
+  if ischar(msg) && strcmp(msg, 'reset')
+    n_done = 0; n_sat = 0; n_total = 0;
+    return;
+  end
+  if ischar(msg) && strcmp(msg, 'set_total')
+    return;
+  end
+  if isstruct(msg) && isfield(msg, 'total')
+    n_done = 0; n_sat = 0; n_total = msg.total;
+    return;
+  end
+  if isempty(n_done), n_done = 0; n_sat = 0; n_total = 0; end
+  n_done = n_done + 1;
+  n_sat = n_sat + msg.saturated;
+  fprintf('  [PROGRESS] %d / %d tilts (%.0f%%) | %d saturated (%.0f%%)\n', ...
+      n_done, n_total, 100 * n_done / max(n_total, 1), ...
+      n_sat, 100 * n_sat / max(n_done, 1));
+end
+
+
+function print_struct_fields(label, s)
+% Print all fields of a struct with type-aware formatting.
+  fprintf('\n  --- %s ---\n', label);
+  fields = fieldnames(s);
+  for i = 1:length(fields)
+    val = s.(fields{i});
+    if islogical(val)
+      fprintf('    %-40s %s\n', fields{i}, mat2str(val));
+    elseif isnumeric(val)
+      fprintf('    %-40s %s\n', fields{i}, mat2str(val, 6));
+    elseif ischar(val) || isstring(val)
+      fprintf('    %-40s %s\n', fields{i}, char(val));
+    else
+      fprintf('    %-40s [%s]\n', fields{i}, class(val));
+    end
+  end
+  fprintf('  ---\n\n');
 end
 
 
@@ -635,6 +876,10 @@ function write_refined_star_file(input_path, output_path, particles, ...
         tokens{9} = sprintf('%7.2f', refined_ast_angle(particle_idx));
         tokens{11} = sprintf('%5i', refined_occ(particle_idx));
         tokens{14} = sprintf('%10.4f', refined_scores(particle_idx));
+        % cisTEM expects filenames in single quotes
+        if length(tokens) >= 29 && tokens{29}(1) ~= ''''
+          tokens{29} = ['''' tokens{29} ''''];
+        end
         fprintf(fh_out, '%s\n', strjoin(tokens, ' '));
         continue;
       end

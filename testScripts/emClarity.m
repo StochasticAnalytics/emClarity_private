@@ -85,7 +85,13 @@ if ( sysERR )
   unix('mkdir -p logFile');
 end
 
-cudaCleanup  = onCleanup(@() setenv('CUDA_VISIBLE_DEVICES', origCUDA));
+% Only restore CUDA_VISIBLE_DEVICES if it was originally set.
+% setenv('CUDA_VISIBLE_DEVICES', '') means "no GPUs" — not the same as unset.
+if isempty(origCUDA)
+  cudaCleanup = onCleanup(@() unsetenv('CUDA_VISIBLE_DEVICES'));
+else
+  cudaCleanup = onCleanup(@() setenv('CUDA_VISIBLE_DEVICES', origCUDA));
+end
 timeStart = datetime();
 fprintf('\n\t\t***************************************\n\n');
 if isdeployed && nArgs > 0
@@ -1068,8 +1074,10 @@ fprintf('\t\t***************************************\n\n');
 
 
 diary off
-if (cudaStart)
-  setenv('CUDA_VISIBLE_DEVICES',cudaStart);
+if ~isempty(cudaStart)
+  setenv('CUDA_VISIBLE_DEVICES', cudaStart);
+else
+  unsetenv('CUDA_VISIBLE_DEVICES');
 end
 end
 

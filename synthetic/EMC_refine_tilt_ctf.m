@@ -63,6 +63,11 @@ for val_i = 1:n_particles
 end
 
 % Parse options with defaults
+% Default 5000 A. Tilts >30 degrees frequently saturate this bound due to
+% less reliable CTF estimation at high tilts (fewer Thon rings, steeper
+% defocus gradient). Consider expanding for datasets with poor initial fits.
+% Expanding globally increases learning rates for all tilts — may want
+% auto-rerun strategy instead (see EMC_ctf_refine_from_star.m).
 defocus_search_range   = get_opt(options, 'defocus_search_range', 5000);
 maximum_iterations     = get_opt(options, 'maximum_iterations', 15);
 lowpass_cutoff         = get_opt(options, 'lowpass_cutoff', 10);
@@ -80,7 +85,7 @@ spherical_aberration_mm  = ctf_params.spherical_aberration_mm;
 amplitude_contrast       = ctf_params.amplitude_contrast;
 tilt_angle_degrees       = ctf_params.tilt_angle_degrees;
 
-vt = get_opt(options, 'verbose_timing', false);
+verbose_timing =get_opt(options, 'verbose_timing', false);
 
 % Pre-compute FFTs of data and reference tiles
 t_fft_pre = tic;
@@ -101,7 +106,7 @@ end
 
 % Compute peak mask
 peak_mask = compute_peak_mask(CTFSIZE, get_opt(options, 'peak_search_radius', floor(CTFSIZE./4)));
-if vt, fprintf('      [T] FFT precompute (%d particles): %.3f s\n', n_particles, toc(t_fft_pre)); end
+if verbose_timing, fprintf('      [T] FFT precompute (%d particles): %.3f s\n', n_particles, toc(t_fft_pre)); end
 
 % Initialize ADAM parameter vector:
 %   [delta_defocus_tilt, delta_half_astigmatism, delta_astigmatism_angle, delta_z(1..N)]
@@ -178,18 +183,13 @@ for iteration = 1:maximum_iterations
     % Check convergence (require global iterations + 3 full iterations for lookback)
     min_for_convergence = minimum_global_iterations + 3;
     converged_flag = (iteration >= min_for_convergence) && optimizer.has_converged(3, 0.001);
-    fprintf('    iter %2d: score=%.6f, converged=%d\n', iteration, total_score, converged_flag);
+    if verbose_timing, fprintf('    iter %2d: score=%.6f, converged=%d\n', iteration, total_score, converged_flag); end
     if converged_flag
         break;
     end
 
-    % Monitor for score regression
+    % Monitor score trend (available in results for post-hoc analysis)
     score_trend = monitor_score_trend(score_history);
-    if score_trend.is_regressing && iteration > 3
-        warning('EMC_refine_tilt_ctf:scoreRegression', ...
-            'Score regression detected at iteration %d (slope=%.4g)', ...
-            iteration, score_trend.slope);
-    end
 
     % Compute gradients via central finite differences
     t_grad = tic;
@@ -221,7 +221,7 @@ for iteration = 1:maximum_iterations
 
     t_grad_elapsed = toc(t_grad);
     optimizer.update(gradient);
-    if vt
+    if verbose_timing
         fprintf('      [T] iter %2d: score_eval=%.3f s, grad(%d params)=%.3f s, total=%.3f s\n', ...
             iteration, t_score_elapsed, length(active_indices), t_grad_elapsed, toc(t_iter));
     end
@@ -302,26 +302,6 @@ for i = 1:n_particles
 
     % Cross-correlate
     cross_correlation_map = data_fourier_transforms{i} .* reference_with_ctf;
-
-    % >>> TEMPORARY — REVERT BEFORE MERGE — phase comp CC diagnostic <<<
-    persistent tmp_cc_saved;
-    if isempty(tmp_cc_saved), tmp_cc_saved = false; end
-    if ~tmp_cc_saved && i == 1
-        cc_before = gather(peak_mask .* real(fourier_handle.invFFT(cross_correlation_map)));
-        if use_phase_compensated_correlation
-            cc_tmp = cross_correlation_map .* cross_correlation_map ./ (abs(cross_correlation_map) + 0.001);
-            cc_after = gather(peak_mask .* real(fourier_handle.invFFT(cc_tmp)));
-        else
-            cc_after = cc_before;
-        end
-        SAVE_IMG(cc_before, '/tmp/claude_cache/tmp_cc_before_phase_comp.mrc');
-        SAVE_IMG(cc_after, '/tmp/claude_cache/tmp_cc_after_phase_comp.mrc');
-        fprintf('  [TEMPORARY — REVERT] Saved CC MRCs to /tmp/claude_cache/tmp_cc_{before,after}_phase_comp.mrc\n');
-        tmp_cc_saved = true;
-        error('TEMPORARY — REVERT: diagnostic save complete, stopping run');
-    end
-    % >>> END TEMPORARY <<<
-
     if use_phase_compensated_correlation
         cross_correlation_map = cross_correlation_map .* cross_correlation_map ./ (abs(cross_correlation_map) + 0.001);
     end
