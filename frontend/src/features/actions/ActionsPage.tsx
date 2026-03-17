@@ -1218,15 +1218,21 @@ function ViewerLauncher({ projectId, isDemo }: ViewerLauncherProps) {
     setDraftPath(stored)
   }, [])
 
-  // Fetch the project directory so it can be forwarded to the viewer as an argument
+  // Fetch the project directory so it can be forwarded to the viewer as an argument.
+  // AbortController ensures a stale response from a previous projectId is discarded
+  // when the project switches before the fetch completes.
   useEffect(() => {
     if (!projectId) return
+    const controller = new AbortController()
     apiClient
-      .get<{ directory: string }>(`/api/v1/projects/${projectId}`)
+      .get<{ directory: string }>(`/api/v1/projects/${projectId}`, controller.signal)
       .then((data) => setProjectDirectory(data.directory))
-      .catch(() => {
-        // Non-fatal: viewer can still be launched without a directory argument
+      .catch((err: unknown) => {
+        // Non-fatal: viewer can still be launched without a directory argument.
+        // Suppress AbortError — it is expected when the effect is cleaned up.
+        if (err instanceof Error && err.name === 'AbortError') return
       })
+    return () => controller.abort()
   }, [projectId])
 
   const handleLaunch = useCallback(async () => {
@@ -1288,39 +1294,41 @@ function ViewerLauncher({ projectId, isDemo }: ViewerLauncherProps) {
         </button>
       </div>
       {/* aria-live region ensures screen readers announce launch feedback */}
-      <p
+      <div
+        role="status"
         aria-live="polite"
         aria-atomic="true"
         className="mt-1.5 text-xs text-gray-600 dark:text-gray-400 min-h-[1rem]"
       >
         {message}
-      </p>
-      {configOpen && (
-        <div id="viewer-config-panel" className="mt-3 flex items-center gap-2">
-          <input
-            type="text"
-            value={draftPath}
-            onChange={(e) => setDraftPath(e.target.value)}
-            placeholder="/usr/bin/3dmod"
-            className="flex-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1 text-xs font-mono text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            aria-label="External viewer executable path"
-          />
-          <button
-            type="button"
-            onClick={handleSavePath}
-            className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          >
-            Save
-          </button>
-          <button
-            type="button"
-            onClick={() => setConfigOpen(false)}
-            className="rounded border border-gray-300 dark:border-gray-600 px-2 py-1 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          >
-            Cancel
-          </button>
-        </div>
-      )}
+      </div>
+      {/* Always rendered so aria-controls="viewer-config-panel" references a valid DOM element;
+          hidden attribute collapses it visually and removes it from the accessibility tree
+          when closed, satisfying WAI-ARIA 1.2 §6.2.4 without breaking the IDREF. */}
+      <div id="viewer-config-panel" hidden={!configOpen} className="mt-3 flex items-center gap-2">
+        <input
+          type="text"
+          value={draftPath}
+          onChange={(e) => setDraftPath(e.target.value)}
+          placeholder="/usr/bin/3dmod"
+          className="flex-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1 text-xs font-mono text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          aria-label="External viewer executable path"
+        />
+        <button
+          type="button"
+          onClick={handleSavePath}
+          className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        >
+          Save
+        </button>
+        <button
+          type="button"
+          onClick={() => setConfigOpen(false)}
+          className="rounded border border-gray-300 dark:border-gray-600 px-2 py-1 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        >
+          Cancel
+        </button>
+      </div>
     </div>
   )
 }
