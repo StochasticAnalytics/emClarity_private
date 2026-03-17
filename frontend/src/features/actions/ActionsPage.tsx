@@ -23,7 +23,7 @@ import rawSchema from '@/data/parameter-schema.json'
 import type { ParameterDefinition } from '@/types/parameters'
 import type { ActionTabId } from '@/data/parameterRegistry'
 import { useRunProfiles } from '@/hooks/useRunProfiles'
-import { apiClient } from '@/api/client'
+import { apiClient, ApiError } from '@/api/client'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1203,12 +1203,13 @@ interface ViewerLauncherProps {
   isDemo: boolean
 }
 
-function ViewerLauncher({ projectId: _projectId, isDemo }: ViewerLauncherProps) {
+function ViewerLauncher({ projectId, isDemo }: ViewerLauncherProps) {
   const [viewerPath, setViewerPath] = useState<string>('')
   const [configOpen, setConfigOpen] = useState<boolean>(false)
   const [draftPath, setDraftPath] = useState<string>('')
   const [launching, setLaunching] = useState<boolean>(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [projectDirectory, setProjectDirectory] = useState<string | null>(null)
 
   // Read stored viewer path on mount
   useEffect(() => {
@@ -1216,6 +1217,17 @@ function ViewerLauncher({ projectId: _projectId, isDemo }: ViewerLauncherProps) 
     setViewerPath(stored)
     setDraftPath(stored)
   }, [])
+
+  // Fetch the project directory so it can be forwarded to the viewer as an argument
+  useEffect(() => {
+    if (!projectId) return
+    apiClient
+      .get<{ directory: string }>(`/api/v1/projects/${projectId}`)
+      .then((data) => setProjectDirectory(data.directory))
+      .catch(() => {
+        // Non-fatal: viewer can still be launched without a directory argument
+      })
+  }, [projectId])
 
   const handleLaunch = useCallback(async () => {
     if (!viewerPath) {
@@ -1225,18 +1237,25 @@ function ViewerLauncher({ projectId: _projectId, isDemo }: ViewerLauncherProps) 
     setLaunching(true)
     setMessage(null)
     try {
+      const args = projectDirectory ? [projectDirectory] : []
       const result = await apiClient.post<{ launched: boolean; pid: number }>(
         '/api/v1/viewer/launch',
-        { viewer_path: viewerPath, args: [] },
+        { viewer_path: viewerPath, args },
       )
       setMessage(`Viewer launched (PID ${result.pid})`)
     } catch (err: unknown) {
-      const detail = err instanceof Error ? err.message : 'Failed to launch viewer'
+      let detail = 'Failed to launch viewer'
+      if (err instanceof ApiError) {
+        const body = err.body as { detail?: string } | null
+        detail = body?.detail ?? err.message
+      } else if (err instanceof Error) {
+        detail = err.message
+      }
       setMessage(`Error: ${detail}`)
     } finally {
       setLaunching(false)
     }
-  }, [viewerPath])
+  }, [viewerPath, projectDirectory])
 
   const handleSavePath = useCallback(() => {
     localStorage.setItem(VIEWER_PATH_KEY, draftPath.trim())
@@ -1260,17 +1279,24 @@ function ViewerLauncher({ projectId: _projectId, isDemo }: ViewerLauncherProps) 
         <button
           type="button"
           onClick={() => setConfigOpen((v) => !v)}
+          aria-expanded={configOpen}
+          aria-controls="viewer-config-panel"
           className="rounded p-1.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
           aria-label="Configure viewer path"
         >
           <Settings2 className="h-4 w-4" />
         </button>
       </div>
-      {message && (
-        <p className="mt-1.5 text-xs text-gray-600 dark:text-gray-400">{message}</p>
-      )}
+      {/* aria-live region ensures screen readers announce launch feedback */}
+      <p
+        aria-live="polite"
+        aria-atomic="true"
+        className="mt-1.5 text-xs text-gray-600 dark:text-gray-400 min-h-[1rem]"
+      >
+        {message}
+      </p>
       {configOpen && (
-        <div className="mt-3 flex items-center gap-2">
+        <div id="viewer-config-panel" className="mt-3 flex items-center gap-2">
           <input
             type="text"
             value={draftPath}

@@ -63,10 +63,17 @@ def launch_viewer(request: LaunchRequest) -> LaunchResponse:
             status_code=400, detail=f"Path is not executable: {viewer_path}"
         )
 
-    proc = subprocess.Popen(
-        [viewer_path] + request.args,
-        start_new_session=True,
-    )
+    try:
+        proc = subprocess.Popen(
+            [viewer_path] + request.args,
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError as exc:
+        raise HTTPException(
+            status_code=500, detail=f"OS error launching viewer: {exc}"
+        ) from exc
 
     return LaunchResponse(launched=True, pid=proc.pid)
 
