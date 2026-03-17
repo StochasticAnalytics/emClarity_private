@@ -13,6 +13,7 @@ import logging
 import re
 import threading
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -111,6 +112,7 @@ class _ProjectRecord(BaseModel):
     state: ProjectState
     parameters: dict[str, Any]
     current_cycle: int = 0
+    last_accessed: str | None = None
 
 
 _projects: dict[str, _ProjectRecord] = {}
@@ -152,6 +154,7 @@ class ProjectResponse(BaseModel):
     state: str
     parameters: dict[str, Any]
     current_cycle: int = 0
+    last_accessed: str | None = None
 
 
 class ProjectStatisticsResponse(BaseModel):
@@ -311,8 +314,62 @@ def _detect_best_resolution(project_dir: Path) -> float | None:
 
 
 # ---------------------------------------------------------------------------
+# Response builder
+# ---------------------------------------------------------------------------
+
+
+def _to_response(record: _ProjectRecord) -> ProjectResponse:
+    """Convert an internal record to an API response."""
+    return ProjectResponse(
+        id=record.id,
+        name=record.name,
+        directory=record.directory,
+        state=record.state.value,
+        parameters=record.parameters,
+        current_cycle=record.current_cycle,
+        last_accessed=record.last_accessed,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+
+
+@router.get("", response_model=list[ProjectResponse])
+async def list_projects() -> list[ProjectResponse]:
+    """Return all registered projects sorted by last_accessed descending.
+
+    Projects that have never been accessed (``last_accessed`` is ``None``)
+    appear after all projects with a timestamp.
+    """
+    projects = _get_projects()
+
+    # Partition into accessed and never-accessed, sort accessed newest-first
+    with_ts = [(k, v) for k, v in projects.items() if v.last_accessed is not None]
+    without_ts = [(k, v) for k, v in projects.items() if v.last_accessed is None]
+    with_ts.sort(key=lambda item: item[1].last_accessed or "", reverse=True)
+    sorted_items = with_ts + without_ts
+
+    return [_to_response(rec) for _, rec in sorted_items]
+
+
+@router.patch("/{project_id}/accessed", response_model=ProjectResponse)
+async def mark_project_accessed(project_id: str) -> ProjectResponse:
+    """Touch a project's last_accessed timestamp (set to current UTC time).
+
+    Used by the frontend to track recently accessed projects.
+    Returns 404 if the project ID is not found.
+    """
+    record = _get_project(project_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found")
+
+    record.last_accessed = datetime.now(timezone.utc).isoformat()
+    _set_project(project_id, record)
+    _save_registry()
+
+    return _to_response(record)
 
 
 @router.post("", status_code=201, response_model=ProjectResponse)
@@ -339,14 +396,7 @@ async def create_project(request: CreateProjectRequest) -> ProjectResponse:
     _set_project(project_id, record)
     _save_registry()
 
-    return ProjectResponse(
-        id=project_id,
-        name=record.name,
-        directory=record.directory,
-        state=record.state.value,
-        parameters=record.parameters,
-        current_cycle=record.current_cycle,
-    )
+    return _to_response(record)
 
 
 @router.post("/load", status_code=200, response_model=ProjectResponse)
@@ -370,14 +420,7 @@ async def load_project(request: LoadProjectRequest) -> ProjectResponse:
     resolved = str(project_path.resolve())
     for existing_id, existing_record in _get_projects().items():
         if Path(existing_record.directory).resolve() == Path(resolved):
-            return ProjectResponse(
-                id=existing_id,
-                name=existing_record.name,
-                directory=existing_record.directory,
-                state=existing_record.state.value,
-                parameters=existing_record.parameters,
-                current_cycle=existing_record.current_cycle,
-            )
+            return _to_response(existing_record)
 
     # Load project state from disk
     try:
@@ -398,14 +441,7 @@ async def load_project(request: LoadProjectRequest) -> ProjectResponse:
     _set_project(project_id, record)
     _save_registry()
 
-    return ProjectResponse(
-        id=project_id,
-        name=record.name,
-        directory=record.directory,
-        state=record.state.value,
-        parameters=record.parameters,
-        current_cycle=record.current_cycle,
-    )
+    return _to_response(record)
 
 
 @router.get("/{project_id}", response_model=ProjectResponse)
@@ -418,14 +454,7 @@ async def get_project(project_id: str) -> ProjectResponse:
     if record is None:
         raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found")
 
-    return ProjectResponse(
-        id=record.id,
-        name=record.name,
-        directory=record.directory,
-        state=record.state.value,
-        parameters=record.parameters,
-        current_cycle=record.current_cycle,
-    )
+    return _to_response(record)
 
 
 @router.get("/{project_id}/statistics", response_model=ProjectStatisticsResponse)

@@ -1,109 +1,162 @@
 /**
- * useRecentProjects – manage a persisted list of recently accessed projects.
+ * useRecentProjects – fetch recent projects from server API.
  *
- * Reads from and writes to localStorage with full per-entry Zod validation
- * so corrupt or stale storage data never crashes the UI.
+ * Replaces the old localStorage-based hook. On first load performs
+ * a one-time migration from localStorage to server-side timestamps.
  */
-import { useState, useCallback } from 'react'
-import { z } from 'zod'
-
-// ---------------------------------------------------------------------------
-// Schema
-// ---------------------------------------------------------------------------
+import { useState, useCallback, useEffect, useRef } from 'react'
+import { apiClient } from '@/api/client.ts'
 
 const STORAGE_KEY = 'emclarity_recent_projects'
-const MAX_RECENT = 10
 
-/** Each stored entry must have these fields. */
-const RecentProjectEntrySchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
-  directory: z.string().min(1),
-  lastAccessed: z.string().min(1),
-})
-
-const RecentProjectsSchema = z.array(RecentProjectEntrySchema)
-
-export type RecentProject = z.infer<typeof RecentProjectEntrySchema>
-
-// ---------------------------------------------------------------------------
-// Storage helpers
-// ---------------------------------------------------------------------------
-
-function readFromStorage(): RecentProject[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return []
-
-    const parsed: unknown = JSON.parse(raw)
-
-    // Validate the entire array, then validate each entry individually.
-    // Per-entry validation means one corrupt entry doesn't discard the rest.
-    if (!Array.isArray(parsed)) return []
-
-    const valid: RecentProject[] = []
-    for (const item of parsed) {
-      const result = RecentProjectEntrySchema.safeParse(item)
-      if (result.success) {
-        valid.push(result.data)
-      }
-      // Silently drop invalid entries
-    }
-
-    // Sort newest-first by lastAccessed
-    return valid.sort(
-      (a, b) => new Date(b.lastAccessed).getTime() - new Date(a.lastAccessed).getTime(),
-    )
-  } catch {
-    // JSON parse error or other failure – start fresh
-    return []
-  }
+export interface RecentProject {
+  id: string
+  name: string
+  directory: string
+  lastAccessed: string
 }
 
-function writeToStorage(projects: RecentProject[]): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(projects))
-  } catch {
-    // Ignore – private browsing or storage full
-  }
+interface ProjectResponse {
+  id: string
+  name: string
+  directory: string
+  state: string
+  parameters: Record<string, unknown>
+  current_cycle: number
+  last_accessed: string | null
 }
 
-// ---------------------------------------------------------------------------
-// Hook
-// ---------------------------------------------------------------------------
+function toRecentProject(p: ProjectResponse): RecentProject | null {
+  if (!p.last_accessed) return null
+  return {
+    id: p.id,
+    name: p.name,
+    directory: p.directory,
+    lastAccessed: p.last_accessed,
+  }
+}
 
 export function useRecentProjects() {
-  const [projects, setProjects] = useState<RecentProject[]>(readFromStorage)
+  const [projects, setProjects] = useState<RecentProject[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const migrationDone = useRef(false)
 
-  /**
-   * Add or update a project entry (by ID) and persist.
-   * If a project with the same ID already exists, it is moved to the top.
-   */
-  const addProject = useCallback(
-    (entry: Omit<RecentProject, 'lastAccessed'>) => {
-      const now = new Date().toISOString()
-      const newEntry: RecentProject = { ...entry, lastAccessed: now }
-
-      setProjects((prev) => {
-        const updated = [newEntry, ...prev.filter((p) => p.id !== entry.id)].slice(0, MAX_RECENT)
-        writeToStorage(updated)
-        return updated
-      })
-    },
-    [],
-  )
-
-  /**
-   * Remove a project entry by ID and persist.
-   * Use this when a 404 confirms the project no longer exists on the backend.
-   */
-  const removeProject = useCallback((id: string) => {
-    setProjects((prev) => {
-      const updated = prev.filter((p) => p.id !== id)
-      writeToStorage(updated)
-      return updated
-    })
+  const fetchProjects = useCallback(async (): Promise<ProjectResponse[]> => {
+    const all = await apiClient.get<ProjectResponse[]>('/api/v1/projects')
+    const recent = all
+      .map(toRecentProject)
+      .filter((p): p is RecentProject => p !== null)
+    setProjects(recent)
+    return all
   }, [])
 
-  return { projects, addProject, removeProject }
+  // One-time migration from localStorage
+  const migrateFromLocalStorage = useCallback(
+    async (serverProjects: ProjectResponse[]) => {
+      if (migrationDone.current) return
+      migrationDone.current = true
+
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY)
+        if (!raw) return
+
+        const localEntries: unknown = JSON.parse(raw)
+        if (!Array.isArray(localEntries) || localEntries.length === 0) return
+
+        // Only migrate if server projects have no last_accessed timestamps
+        const anyServerTimestamp = serverProjects.some((p) => p.last_accessed !== null)
+        if (anyServerTimestamp) {
+          // Server already has timestamps; just clear localStorage
+          localStorage.removeItem(STORAGE_KEY)
+          return
+        }
+
+        // Build a set of server project IDs for matching
+        const serverIds = new Set(serverProjects.map((p) => p.id))
+
+        // Call PATCH for each matching project
+        for (const entry of localEntries) {
+          if (
+            entry !== null &&
+            typeof entry === 'object' &&
+            'id' in entry &&
+            typeof (entry as Record<string, unknown>).id === 'string'
+          ) {
+            const id = (entry as Record<string, unknown>).id as string
+            if (serverIds.has(id)) {
+              try {
+                await apiClient.patch<ProjectResponse>(
+                  `/api/v1/projects/${id}/accessed`,
+                )
+              } catch {
+                // Best effort – continue with remaining entries
+              }
+            }
+          }
+        }
+
+        localStorage.removeItem(STORAGE_KEY)
+
+        // Refetch to get updated timestamps
+        await fetchProjects()
+      } catch {
+        // Migration is best-effort; don't break the hook
+      }
+    },
+    [fetchProjects],
+  )
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function load() {
+      setIsLoading(true)
+      setError(null)
+      try {
+        const serverProjects = await fetchProjects()
+        if (!cancelled) {
+          await migrateFromLocalStorage(serverProjects)
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load projects')
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [fetchProjects, migrateFromLocalStorage])
+
+  const addProject = useCallback(
+    async (entry: { id: string; name: string; directory: string }) => {
+      try {
+        await apiClient.patch<ProjectResponse>(
+          `/api/v1/projects/${entry.id}/accessed`,
+        )
+        await fetchProjects()
+      } catch {
+        // Best effort – at least add to local state
+        const now = new Date().toISOString()
+        setProjects((prev) => {
+          const filtered = prev.filter((p) => p.id !== entry.id)
+          return [{ ...entry, lastAccessed: now }, ...filtered]
+        })
+      }
+    },
+    [fetchProjects],
+  )
+
+  const removeProject = useCallback((id: string) => {
+    setProjects((prev) => prev.filter((p) => p.id !== id))
+  }, [])
+
+  return { projects, addProject, removeProject, isLoading, error }
 }

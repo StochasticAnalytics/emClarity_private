@@ -620,12 +620,18 @@ function NewProjectDialog({ isOpen, onClose, onCreated }: NewProjectDialogProps)
 export function ProjectPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const navigate = useNavigate()
-  const { projects: recentProjects, addProject, removeProject } = useRecentProjects()
+  const {
+    projects: recentProjects,
+    addProject,
+    removeProject,
+    isLoading: isRecentLoading,
+    error: recentError,
+  } = useRecentProjects()
 
   const handleProjectCreated = useCallback(
     (projectId: string, name: string, directory: string) => {
       setIsCreateDialogOpen(false)
-      addProject({ id: projectId, name, directory })
+      void addProject({ id: projectId, name, directory })
       void navigate(`/project/${projectId}/overview`)
     },
     [navigate, addProject],
@@ -633,7 +639,7 @@ export function ProjectPage() {
 
   const handleProjectLoaded = useCallback(
     (projectId: string, name: string, directory: string) => {
-      addProject({ id: projectId, name, directory })
+      void addProject({ id: projectId, name, directory })
       void navigate(`/project/${projectId}/overview`)
     },
     [navigate, addProject],
@@ -691,11 +697,23 @@ export function ProjectPage() {
         </div>
 
         {/* Recent projects */}
-        <RecentProjectsList
-          projects={recentProjects}
-          onOpen={handleProjectLoaded}
-          onRemove={removeProject}
-        />
+        {isRecentLoading ? (
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Loading recent projects…
+          </p>
+        ) : recentError ? (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20">
+            <p className="text-sm text-red-600 dark:text-red-400">{recentError}</p>
+          </div>
+        ) : recentProjects.length === 0 ? (
+          <p className="text-sm text-gray-500 dark:text-gray-400">No recent projects</p>
+        ) : (
+          <RecentProjectsList
+            projects={recentProjects}
+            onOpen={handleProjectLoaded}
+            onRemove={removeProject}
+          />
+        )}
       </div>
     </>
   )
