@@ -11,7 +11,7 @@
  * Backend wiring is deferred to TASK-029.
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { CheckCircle, XCircle, Circle, Terminal, Network, Server, ShieldCheck } from 'lucide-react'
 import type { RunProfile } from '@/types/runProfile'
 
@@ -128,6 +128,12 @@ function ExecutablePathsSection() {
       ]),
     ),
   )
+  const validateTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+
+  useEffect(() => {
+    const timers = validateTimers.current
+    return () => { Object.values(timers).forEach(clearTimeout) }
+  }, [])
 
   const handlePathChange = useCallback((id: string, value: string) => {
     setRows((prev) => ({
@@ -141,12 +147,16 @@ function ExecutablePathsSection() {
       ...prev,
       [id]: { ...prev[id], stubVisible: true },
     }))
-    // Auto-dismiss after 3 s
-    setTimeout(() => {
+    // Cancel any pending timer for this row before starting a new one
+    if (validateTimers.current[id] !== undefined) {
+      clearTimeout(validateTimers.current[id])
+    }
+    validateTimers.current[id] = setTimeout(() => {
       setRows((prev) => ({
         ...prev,
         [id]: { ...prev[id], stubVisible: false },
       }))
+      delete validateTimers.current[id]
     }, 3000)
   }, [])
 
@@ -212,10 +222,19 @@ const INITIAL_DEPENDENCIES: Dependency[] = [
 function DependenciesSection() {
   const [deps] = useState<Dependency[]>(INITIAL_DEPENDENCIES)
   const [checkAllStub, setCheckAllStub] = useState(false)
+  const checkAllTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => { if (checkAllTimer.current !== null) clearTimeout(checkAllTimer.current) }
+  }, [])
 
   const handleCheckAll = useCallback(() => {
+    if (checkAllTimer.current !== null) clearTimeout(checkAllTimer.current)
     setCheckAllStub(true)
-    setTimeout(() => setCheckAllStub(false), 3000)
+    checkAllTimer.current = setTimeout(() => {
+      setCheckAllStub(false)
+      checkAllTimer.current = null
+    }, 3000)
   }, [])
 
   return (
@@ -266,13 +285,13 @@ function DependenciesSection() {
                   {dep.name}
                 </td>
                 <td className="px-4 py-2.5 font-mono text-gray-500 dark:text-gray-400 text-xs">
-                  {dep.path || <span className="italic text-gray-400 dark:text-gray-600">not set</span>}
+                  {dep.path || <span className="italic text-gray-500 dark:text-gray-400">not set</span>}
                 </td>
                 <td className="px-4 py-2.5">
                   <StatusBadge status={dep.status} />
                 </td>
                 <td className="px-4 py-2.5 text-gray-500 dark:text-gray-400 text-xs">
-                  {dep.version || <span className="italic text-gray-400 dark:text-gray-600">—</span>}
+                  {dep.version || <span className="italic text-gray-500 dark:text-gray-400">—</span>}
                 </td>
               </tr>
             ))}
@@ -298,23 +317,6 @@ function DependenciesSection() {
 // Section: SSH Connections
 // ---------------------------------------------------------------------------
 
-/**
- * Extract user and host from an SSH command template.
- *
- * Handles common patterns such as:
- *   ssh user@host $command
- *   ssh -p 2222 user@host $command
- *   ssh -i ~/.ssh/id_rsa user@host $command
- *
- * Returns null if no recognisable user@host pattern is found.
- */
-function parseSSHUserHost(commandTemplate: string): { user: string; host: string } | null {
-  // Match the first "word@word" that follows an "ssh" keyword (ignoring flags)
-  const match = commandTemplate.match(/\bssh\b[^@]*?([\w][\w.-]*)@([\w.-]+)/)
-  if (!match) return null
-  return { user: match[1], host: match[2] }
-}
-
 interface SSHConnectionsSectionProps {
   profiles: RunProfile[]
 }
@@ -326,11 +328,19 @@ function SSHConnectionsSection({ profiles }: SSHConnectionsSectionProps) {
   )
 
   const [testStubs, setTestStubs] = useState<Record<string, boolean>>({})
+  const testTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+
+  useEffect(() => {
+    const timers = testTimers.current
+    return () => { Object.values(timers).forEach(clearTimeout) }
+  }, [])
 
   const handleTest = useCallback((id: string) => {
     setTestStubs((prev) => ({ ...prev, [id]: true }))
-    setTimeout(() => {
+    if (testTimers.current[id] !== undefined) clearTimeout(testTimers.current[id])
+    testTimers.current[id] = setTimeout(() => {
       setTestStubs((prev) => ({ ...prev, [id]: false }))
+      delete testTimers.current[id]
     }, 3000)
   }, [])
 
@@ -346,14 +356,12 @@ function SSHConnectionsSection({ profiles }: SSHConnectionsSectionProps) {
         </h3>
       </div>
       {sshProfiles.length === 0 ? (
-        <p className="text-sm text-gray-400 dark:text-gray-600 italic">
+        <p className="text-sm text-gray-500 dark:text-gray-400 italic">
           No SSH connections configured. Run profiles using SSH command templates will appear here.
         </p>
       ) : (
         <ul aria-label="SSH connection profiles" className="space-y-2">
-          {sshProfiles.map((profile) => {
-            const sshTarget = parseSSHUserHost(profile.commandTemplate)
-            return (
+          {sshProfiles.map((profile) => (
             <li
               key={profile.id}
               className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-2.5"
@@ -362,19 +370,9 @@ function SSHConnectionsSection({ profiles }: SSHConnectionsSectionProps) {
                 <span className="block text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
                   {profile.name}
                 </span>
-                {sshTarget ? (
-                  <span className="block text-xs text-gray-500 dark:text-gray-400">
-                    <span className="font-medium">host:</span>{' '}
-                    <span className="font-mono">{sshTarget.host}</span>
-                    <span className="mx-1.5 text-gray-300 dark:text-gray-600">·</span>
-                    <span className="font-medium">user:</span>{' '}
-                    <span className="font-mono">{sshTarget.user}</span>
-                  </span>
-                ) : (
-                  <span className="block text-xs font-mono text-gray-500 dark:text-gray-400 truncate">
-                    {profile.commandTemplate}
-                  </span>
-                )}
+                <span className="block text-xs font-mono text-gray-500 dark:text-gray-400 truncate">
+                  {profile.commandTemplate}
+                </span>
               </span>
               <StatusBadge status="untested" />
               <button
@@ -387,8 +385,7 @@ function SSHConnectionsSection({ profiles }: SSHConnectionsSectionProps) {
               </button>
               <StubNotice visible={testStubs[profile.id] ?? false} />
             </li>
-          )
-          })}
+          ))}
         </ul>
       )}
     </section>
@@ -408,13 +405,21 @@ function RunProfileValidationSection({ profiles }: RunProfileValidationSectionPr
     () => Object.fromEntries(profiles.map((p) => [p.id, 'untested' as ValidationStatus])),
   )
   const [validateAllStub, setValidateAllStub] = useState(false)
+  const validateAllTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const handleValidateAll = useCallback(() => {
-    setValidateAllStub(true)
-    setTimeout(() => setValidateAllStub(false), 3000)
+  useEffect(() => {
+    return () => { if (validateAllTimer.current !== null) clearTimeout(validateAllTimer.current) }
   }, [])
 
-  // Keep statuses in sync when profiles list changes
+  const handleValidateAll = useCallback(() => {
+    if (validateAllTimer.current !== null) clearTimeout(validateAllTimer.current)
+    setValidateAllStub(true)
+    validateAllTimer.current = setTimeout(() => {
+      setValidateAllStub(false)
+      validateAllTimer.current = null
+    }, 3000)
+  }, [])
+
   const statusForProfile = (id: string): ValidationStatus =>
     profileStatuses[id] ?? 'untested'
 
@@ -441,7 +446,7 @@ function RunProfileValidationSection({ profiles }: RunProfileValidationSectionPr
         <StubNotice visible={validateAllStub} />
       </div>
       {profiles.length === 0 ? (
-        <p className="text-sm text-gray-400 dark:text-gray-600 italic">
+        <p className="text-sm text-gray-500 dark:text-gray-400 italic">
           No run profiles defined. Create one in the Run Profiles tab.
         </p>
       ) : (
