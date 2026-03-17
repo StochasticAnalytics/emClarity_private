@@ -77,10 +77,6 @@ interface FallbackParam {
 
 const PARAM_FALLBACKS: Record<string, FallbackParam> = {
   // ── autoAlign ────────────────────────────────────────────────────────────
-  beadDiameter: {
-    type: 'numeric', default: 10e-9, range: null,
-    description: 'Bead diameter in meters (e.g. 10e-9). If 0, beads are ignored during alignment but the .erase file is still generated.',
-  },
   autoAli_max_resolution: {
     type: 'numeric', default: 18, range: [1, 100],
     description: 'Low-pass cutoff in Å used in alignment. An additional median filter is applied before alignment. Default=18.',
@@ -128,7 +124,7 @@ const PARAM_FALLBACKS: Record<string, FallbackParam> = {
   // ── ctf estimate ─────────────────────────────────────────────────────────
   SuperResolution: {
     type: 'boolean', default: false, range: null,
-    description: 'Whether the stacks are super-sampled. If 1, emClarity will Fourier crop by factor 2 and set actual pixel size to 2×PIXEL_SIZE. Default=0.',
+    description: 'Whether the stacks are super-sampled. If 1, emClarity will Fourier crop by factor 2, doubling the effective pixel size. Default=0.',
   },
   CUM_e_DOSE: {
     type: 'numeric', default: null, range: null,
@@ -266,7 +262,7 @@ const PARAM_FALLBACKS: Record<string, FallbackParam> = {
   },
   min_res_for_ctf_fitting: {
     type: 'numeric', default: 10, range: [1, 50],
-    description: 'Low-pass filter cutoff applied to tiles in Å. Replaces tomoCprLowPass in case of a defocus search. If √2×PIXEL_SIZE < min_res_for_ctf_fitting, defocus search is turned off. Default=10.',
+    description: 'Low-pass filter cutoff applied to tiles in Å. Replaces tomoCprLowPass in case of a defocus search. If the Nyquist limit is below this value, the defocus search is turned off. Default=10.',
   },
   particleMass: {
     type: 'numeric', default: null, range: null,
@@ -420,8 +416,8 @@ const ACTION_TABS: ActionTabDef[] = [
       'fixedStacks/ctf/<prefix>_ali1_ctf.tlt — tilt-series CTF metadata',
     ],
     params: [
-      // Microscope settings (required *)
-      { name: 'SuperResolution',       group: 'Microscope settings', optional: false },
+      // Acquisition (required *)
+      { name: 'SuperResolution',       group: 'Acquisition',         optional: false },
       // Fiducials (optional)
       { name: 'erase_beads_after_ctf', group: 'Fiducials',           optional: true },
       // Tilt-scheme (required *)
