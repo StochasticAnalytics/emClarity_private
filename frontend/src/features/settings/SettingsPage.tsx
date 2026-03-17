@@ -16,6 +16,7 @@ import { useState, useCallback, useId } from 'react'
 import { Cpu, HardDrive, Plus, Trash2, Server, AlertCircle } from 'lucide-react'
 import { useRunProfiles } from '@/hooks/useRunProfiles'
 import type { RunProfile } from '@/types/runProfile'
+import { EnvironmentPanel } from './EnvironmentPanel'
 
 // ---------------------------------------------------------------------------
 // System params banner
@@ -385,12 +386,31 @@ function ProfileDetail({ profile, onChange }: ProfileDetailProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Settings tab definitions
+// ---------------------------------------------------------------------------
+
+type SettingsTabId = 'runProfiles' | 'environment'
+
+interface SettingsTab {
+  id: SettingsTabId
+  label: string
+}
+
+const SETTINGS_TABS: SettingsTab[] = [
+  { id: 'runProfiles', label: 'Run Profiles' },
+  { id: 'environment', label: 'Environment' },
+]
+
+// ---------------------------------------------------------------------------
 // Main SettingsPage
 // ---------------------------------------------------------------------------
 
 export function SettingsPage() {
   const { profiles, selectedId, selectedProfile, select, create, update, remove, systemParams, setSystemParams } =
     useRunProfiles()
+
+  // Active settings tab — switching tabs must NOT reset profile edit state
+  const [activeTab, setActiveTab] = useState<SettingsTabId>('runProfiles')
 
   const handleSystemParamChange = useCallback(
     (field: 'nGPUs' | 'nCpuCores' | 'fastScratchDisk', value: string) => {
@@ -414,15 +434,77 @@ export function SettingsPage() {
   return (
     <div className="flex flex-col h-full bg-white dark:bg-gray-900 overflow-hidden">
       {/* Page header */}
-      <div className="px-6 pt-5 pb-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+      <div className="px-6 pt-5 pb-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
         <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Settings</h1>
         <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
           Configure system hardware parameters and manage run profiles.
         </p>
       </div>
 
-      {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col min-h-0">
+      {/* Horizontal tab bar */}
+      <div
+        className="flex border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shrink-0"
+        role="tablist"
+        aria-label="Settings sections"
+        onKeyDown={(e) => {
+          const tabEls = Array.from(
+            e.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]'),
+          )
+          const currentIndex = tabEls.findIndex((el) => el === document.activeElement)
+          if (currentIndex === -1) return
+
+          let newIndex = currentIndex
+          if (e.key === 'ArrowRight') {
+            newIndex = (currentIndex + 1) % tabEls.length
+          } else if (e.key === 'ArrowLeft') {
+            newIndex = (currentIndex - 1 + tabEls.length) % tabEls.length
+          } else if (e.key === 'Home') {
+            newIndex = 0
+          } else if (e.key === 'End') {
+            newIndex = tabEls.length - 1
+          } else {
+            return
+          }
+          e.preventDefault()
+          tabEls[newIndex].focus()
+          const nextTab = SETTINGS_TABS[newIndex]
+          if (nextTab) setActiveTab(nextTab.id)
+        }}
+      >
+        {SETTINGS_TABS.map((tab) => {
+          const isActive = tab.id === activeTab
+          return (
+            <button
+              key={tab.id}
+              id={`settings-tab-${tab.id}`}
+              role="tab"
+              aria-selected={isActive}
+              aria-controls={`settings-tabpanel-${tab.id}`}
+              tabIndex={isActive ? 0 : -1}
+              onClick={() => setActiveTab(tab.id)}
+              className={[
+                'px-5 py-2.5 text-sm font-medium whitespace-nowrap transition-colors border-b-2',
+                isActive
+                  ? 'border-blue-600 text-blue-700 dark:border-blue-400 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/20'
+                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600',
+              ].join(' ')}
+            >
+              {tab.label}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Tab panels — both kept in DOM so unsaved edits survive tab switches */}
+
+      {/* Run Profiles tab panel */}
+      <div
+        id="settings-tabpanel-runProfiles"
+        role="tabpanel"
+        aria-labelledby="settings-tab-runProfiles"
+        hidden={activeTab !== 'runProfiles'}
+        className="flex-1 overflow-y-auto px-6 py-5 flex flex-col min-h-0"
+      >
         {/* System params banner */}
         <SystemParamsBanner
           nGPUs={systemParams.nGPUs}
@@ -455,6 +537,17 @@ export function SettingsPage() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Environment tab panel */}
+      <div
+        id="settings-tabpanel-environment"
+        role="tabpanel"
+        aria-labelledby="settings-tab-environment"
+        hidden={activeTab !== 'environment'}
+        className="flex-1 overflow-hidden"
+      >
+        <EnvironmentPanel profiles={profiles} />
       </div>
     </div>
   )

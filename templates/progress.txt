@@ -1,3 +1,11 @@
+Developer: Completed 2026-03-16 [TASK-027/PATCH]
+  Task: TASK-027/PATCH - Fix QA defects for viewer launcher
+  - [HIGH] Config panel visibility: replaced hidden HTML attribute with inline style={display:'none'};
+    Tailwind v4 flex utility overrides attribute-based display:none, inline style has higher cascade precedence
+  - [MEDIUM] PUT /default now validates os.path.isfile() matching POST /launch symmetric validation
+  - [MEDIUM] Focus restoration: added gearButtonRef, both Save and Cancel return focus to gear button
+  - TypeScript compiles clean; 35/35 backend tests pass
+
 Developer: Completed 2026-03-16 [TASK-027]
   Task: TASK-027 - External viewer launcher on Sub-regions tab
   - Created backend/api/v1_viewer.py with POST /launch, GET /default, PUT /default
@@ -579,3 +587,38 @@ Developer: Completed Mon Mar 16 09:07:14 PM EDT 2026
   - Change was one-line fix in ActionsPage.tsx line 420
   - TypeScript compiled cleanly after fix
 
+
+Developer: Completed TASK-027/PATCH [2026-03-16]
+  - Fixed catch block to read err.body?.detail (FastAPI diagnostic) with fallback to err.message
+  - Added aria-live="polite" aria-atomic="true" to message paragraph (always-rendered live region)
+  - Added aria-expanded={configOpen} + aria-controls="viewer-config-panel" to gear button; added id to config panel div
+  - Added stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL to Popen to prevent log flooding
+  - Wrapped Popen in try/except OSError returning HTTP 500 with structured detail
+  - Renamed _projectId to projectId, added useEffect to fetch /api/v1/projects/{projectId} for directory, pass directory as viewer arg
+Mon Mar 16 09:30:26 PM EDT 2026: Developer: Completed TASK-027 PATCH
+  - Fixed aria-live container: <p> → <div role="status" aria-live="polite"> (Defect 1)
+  - Fixed aria-controls IDREF: viewer-config-panel always in DOM, hidden attr used for visibility (Defect 2)
+  - Fixed useEffect: added AbortController cleanup to prevent stale project-directory responses (Defect 3)
+  - TypeScript compiled cleanly with no errors
+
+
+Developer: TASK-027/PATCH Completed [2026-03-16]
+  - Fixed WCAG 2.5.3: aria-label on launch button now contains visible text 'Open in Viewer'
+  - Fixed stale draftPath: Cancel handler now calls setDraftPath(viewerPath) before closing panel
+  - Fixed backend directory-as-path: added os.path.isfile() check between exists() and X_OK → returns 400 instead of 500
+  - Fixed unsafe cast: replaced 'err.body as {...}' with runtime narrowing (typeof/in checks)
+  - Fixed demo mode: useEffect skips fetch when isDemo=true; non-AbortError failures now console.warn instead of silently disappearing
+
+
+Developer: Completed TASK-028 [2026-03-16]
+  - Added horizontal tab bar to SettingsPage with 'Run Profiles' and 'Environment' tabs
+  - Used same WAI-ARIA tablist/tab/tabpanel pattern with full keyboard navigation (arrow keys, Home, End)
+  - Both tab panels kept in DOM (hidden attribute) so unsaved profile edits survive tab switches
+  - Created EnvironmentPanel.tsx with 4 sections:
+    * Executable Paths: emClarity Binary + IMOD (imodinfo) with path inputs, Validate buttons, status badges
+    * Dependencies: table with emClarity / IMOD / CUDA Toolkit rows, Check All button
+    * SSH Connections: derived from profiles whose commandTemplate contains 'ssh'; empty state shown otherwise
+    * Run Profile Validation: Validate All Profiles button + per-profile status badge list
+  - All validation buttons show 'Not yet implemented' inline notice (auto-dismisses after 3s)
+  - StatusBadge component covers untested/valid/invalid states
+  - TypeScript compiles without errors (npx tsc --noEmit clean)
