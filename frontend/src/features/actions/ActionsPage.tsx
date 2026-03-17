@@ -579,9 +579,9 @@ const ACTION_TABS: ActionTabDef[] = [
       'If cache/ already contains reconstructions at this binning (Ali_samplingRate), ' +
       'emClarity will skip them. Remove existing reconstructions to force re-computation.',
     params: [
-      // Microscope settings (required *)
-      { name: 'SuperResolution',       group: 'Microscope settings', optional: false },
-      { name: 'Ali_samplingRate',      group: 'Microscope settings', optional: false },
+      // Sampling settings (required *)
+      { name: 'SuperResolution',       group: 'Sampling',            optional: false },
+      { name: 'Ali_samplingRate',      group: 'Sampling',            optional: false },
       // CTF correction (required *)
       { name: 'useSurfaceFit',         group: 'CTF correction',      optional: false },
       { name: 'flg2dCTF',              group: 'CTF correction',      optional: false },
