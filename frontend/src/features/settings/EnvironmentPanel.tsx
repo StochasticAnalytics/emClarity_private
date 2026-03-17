@@ -197,22 +197,34 @@ function ExecutablePathsSection() {
         '/api/v1/environment/validate-path',
         { path },
       )
-      setRows((prev) => ({
-        ...prev,
-        [id]: {
-          ...prev[id],
-          loading: false,
-          status: result.valid ? 'valid' : 'invalid',
-          version: result.version,
-          error: result.error,
-        },
-      }))
+      setRows((prev) => {
+        // Discard stale result if the user changed the path while the request was in flight
+        if (prev[id]?.path !== path) {
+          return { ...prev, [id]: { ...prev[id], loading: false } }
+        }
+        return {
+          ...prev,
+          [id]: {
+            ...prev[id],
+            loading: false,
+            status: result.valid ? 'valid' : 'invalid',
+            version: result.version,
+            error: result.error,
+          },
+        }
+      })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Validation failed'
-      setRows((prev) => ({
-        ...prev,
-        [id]: { ...prev[id], loading: false, status: 'invalid', version: null, error: message },
-      }))
+      setRows((prev) => {
+        // Discard stale result if the user changed the path while the request was in flight
+        if (prev[id]?.path !== path) {
+          return { ...prev, [id]: { ...prev[id], loading: false } }
+        }
+        return {
+          ...prev,
+          [id]: { ...prev[id], loading: false, status: 'invalid', version: null, error: message },
+        }
+      })
     }
   }, [rows])
 
@@ -341,6 +353,7 @@ function DependenciesSection() {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error'
       setCheckAllError(message)
+      setCheckAllAnnouncement(`Dependency check failed: ${message}`)
     } finally {
       setCheckAllLoading(false)
     }
@@ -486,20 +499,32 @@ function parseSSHParams(commandTemplate: string): ParsedSSH | null {
   }
 
   // SSH flags that consume a value argument (one token follows the flag).
-  // -p is already handled above, so it is excluded here.
-  const VALUE_FLAGS = new Set(['-b', '-c', '-D', '-E', '-e', '-F', '-I', '-i', '-J', '-L', '-l', '-m', '-o', '-Q', '-R', '-S', '-W', '-w'])
+  // -p and -l are handled explicitly below, so they are excluded here.
+  const VALUE_FLAGS = new Set(['-b', '-c', '-D', '-E', '-e', '-F', '-I', '-i', '-J', '-L', '-m', '-o', '-Q', '-R', '-S', '-W', '-w'])
 
   // Walk tokens sequentially so that value-consuming flags skip their argument
   // and do not accidentally promote a file path or option string to user@host.
+  // -l <user> is captured as the login user (equivalent to user@host).
   const tokens = remaining.split(/\s+/)
   let skipNext = false
+  let captureLoginUser = false
+  let loginUser: string | null = null
   for (const token of tokens) {
+    if (captureLoginUser) {
+      captureLoginUser = false
+      loginUser = token
+      continue
+    }
     if (skipNext) {
       skipNext = false
       continue
     }
     if (token.startsWith('-')) {
-      if (VALUE_FLAGS.has(token)) skipNext = true
+      if (token === '-l') {
+        captureLoginUser = true
+      } else if (VALUE_FLAGS.has(token)) {
+        skipNext = true
+      }
       continue
     }
     userAtHost = token
@@ -510,6 +535,7 @@ function parseSSHParams(commandTemplate: string): ParsedSSH | null {
 
   const atIndex = userAtHost.indexOf('@')
   if (atIndex !== -1) {
+    // user@host form takes precedence over -l flag
     return {
       user: userAtHost.slice(0, atIndex),
       host: userAtHost.slice(atIndex + 1),
@@ -517,7 +543,8 @@ function parseSSHParams(commandTemplate: string): ParsedSSH | null {
     }
   }
 
-  return { host: userAtHost, user: null, port }
+  // Plain host — use login user from -l flag if present
+  return { host: userAtHost, user: loginUser, port }
 }
 
 function SSHConnectionsSection({ profiles }: SSHConnectionsSectionProps) {
