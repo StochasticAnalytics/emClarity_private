@@ -154,9 +154,19 @@ export function useRecentProjects() {
     [fetchProjects],
   )
 
-  const removeProject = useCallback((id: string) => {
-    setProjects((prev) => prev.filter((p) => p.id !== id))
-  }, [])
+  const removeProject = useCallback(
+    async (id: string) => {
+      // Optimistically remove from local state
+      setProjects((prev) => prev.filter((p) => p.id !== id))
+      try {
+        await apiClient.delete(`/api/v1/projects/${id}`)
+      } catch {
+        // If the server call fails, re-fetch to restore accurate state
+        await fetchProjects()
+      }
+    },
+    [fetchProjects],
+  )
 
   return { projects, addProject, removeProject, isLoading, error }
 }

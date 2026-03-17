@@ -372,6 +372,22 @@ async def mark_project_accessed(project_id: str) -> ProjectResponse:
     return _to_response(record)
 
 
+@router.delete("/{project_id}", status_code=204)
+async def deregister_project(project_id: str) -> None:
+    """Remove a project from the registry (does NOT delete files on disk).
+
+    Used by the frontend to hide a project from the recent-projects list.
+    Returns 404 if the project ID is not found.
+    """
+    record = _get_project(project_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found")
+
+    with _registry_lock:
+        _projects.pop(project_id, None)
+    _save_registry()
+
+
 @router.post("", status_code=201, response_model=ProjectResponse)
 async def create_project(request: CreateProjectRequest) -> ProjectResponse:
     """Create a new emClarity project.
