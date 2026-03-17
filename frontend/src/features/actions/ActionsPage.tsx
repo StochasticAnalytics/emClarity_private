@@ -1221,8 +1221,9 @@ function ViewerLauncher({ projectId, isDemo }: ViewerLauncherProps) {
   // Fetch the project directory so it can be forwarded to the viewer as an argument.
   // AbortController ensures a stale response from a previous projectId is discarded
   // when the project switches before the fetch completes.
+  // Skip in demo mode — there is no real project record to fetch.
   useEffect(() => {
-    if (!projectId) return
+    if (isDemo || !projectId) return
     const controller = new AbortController()
     apiClient
       .get<{ directory: string }>(`/api/v1/projects/${projectId}`, controller.signal)
@@ -1231,9 +1232,11 @@ function ViewerLauncher({ projectId, isDemo }: ViewerLauncherProps) {
         // Non-fatal: viewer can still be launched without a directory argument.
         // Suppress AbortError — it is expected when the effect is cleaned up.
         if (err instanceof Error && err.name === 'AbortError') return
+        // Log unexpected failures so they are visible in the console.
+        console.warn('[ViewerLauncher] Failed to fetch project directory:', err)
       })
     return () => controller.abort()
-  }, [projectId])
+  }, [isDemo, projectId])
 
   const handleLaunch = useCallback(async () => {
     if (!viewerPath) {
@@ -1252,8 +1255,17 @@ function ViewerLauncher({ projectId, isDemo }: ViewerLauncherProps) {
     } catch (err: unknown) {
       let detail = 'Failed to launch viewer'
       if (err instanceof ApiError) {
-        const body = err.body as { detail?: string } | null
-        detail = body?.detail ?? err.message
+        const body: unknown = err.body
+        if (
+          body !== null &&
+          typeof body === 'object' &&
+          'detail' in body &&
+          typeof (body as Record<string, unknown>).detail === 'string'
+        ) {
+          detail = (body as { detail: string }).detail
+        } else {
+          detail = err.message
+        }
       } else if (err instanceof Error) {
         detail = err.message
       }
@@ -1277,7 +1289,7 @@ function ViewerLauncher({ projectId, isDemo }: ViewerLauncherProps) {
           disabled={isDemo || launching}
           onClick={() => { void handleLaunch() }}
           className="flex items-center gap-1.5 rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
-          aria-label="Open project in external viewer"
+          aria-label="Open in Viewer — launches project in external viewer application"
         >
           <ExternalLink className="h-3.5 w-3.5" />
           {launching ? 'Launching…' : 'Open in Viewer\u2026'}
@@ -1323,7 +1335,7 @@ function ViewerLauncher({ projectId, isDemo }: ViewerLauncherProps) {
         </button>
         <button
           type="button"
-          onClick={() => setConfigOpen(false)}
+          onClick={() => { setDraftPath(viewerPath); setConfigOpen(false) }}
           className="rounded border border-gray-300 dark:border-gray-600 px-2 py-1 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
         >
           Cancel

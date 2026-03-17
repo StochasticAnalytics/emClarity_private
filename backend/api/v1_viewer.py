@@ -58,6 +58,9 @@ def launch_viewer(request: LaunchRequest) -> LaunchResponse:
     if not os.path.exists(viewer_path):
         raise HTTPException(status_code=404, detail=f"Viewer not found: {viewer_path}")
 
+    if not os.path.isfile(viewer_path):
+        raise HTTPException(status_code=400, detail=f"Path is not a file: {viewer_path}")
+
     if not os.access(viewer_path, os.X_OK):
         raise HTTPException(
             status_code=400, detail=f"Path is not executable: {viewer_path}"
