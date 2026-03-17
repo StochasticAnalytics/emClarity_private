@@ -1,8 +1,16 @@
 /**
  * DirectoryPickerModal — simple server-side directory browser.
  *
- * Shows the current directory, lists subdirectories as clickable entries,
- * provides an Up button (hidden at root), and Select / Cancel actions.
+ * Shows the current directory as breadcrumb segments, lists subdirectories
+ * as clickable entries, and provides Select / Cancel actions.
+ *
+ * Props:
+ *   isOpen      — whether the modal is visible
+ *   onSelect    — called with the chosen absolute path when Select is clicked
+ *   onClose     — called when the modal should be dismissed
+ *   initialPath — optional starting path (defaults to server home)
+ *   mode        — 'directory' (default) shows only directories;
+ *                 'file' shows all entries returned by the backend
  */
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { browseDirectory, type FilesystemBrowseResponse } from '@/api/filesystem.ts'
@@ -13,13 +21,48 @@ export interface DirectoryPickerModalProps {
   onSelect: (path: string) => void
   onClose: () => void
   initialPath?: string
+  mode?: 'directory' | 'file'
 }
+
+// ---------------------------------------------------------------------------
+// Breadcrumb helpers
+// ---------------------------------------------------------------------------
+
+interface BreadcrumbSegment {
+  label: string
+  path: string
+}
+
+/**
+ * Split an absolute path into clickable breadcrumb segments.
+ *
+ * '/home/user/projects' → [
+ *   { label: '/', path: '/' },
+ *   { label: 'home', path: '/home' },
+ *   { label: 'user', path: '/home/user' },
+ *   { label: 'projects', path: '/home/user/projects' },
+ * ]
+ */
+function buildBreadcrumbs(absPath: string): BreadcrumbSegment[] {
+  const parts = absPath.split('/').filter((p) => p !== '')
+  const segments: BreadcrumbSegment[] = [{ label: '/', path: '/' }]
+  for (let i = 0; i < parts.length; i++) {
+    const path = '/' + parts.slice(0, i + 1).join('/')
+    segments.push({ label: parts[i] ?? '', path })
+  }
+  return segments
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
 export function DirectoryPickerModal({
   isOpen,
   onSelect,
   onClose,
   initialPath,
+  mode = 'directory',
 }: DirectoryPickerModalProps) {
   const [data, setData] = useState<FilesystemBrowseResponse | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -43,12 +86,28 @@ export function DirectoryPickerModal({
       })
       .catch((err: unknown) => {
         if (err instanceof Error && err.name === 'AbortError') return
-        const message =
-          err instanceof ApiError
-            ? err.message
-            : err instanceof Error
-              ? err.message
-              : 'An unexpected error occurred'
+
+        let message: string
+        if (err instanceof ApiError) {
+          // Extract the structured `detail` field from the response body when available.
+          const rawBody = err.body
+          const detail =
+            rawBody !== null &&
+            typeof rawBody === 'object' &&
+            'detail' in rawBody &&
+            typeof (rawBody as Record<string, unknown>).detail === 'string'
+              ? ((rawBody as Record<string, unknown>).detail as string)
+              : null
+          message = detail ?? err.message
+        } else if (err instanceof TypeError) {
+          // Network / connection error — fetch() itself threw before receiving a response.
+          message = 'Cannot connect to server — is the backend running?'
+        } else if (err instanceof Error) {
+          message = err.message
+        } else {
+          message = 'An unexpected error occurred'
+        }
+
         setError(message)
         setIsLoading(false)
       })
@@ -109,7 +168,13 @@ export function DirectoryPickerModal({
 
   if (!isOpen) return null
 
-  const directories = (data?.entries ?? []).filter((e) => e.type === 'directory')
+  // In directory mode show only directories; in file mode show all entries.
+  const visibleEntries =
+    mode === 'directory'
+      ? (data?.entries ?? []).filter((e) => e.type === 'directory')
+      : (data?.entries ?? [])
+
+  const breadcrumbs = data?.path ? buildBreadcrumbs(data.path) : []
 
   return (
     /* Backdrop */
@@ -149,24 +214,42 @@ export function DirectoryPickerModal({
           </button>
         </div>
 
-        {/* Current path + Up button */}
-        <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-2 dark:border-gray-800">
-          {data?.parent != null && (
-            <button
-              type="button"
-              onClick={() => navigate(data.parent!)}
-              aria-label="Go to parent directory"
-              className="shrink-0 rounded px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-300 dark:hover:bg-gray-800"
-            >
-              ↑ Up
-            </button>
+        {/* Breadcrumb navigation */}
+        <div className="flex flex-wrap items-center gap-0.5 border-b border-gray-100 px-4 py-2 dark:border-gray-800">
+          {breadcrumbs.length > 0 ? (
+            breadcrumbs.map((seg, idx) => (
+              <span key={seg.path} className="flex items-center">
+                {idx > 0 && (
+                  <svg
+                    className="mx-0.5 h-3 w-3 shrink-0 text-gray-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                )}
+                {idx === breadcrumbs.length - 1 ? (
+                  /* Current segment — not clickable */
+                  <span className="max-w-[120px] truncate font-mono text-xs font-medium text-gray-700 dark:text-gray-300">
+                    {seg.label}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => navigate(seg.path)}
+                    aria-label={`Navigate to ${seg.path}`}
+                    className="max-w-[120px] truncate rounded px-1 font-mono text-xs text-blue-600 hover:bg-gray-100 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-blue-400 dark:hover:bg-gray-800"
+                  >
+                    {seg.label}
+                  </button>
+                )}
+              </span>
+            ))
+          ) : (
+            <span className="font-mono text-xs text-gray-400 dark:text-gray-500">…</span>
           )}
-          <span
-            className="min-w-0 flex-1 truncate font-mono text-xs text-gray-500 dark:text-gray-400"
-            title={data?.path ?? ''}
-          >
-            {data?.path ?? '…'}
-          </span>
         </div>
 
         {/* Directory listing */}
@@ -190,15 +273,15 @@ export function DirectoryPickerModal({
             </div>
           )}
 
-          {!isLoading && error === null && directories.length === 0 && data !== null && (
+          {!isLoading && error === null && visibleEntries.length === 0 && data !== null && (
             <p className="px-4 py-6 text-center text-sm text-gray-400 dark:text-gray-500">
               No subdirectories
             </p>
           )}
 
-          {!isLoading && error === null && directories.length > 0 && (
+          {!isLoading && error === null && visibleEntries.length > 0 && (
             <ul>
-              {directories.map((entry) => (
+              {visibleEntries.map((entry) => (
                 <li key={entry.path}>
                   <button
                     type="button"

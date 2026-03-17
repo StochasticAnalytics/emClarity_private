@@ -12,7 +12,7 @@
  * rather than a test failure.
  */
 
-import { ApiError } from './client.ts'
+import { apiClient, ApiError } from './client.ts'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -45,12 +45,12 @@ export interface FilesystemBrowseResponse {
   entries: DirectoryEntry[]
 }
 
+// Re-export for consumers that only import from this module.
+export { ApiError }
+
 // ---------------------------------------------------------------------------
 // browseDirectory
 // ---------------------------------------------------------------------------
-
-const API_BASE_URL =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:8000'
 
 /**
  * Browse a server-side directory via GET /api/v1/filesystem/browse.
@@ -72,24 +72,9 @@ export async function browseDirectory(
   path?: string,
   signal?: AbortSignal,
 ): Promise<FilesystemBrowseResponse> {
-  const url = new URL('/api/v1/filesystem/browse', API_BASE_URL)
+  let endpoint = '/api/v1/filesystem/browse'
   if (path !== undefined && path !== '') {
-    url.searchParams.set('path', path)
+    endpoint += `?path=${encodeURIComponent(path)}`
   }
-
-  const response = await fetch(url.toString(), { signal })
-
-  if (!response.ok) {
-    const errorBody: unknown = await response.json().catch(() => null)
-    const detail =
-      errorBody !== null &&
-      typeof errorBody === 'object' &&
-      'detail' in errorBody &&
-      typeof (errorBody as Record<string, unknown>).detail === 'string'
-        ? ((errorBody as Record<string, unknown>).detail as string)
-        : response.statusText
-    throw new ApiError(response.status, detail, errorBody)
-  }
-
-  return response.json() as Promise<FilesystemBrowseResponse>
+  return apiClient.get<FilesystemBrowseResponse>(endpoint, signal)
 }
