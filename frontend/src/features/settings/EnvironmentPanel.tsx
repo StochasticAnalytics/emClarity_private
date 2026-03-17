@@ -312,10 +312,12 @@ function DependenciesSection() {
   const [deps, setDeps] = useState<Dependency[]>(INITIAL_DEPENDENCIES)
   const [checkAllLoading, setCheckAllLoading] = useState(false)
   const [checkAllError, setCheckAllError] = useState<string | null>(null)
+  const [checkAllAnnouncement, setCheckAllAnnouncement] = useState<string>('')
 
   const handleCheckAll = useCallback(async () => {
     setCheckAllLoading(true)
     setCheckAllError(null)
+    setCheckAllAnnouncement('')
     try {
       const result = await apiClient.get<CheckDepsResponse>('/api/v1/environment/check-dependencies')
       const depMap = new Map(result.dependencies.map((d) => [d.name, d]))
@@ -330,6 +332,11 @@ function DependenciesSection() {
             version: found.version ?? '',
           }
         }),
+      )
+      const foundCount = result.dependencies.filter((d) => d.found).length
+      const totalCount = result.dependencies.length
+      setCheckAllAnnouncement(
+        `Dependency check complete: ${foundCount} of ${totalCount} found.`,
       )
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error'
@@ -425,6 +432,15 @@ function DependenciesSection() {
             {checkAllError}
           </span>
         )}
+        {/* aria-live region announces completion to screen readers */}
+        <span
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          className="sr-only"
+        >
+          {checkAllAnnouncement}
+        </span>
       </div>
     </section>
   )
@@ -469,10 +485,26 @@ function parseSSHParams(commandTemplate: string): ParsedSSH | null {
     remaining = remaining.replace(portMatch[0], '').trim()
   }
 
-  // Strip any remaining flags (e.g. -o, -i, etc.)
-  // The first non-flag token is user@host; any tokens after it are remote commands.
-  const tokens = remaining.split(/\s+/).filter((t) => !t.startsWith('-'))
-  userAtHost = tokens[0] ?? ''
+  // SSH flags that consume a value argument (one token follows the flag).
+  // -p is already handled above, so it is excluded here.
+  const VALUE_FLAGS = new Set(['-b', '-c', '-D', '-E', '-e', '-F', '-I', '-i', '-J', '-L', '-l', '-m', '-o', '-Q', '-R', '-S', '-W', '-w'])
+
+  // Walk tokens sequentially so that value-consuming flags skip their argument
+  // and do not accidentally promote a file path or option string to user@host.
+  const tokens = remaining.split(/\s+/)
+  let skipNext = false
+  for (const token of tokens) {
+    if (skipNext) {
+      skipNext = false
+      continue
+    }
+    if (token.startsWith('-')) {
+      if (VALUE_FLAGS.has(token)) skipNext = true
+      continue
+    }
+    userAtHost = token
+    break
+  }
 
   if (userAtHost === '') return null
 

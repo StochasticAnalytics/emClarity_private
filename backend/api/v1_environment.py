@@ -168,7 +168,7 @@ class CheckDependenciesResponse(BaseModel):
 
 _DEPENDENCY_SPECS: list[tuple[str, str, list[str]]] = [
     # (display_name, binary_name, extra_paths_to_check)
-    ("emClarity", "emClarity", ["/usr/local/bin/emClarity", "./emClarity"]),
+    ("emClarity", "emClarity", ["/usr/local/bin/emClarity"]),
     ("IMOD", "imodinfo", ["/usr/local/IMOD/bin/imodinfo"]),
     ("CUDA Toolkit", "nvcc", ["/usr/local/cuda/bin/nvcc"]),
 ]
