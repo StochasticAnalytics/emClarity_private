@@ -26,7 +26,7 @@ import subprocess
 import time
 
 from fastapi import APIRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/api/v1/environment", tags=["environment-v1"])
 
@@ -76,31 +76,16 @@ def validate_path(request: ValidatePathRequest) -> ValidatePathResponse:
     """Validate that a path exists, is executable, and optionally return its version."""
     path = request.path
 
+    if not path:
+        return ValidatePathResponse(valid=False, version=None, error="Path must not be empty")
+
     if not os.path.exists(path):
         return ValidatePathResponse(valid=False, version=None, error=f"Path does not exist: {path}")
 
     if not os.access(path, os.X_OK):
         return ValidatePathResponse(valid=False, version=None, error=f"Path is not executable: {path}")
 
-    version: str | None = None
-    for flag in ("--version", "-v"):
-        try:
-            result = subprocess.run(
-                [path, flag],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            output = result.stdout.strip() or result.stderr.strip()
-            if output:
-                version = output.splitlines()[0].strip()
-                break
-        except subprocess.TimeoutExpired:
-            return ValidatePathResponse(valid=False, version=None, error="Timeout retrieving version")
-        except FileNotFoundError:
-            return ValidatePathResponse(valid=False, version=None, error=f"Executable not found: {path}")
-        except PermissionError:
-            return ValidatePathResponse(valid=False, version=None, error=f"Permission denied executing: {path}")
+    version = _get_version(path)
 
     return ValidatePathResponse(valid=True, version=version, error=None)
 
@@ -112,7 +97,7 @@ def validate_path(request: ValidatePathRequest) -> ValidatePathResponse:
 class TestSshRequest(BaseModel):
     host: str
     user: str | None = None
-    port: int = 22
+    port: int = Field(default=22, ge=1, le=65535)
 
 
 class TestSshResponse(BaseModel):
@@ -130,7 +115,7 @@ def test_ssh(request: TestSshRequest) -> TestSshResponse:
         "ssh",
         "-o", "ConnectTimeout=5",
         "-o", "BatchMode=yes",
-        "-o", "StrictHostKeyChecking=no",
+        "-o", "StrictHostKeyChecking=accept-new",
         "-p", str(request.port),
         user_at_host,
         "true",

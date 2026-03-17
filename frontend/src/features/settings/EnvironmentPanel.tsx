@@ -162,6 +162,7 @@ interface ExecutableRowState {
   status: ValidationStatus
   loading: boolean
   version: string | null
+  error: string | null
 }
 
 function ExecutablePathsSection() {
@@ -171,7 +172,7 @@ function ExecutablePathsSection() {
         const savedPath = localStorage.getItem(`env-path-${ep.id}`) ?? ''
         return [
           ep.id,
-          { path: savedPath, status: 'untested' as ValidationStatus, loading: false, version: null },
+          { path: savedPath, status: 'untested' as ValidationStatus, loading: false, version: null, error: null },
         ]
       }),
     ),
@@ -181,7 +182,7 @@ function ExecutablePathsSection() {
     localStorage.setItem(`env-path-${id}`, value)
     setRows((prev) => ({
       ...prev,
-      [id]: { ...prev[id], path: value, status: 'untested', version: null },
+      [id]: { ...prev[id], path: value, status: 'untested', version: null, error: null },
     }))
   }, [])
 
@@ -203,12 +204,14 @@ function ExecutablePathsSection() {
           loading: false,
           status: result.valid ? 'valid' : 'invalid',
           version: result.version,
+          error: result.error,
         },
       }))
-    } catch {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Validation failed'
       setRows((prev) => ({
         ...prev,
-        [id]: { ...prev[id], loading: false, status: 'invalid', version: null },
+        [id]: { ...prev[id], loading: false, status: 'invalid', version: null, error: message },
       }))
     }
   }, [rows])
@@ -228,44 +231,65 @@ function ExecutablePathsSection() {
         {EXECUTABLE_PATHS.map((ep) => {
           const row = rows[ep.id]
           return (
-            <div key={ep.id} className="flex items-center gap-3">
-              <label
-                htmlFor={`exec-path-${ep.id}`}
-                className="w-36 flex-shrink-0 text-xs font-medium text-gray-700 dark:text-gray-300"
-              >
-                {ep.label}
-              </label>
-              <input
-                id={`exec-path-${ep.id}`}
-                type="text"
-                value={row.path}
-                onChange={(e) => handlePathChange(ep.id, e.target.value)}
-                placeholder={ep.placeholder}
-                aria-label={ep.ariaLabel}
-                className="flex-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1.5 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
-              />
-              <StatusBadge status={row.status} />
-              {row.status === 'valid' && row.version !== null && (
-                <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">
-                  {row.version}
+            <div key={ep.id} className="space-y-1">
+              <div className="flex items-center gap-3">
+                <label
+                  htmlFor={`exec-path-${ep.id}`}
+                  className="w-36 flex-shrink-0 text-xs font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {ep.label}
+                </label>
+                <input
+                  id={`exec-path-${ep.id}`}
+                  type="text"
+                  value={row.path}
+                  onChange={(e) => handlePathChange(ep.id, e.target.value)}
+                  placeholder={ep.placeholder}
+                  aria-label={ep.ariaLabel}
+                  className="flex-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1.5 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+                />
+                <StatusBadge status={row.status} />
+                {/* aria-live region: always mounted so screen readers register it before content is injected */}
+                <span
+                  role="status"
+                  aria-live="polite"
+                  aria-atomic="true"
+                  className="sr-only"
+                >
+                  {row.status !== 'untested'
+                    ? `${ep.label}: ${row.status}${row.error ? `. ${row.error}` : row.version ? `. ${row.version}` : ''}`
+                    : ''}
+                </span>
+                {row.status === 'valid' && row.version !== null && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">
+                    {row.version}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => { void handleValidate(ep.id) }}
+                  disabled={row.loading}
+                  aria-label={`Validate ${ep.label} path`}
+                  className="rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors flex-shrink-0 inline-flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {row.loading ? (
+                    <>
+                      <Spinner />
+                      Validating…
+                    </>
+                  ) : (
+                    'Validate'
+                  )}
+                </button>
+              </div>
+              {row.status === 'invalid' && row.error !== null && (
+                <span
+                  role="alert"
+                  className="block ml-36 pl-3 text-xs text-red-600 dark:text-red-400"
+                >
+                  {row.error}
                 </span>
               )}
-              <button
-                type="button"
-                onClick={() => { void handleValidate(ep.id) }}
-                disabled={row.loading}
-                aria-label={`Validate ${ep.label} path`}
-                className="rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors flex-shrink-0 inline-flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {row.loading ? (
-                  <>
-                    <Spinner />
-                    Validating…
-                  </>
-                ) : (
-                  'Validate'
-                )}
-              </button>
             </div>
           )
         })}
@@ -555,7 +579,7 @@ function SSHConnectionsSection({ profiles }: SSHConnectionsSectionProps) {
                 <StatusBadge status={status} />
                 {status === 'valid' && profileLatency !== null && profileLatency !== undefined && (
                   <span className="text-xs text-gray-500 dark:text-gray-400">
-                    {profileLatency} ms
+                    {profileLatency.toFixed(1)} ms
                   </span>
                 )}
                 <button
