@@ -9,7 +9,6 @@ project IDs remain valid across backend restarts.
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 import threading
@@ -22,7 +21,7 @@ from pydantic import BaseModel, Field
 
 from backend.models.project import ProjectState, TiltSeries
 from backend.services.project_service import ProjectService
-from backend.utils.safe_json import atomic_write, locked_json_read, locked_json_read_write
+from backend.utils.safe_json import locked_json_read, locked_json_read_write
 
 log = logging.getLogger(__name__)
 

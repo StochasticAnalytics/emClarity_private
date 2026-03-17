@@ -50,7 +50,7 @@ def atomic_write_text(path: Path | str, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
     try:
-        tmp.write_text(content)
+        tmp.write_text(content, encoding="utf-8")
         os.replace(tmp, path)
     except Exception:
         try:
@@ -76,7 +76,7 @@ def atomic_write(path: Path | str, data: Any, *, indent: int = 2) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
     try:
-        tmp.write_text(json.dumps(data, indent=indent))
+        tmp.write_text(json.dumps(data, indent=indent), encoding="utf-8")
         os.replace(tmp, path)
     except Exception:
         # Clean up the temp file on failure if it exists
@@ -104,11 +104,11 @@ def locked_json_read(path: Path | str) -> Any:
         The parsed JSON data, or ``None`` if the file is empty or missing.
     """
     path = Path(path)
-    if not path.exists():
-        return None
 
     with _lock:
-        with open(path, "r") as f:
+        if not path.exists():
+            return None
+        with open(path, "r", encoding="utf-8") as f:
             fcntl.flock(f.fileno(), fcntl.LOCK_SH)
             try:
                 content = f.read()

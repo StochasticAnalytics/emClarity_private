@@ -8,7 +8,12 @@ from pathlib import Path
 
 import pytest
 
-from backend.utils.safe_json import atomic_write, locked_json_read_write
+from backend.utils.safe_json import (
+    atomic_write,
+    atomic_write_text,
+    locked_json_read,
+    locked_json_read_write,
+)
 
 
 class TestAtomicWrite:
@@ -166,3 +171,116 @@ class TestConcurrency:
         for i in range(num_projects):
             project_id = f"proj-{i:04d}"
             assert project_id in registry, f"Missing project {project_id}"
+
+
+# ---------------------------------------------------------------------------
+# atomic_write_text
+# ---------------------------------------------------------------------------
+
+
+class TestAtomicWriteText:
+    """Verify atomic_write_text writes text atomically with UTF-8 encoding."""
+
+    def test_writes_content(self, tmp_path: Path) -> None:
+        target = tmp_path / "out.txt"
+        atomic_write_text(target, "hello world")
+        assert target.read_text(encoding="utf-8") == "hello world"
+
+    def test_creates_parent_dirs(self, tmp_path: Path) -> None:
+        target = tmp_path / "a" / "b" / "deep.txt"
+        atomic_write_text(target, "nested")
+        assert target.read_text(encoding="utf-8") == "nested"
+
+    def test_utf8_encoding(self, tmp_path: Path) -> None:
+        """Content with non-ASCII characters must be written as UTF-8."""
+        target = tmp_path / "utf8.txt"
+        content = "café résumé naïve 日本語"
+        atomic_write_text(target, content)
+        assert target.read_bytes().decode("utf-8") == content
+
+    def test_overwrites_existing(self, tmp_path: Path) -> None:
+        target = tmp_path / "over.txt"
+        atomic_write_text(target, "original")
+        atomic_write_text(target, "replaced")
+        assert target.read_text(encoding="utf-8") == "replaced"
+
+    def test_no_temp_file_on_success(self, tmp_path: Path) -> None:
+        target = tmp_path / "clean.txt"
+        atomic_write_text(target, "data")
+        assert not target.with_suffix(".tmp").exists()
+
+    def test_accepts_string_path(self, tmp_path: Path) -> None:
+        target = str(tmp_path / "str_path.txt")
+        atomic_write_text(target, "works")
+        assert Path(target).read_text(encoding="utf-8") == "works"
+
+
+# ---------------------------------------------------------------------------
+# locked_json_read
+# ---------------------------------------------------------------------------
+
+
+class TestLockedJsonRead:
+    """Verify locked_json_read returns correct data under various conditions."""
+
+    def test_returns_none_for_missing_file(self, tmp_path: Path) -> None:
+        result = locked_json_read(tmp_path / "nonexistent.json")
+        assert result is None
+
+    def test_returns_none_for_empty_file(self, tmp_path: Path) -> None:
+        target = tmp_path / "empty.json"
+        target.write_text("", encoding="utf-8")
+        assert locked_json_read(target) is None
+
+    def test_returns_none_for_whitespace_only(self, tmp_path: Path) -> None:
+        target = tmp_path / "ws.json"
+        target.write_text("   \n  \t  ", encoding="utf-8")
+        assert locked_json_read(target) is None
+
+    def test_reads_dict(self, tmp_path: Path) -> None:
+        target = tmp_path / "data.json"
+        data = {"key": "value", "count": 42}
+        target.write_text(json.dumps(data), encoding="utf-8")
+        assert locked_json_read(target) == data
+
+    def test_reads_list(self, tmp_path: Path) -> None:
+        target = tmp_path / "list.json"
+        target.write_text("[1, 2, 3]", encoding="utf-8")
+        assert locked_json_read(target) == [1, 2, 3]
+
+    def test_accepts_string_path(self, tmp_path: Path) -> None:
+        target = tmp_path / "str.json"
+        target.write_text('{"ok": true}', encoding="utf-8")
+        assert locked_json_read(str(target)) == {"ok": True}
+
+    def test_roundtrip_with_atomic_write(self, tmp_path: Path) -> None:
+        """locked_json_read can read files produced by atomic_write."""
+        target = tmp_path / "roundtrip.json"
+        data = {"roundtrip": True, "nested": {"a": 1}}
+        atomic_write(target, data)
+        assert locked_json_read(target) == data
+
+    def test_concurrent_reads(self, tmp_path: Path) -> None:
+        """Multiple threads reading simultaneously should all succeed."""
+        target = tmp_path / "concurrent.json"
+        data = {"thread_safe": True, "value": 12345}
+        target.write_text(json.dumps(data), encoding="utf-8")
+
+        results: list[object] = [None] * 10
+        errors: list[Exception | None] = [None] * 10
+
+        def reader(idx: int) -> None:
+            try:
+                results[idx] = locked_json_read(target)
+            except Exception as exc:
+                errors[idx] = exc
+
+        threads = [threading.Thread(target=reader, args=(i,)) for i in range(10)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        for i in range(10):
+            assert errors[i] is None, f"Thread {i} raised: {errors[i]}"
+            assert results[i] == data
