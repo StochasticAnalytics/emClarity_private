@@ -5,7 +5,10 @@
  * and consistent error reporting.
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL as string | undefined ?? 'http://localhost:8000'
+// When served from the same origin as the backend (production build),
+// relative URLs work without any configuration.  Override with
+// VITE_API_BASE_URL only when the frontend runs on a different origin.
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL as string | undefined ?? ''
 
 export class ApiError extends Error {
   status: number

@@ -1,3 +1,12 @@
+Developer: Completed 2026-03-16 [TASK-030]
+  Task: TASK-030 - Harden filesystem browser into robust reusable component
+  - filesystem.ts: removed duplicate API_BASE_URL + raw fetch(); now uses apiClient.get() from client.ts
+  - DirectoryPickerModal: added mode prop ('directory' | 'file', default 'directory')
+  - DirectoryPickerModal: replaced "Up" button with breadcrumb navigation (clickable path segments)
+  - DirectoryPickerModal: TypeError → 'Cannot connect to server — is the backend running?' message
+  - DirectoryPickerModal: extracts structured 'detail' from ApiError.body for better error messages
+  - TypeScript compiles without errors; 62/62 backend tests pass
+
 Developer: Completed 2026-03-16 [TASK-027/PATCH]
   Task: TASK-027/PATCH - Fix QA defects for viewer launcher
   - [HIGH] Config panel visibility: replaced hidden HTML attribute with inline style={display:'none'};
@@ -622,3 +631,63 @@ Developer: Completed TASK-028 [2026-03-16]
   - All validation buttons show 'Not yet implemented' inline notice (auto-dismisses after 3s)
   - StatusBadge component covers untested/valid/invalid states
   - TypeScript compiles without errors (npx tsc --noEmit clean)
+Developer: Completed 2026-03-16
+  - Fixed StubNotice aria-live region in EnvironmentPanel.tsx
+  - Root cause: component returned null when not visible, causing aria-live
+    region to mount with content already present -- screen readers skip
+    announcements on mount, only react to subsequent changes
+  - Fix: always render the span (empty string when not visible), populate
+    text only when visible=true so screen readers detect the change
+
+
+Developer: Completed 2026-03-16 [TASK-028/PATCH]
+  Task: TASK-028/PATCH - Fix QA defects for Settings tabbed layout
+  - [HIGH] Fixed TS6133 noUnusedLocals: removed setDeps and setProfileStatuses from useState
+    destructures — they were declared but never called, causing compile errors under noUnusedLocals
+  - [MEDIUM] Fixed SSH Connections data model mismatch: added parseSSHUserHost() helper that extracts
+    user and host from commandTemplate (ssh user@host pattern); renders labelled host/user fields;
+    falls back to showing raw commandTemplate when no user@host is parseable
+  - TypeScript compiles clean (npx tsc --noEmit: no output)
+
+Developer: Completed TASK-029 [2026-03-16]
+  - Created backend/api/v1_environment.py with 3 endpoints:
+      POST /api/v1/environment/validate-path (path existence + exec check + version via subprocess)
+      POST /api/v1/environment/test-ssh (ssh BatchMode test with latency_ms)
+      GET /api/v1/environment/check-dependencies (emClarity, IMOD, CUDA Toolkit via shutil.which)
+  - Registered v1_environment router in backend/api/router.py
+  - Wired EnvironmentPanel.tsx: Validate buttons → validate-path, Check All → check-dependencies,
+      Test buttons → test-ssh with SSH param parsing from commandTemplate
+  - Added localStorage persistence for executable paths (env-path-{id} keys)
+  - All API calls use apiClient from @/api/client
+  - 62 backend tests pass (1 skipped), TypeScript compiles clean
+
+Developer: Completed TASK-029/PATCH [2026-03-16]
+  - Fixed 8 QA defects in EnvironmentPanel.tsx and v1_environment.py
+  - [HIGH] ExecutablePathsSection now captures and displays ValidatePathResponse.error on both success and catch paths
+  - [HIGH] validate_path replaced duplicate version loop with _get_version() helper call
+  - [MEDIUM] OSError coverage handled transitively by _get_version() which already catches it
+  - [MEDIUM] StrictHostKeyChecking=no → accept-new (MITM protection on key changes)
+  - [MEDIUM] TestSshRequest.port bounded with Field(ge=1, le=65535) for 422 on invalid ports
+  - [MEDIUM] Empty path now returns "Path must not be empty" instead of trailing-space message
+  - [MEDIUM] Added aria-live="polite" region to ExecutablePathsSection for screen reader parity
+  - [LOW] SSH latency display rounded to 1 decimal place via toFixed(1)
+2026-03-17 03:19 UTC Developer: Completed TASK-029/PATCH
+  - Fixed stale validation result in ExecutablePathsSection: now checks prev[id].path !== path before writing back async result
+  - Fixed DependenciesSection aria-live region: setCheckAllAnnouncement now called in catch block for Binding Decision #4 compliance
+  - Fixed parseSSHParams: -l flag removed from VALUE_FLAGS, captured as loginUser and returned as user field
+
+Developer: Completed 2026-03-17T03:34:26Z
+  - Fixed breadcrumb title tooltip: added title={seg.path} to both <span> (current) and <button> (clickable) breadcrumb elements
+  - Fixed stale breadcrumbs during loading: setData(null) is called at start of navigate() so old path clears immediately
+  - Narrowed TypeError catch guard: now requires /fetch|network/i match on err.message to prevent programming TypeErrors being misreported as network failures
+
+Developer: Completed 2026-03-16 23:44
+  - Fixed Safari 'Load failed' TypeError bypassing friendly error branch (regex now includes 'load failed')
+  - Fixed Retry button navigating to initialPath on error; now uses lastRequestedPathRef to replay exact failed path
+  - Added WCAG 2.1 SC 2.4.3 focus restoration: saves activeElement on open, restores in useEffect cleanup on close
+
+
+Developer: Completed TASK-030/PATCH [2026-03-16]
+  - Fixed Binding Decision #2 violation: removed regex from TypeError guard
+  - Fixed spurious focus restoration by splitting useEffect into two (focus-only + navigate)
+  - Added aria-current="page" to terminal breadcrumb segment

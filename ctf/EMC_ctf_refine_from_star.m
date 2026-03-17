@@ -14,13 +14,13 @@ function [] = EMC_ctf_refine_from_star(star_file_path, stack_file_path, ...
 %   varargin              - Name-value option pairs:
 %       'defocus_search_range'     - Defocus search range in Angstroms (default: 5000)
 %       'maximum_iterations'       - Max ADAM iterations (default: 15)
-%       'upsample_factor'          - Fourier upsampling factor (default: 8)
-%       'upsample_window'          - Half-width of upsampling window (default: 8)
 %       'lowpass_cutoff'           - Lowpass cutoff in Angstroms (default: 10)
-%       'warmup_iterations'        - Warmup iterations (default: 3)
 %       'astigmatism_angle_range'  - Max astigmatism angle change in radians (default: pi/4)
 %       'z_offset_bound_factor'    - Z offset bound multiplier (default: 5)
-%       'exit_after_first_tilt'     - Exit after first tilt for testing (default: false)
+%       'shift_sigma'              - Gaussian penalty sigma for X/Y shifts in Angstroms (default: 5)
+%       'highpass_cutoff'          - Highpass cutoff in Angstroms (default: 400)
+%       'use_phase_compensated_correlation' - Phase-doubled correlation (default: false)
+%       'exit_after_n_tilts'     - Process only first N tilt groups, 0=all (default: 0)
 %       'verbose_timing'           - Print per-section timing (default: false)
 %       'gpu_ids'                  - GPU device IDs (1-indexed), comma-separated string
 %                                    e.g. '1,2,5' for 3 GPUs. Default '1' (single GPU)
@@ -117,10 +117,11 @@ end
 n_gpus = length(gpu_ids);
 n_workers = n_gpus * opts.workers_per_gpu;
 
-% Limit tilt groups for testing
-if opts.exit_after_first_tilt
-  n_tilt_groups = min(n_tilt_groups, 20);
-  fprintf('  [DEBUG] Limiting to %d tilt groups (exit_after_first_tilt=true)\n', n_tilt_groups);
+% Limit tilt groups for testing (0 = process all)
+if opts.exit_after_n_tilts > 0
+  n_tilt_groups = min(n_tilt_groups, opts.exit_after_n_tilts);
+  fprintf('  [DEBUG] Limiting to %d tilt groups (exit_after_n_tilts=%d)\n', ...
+      n_tilt_groups, opts.exit_after_n_tilts);
 end
 
 fprintf('  GPUs: [%s], %d workers (%d per GPU)\n', ...
@@ -147,16 +148,17 @@ end
 refinement_options = struct();
 refinement_options.defocus_search_range = opts.defocus_search_range;
 refinement_options.maximum_iterations = opts.maximum_iterations;
-refinement_options.upsample_factor = opts.upsample_factor;
-refinement_options.upsample_window = opts.upsample_window;
 refinement_options.CTFSIZE = CTFSIZE;
-refinement_options.use_phase_compensated_correlation = false;
-refinement_options.warmup_iterations = opts.warmup_iterations;
+refinement_options.use_phase_compensated_correlation = opts.use_phase_compensated_correlation;
 refinement_options.lowpass_cutoff = opts.lowpass_cutoff;
+refinement_options.highpass_cutoff = opts.highpass_cutoff;
 refinement_options.astigmatism_angle_range = opts.astigmatism_angle_range;
 refinement_options.z_offset_bound_factor = opts.z_offset_bound_factor;
 refinement_options.peak_search_radius = floor(CTFSIZE ./ 4);
 refinement_options.maximum_xy_shift = max(floor(CTFSIZE ./ 4));
+refinement_options.minimum_global_iterations = opts.minimum_global_iterations;
+refinement_options.global_only = opts.global_only;
+refinement_options.shift_sigma = opts.shift_sigma;
 refinement_options.verbose_timing = opts.verbose_timing;
 
 EMC_parpool(n_workers);
@@ -186,7 +188,7 @@ EMC_parpool(n_workers);
 
 worker_results = cell(n_workers, 1);
 
-for iWorker = 1:n_workers % revert parfor
+parfor iWorker = 1:n_workers % revert parfor
   % GPU assignment: round-robin across GPUs visible to this worker
   % Workers may see a different number of GPUs than the parent (depends on
   % CUDA_VISIBLE_DEVICES inheritance). Use gpuDeviceCount to detect what's available.
@@ -217,8 +219,6 @@ for iWorker = 1:n_workers % revert parfor
     current_tilt_name = unique_tilt_names{tilt_idx};
     n_particles_this_tilt = length(member_indices);
 
-    try
-
     t_tilt_start = tic;
     fprintf('  [W%d] Refining tilt %s (angle %.1f deg, %d particles)...\n', ...
         iWorker, current_tilt_name, current_tilt_angle, n_particles_this_tilt);
@@ -228,10 +228,12 @@ for iWorker = 1:n_workers % revert parfor
     slice_indices = all_positions(member_indices);
     first_slice = min(slice_indices);
     last_slice = max(slice_indices);
+    assert(last_slice - first_slice + 1 == n_particles_this_tilt, ...
+        'Tilt %s: slices not consecutive (range %d-%d for %d particles)', ...
+        current_tilt_name, first_slice, last_slice, n_particles_this_tilt);
 
     % Batch-load data tiles from stack
-    tilt_data = single(OPEN_IMG('single', local_stack_mrc, ...
-        [1,tile_size(1)], [1,tile_size(2)], [first_slice, last_slice], 'keep'));
+    tilt_data = single(OPEN_IMG('single', local_stack_mrc, [], [], [first_slice, last_slice], 'keep'));
     if vt, fprintf('    [W%d][T] IO load: %.3f s\n', iWorker, toc(t_io)); end
 
     % Build data and reference tile cell arrays
@@ -298,17 +300,7 @@ for iWorker = 1:n_workers % revert parfor
         'tilt_angle', current_tilt_angle, ...
         'tilt_name', current_tilt_name, ...
         'n_particles', n_particles_this_tilt, ...
-        'tilt_results', tilt_results, ...
-        'success', true);
-
-    catch ME
-      fprintf(2, '\n!!! [W%d] Tilt %s failed: %s !!!\n', iWorker, current_tilt_name, ME.message);
-      for stack_i = 1:length(ME.stack)
-        fprintf(2, '  in %s (line %d)\n', ME.stack(stack_i).name, ME.stack(stack_i).line);
-      end
-      local_results{j} = struct('tilt_idx', tilt_idx, 'success', false, ...
-          'error_message', ME.message, 'tilt_name', current_tilt_name);
-    end
+        'tilt_results', tilt_results);
   end
 
   worker_results{iWorker} = local_results;
@@ -325,16 +317,9 @@ refined_shift_y = all_y_shift;
 refined_scores = zeros(n_total_particles, 1);
 refined_occupancy = 100 * ones(n_total_particles, 1);
 processed_mask = false(n_total_particles, 1);
-n_failed_tilts = 0;
-
 for iWorker = 1:n_workers
   for j = 1:length(worker_results{iWorker})
     r = worker_results{iWorker}{j};
-    if ~r.success
-      n_failed_tilts = n_failed_tilts + 1;
-      continue;
-    end
-
     tilt_results = r.tilt_results;
     member_indices = r.member_indices;
     current_tilt_angle = r.tilt_angle;
@@ -342,10 +327,7 @@ for iWorker = 1:n_workers
     for particle_index = 1:r.n_particles
       idx = member_indices(particle_index);
 
-      particle_dz = 0;
-      if ~isempty(tilt_results.delta_z) && particle_index <= length(tilt_results.delta_z)
-        particle_dz = tilt_results.delta_z(particle_index);
-      end
+      particle_dz = tilt_results.delta_z(particle_index);
       defocus_correction = tilt_results.delta_defocus_tilt + particle_dz * cosd(current_tilt_angle);
 
       defocus_mean = (all_df1(idx) + all_df2(idx)) / 2;
@@ -369,7 +351,7 @@ end
 n_processed = sum(processed_mask);
 n_unprocessed = n_total_particles - n_processed;
 fprintf('\n=== Refinement Summary ===\n');
-fprintf('  Tilt groups: %d total, %d failed\n', n_tilt_groups, n_failed_tilts);
+fprintf('  Tilt groups: %d processed\n', n_tilt_groups);
 fprintf('  Particles processed:   %d / %d (%.1f%%)\n', n_processed, n_total_particles, ...
     100 * n_processed / max(n_total_particles, 1));
 fprintf('  Particles unprocessed: %d / %d (%.1f%%)\n', n_unprocessed, n_total_particles, ...
@@ -405,13 +387,15 @@ function opts = parse_options(args)
 % Parse name-value option pairs from varargin cell array.
   opts.defocus_search_range = 5000;
   opts.maximum_iterations = 15;
-  opts.upsample_factor = 8;
-  opts.upsample_window = 8;
   opts.lowpass_cutoff = 10;
-  opts.warmup_iterations = 3;
   opts.astigmatism_angle_range = pi/4;
   opts.z_offset_bound_factor = 5;
-  opts.exit_after_first_tilt = false;
+  opts.minimum_global_iterations = 3;  % iterations with only per-tilt params before per-particle delta_z
+  opts.global_only = false;            % if true, only optimize per-tilt params (no per-particle delta_z)
+  opts.shift_sigma = 5.0;       % Gaussian penalty sigma for X/Y shifts (Angstroms)
+  opts.highpass_cutoff = 400;   % highpass cutoff in Angstroms for bandpass filter
+  opts.use_phase_compensated_correlation = false;  % phase-doubled correlation (C * C/(|C| + eps))
+  opts.exit_after_n_tilts = 0;  % 0 = process all, N = process first N tilt groups
   opts.verbose_timing = false;
   opts.gpu_ids = '1';
   opts.workers_per_gpu = 3;
