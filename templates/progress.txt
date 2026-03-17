@@ -1,3 +1,13 @@
+Developer: Completed 2026-03-16 [TASK-026]
+  Task: TASK-026 - Remove import-set parameters from Action tabs
+  - Removed PIXEL_SIZE from all 10 tabs where it appeared
+  - Removed beadDiameter from autoAlign, ctfEstimate, templateSearch
+  - Removed VOLTAGE, Cs, AMPCONT from ctfEstimate
+  - Both parameterRegistry.ts and ActionsPage.tsx updated in sync
+  - Empty 'Basic settings' group on autoAlign naturally hidden (no params remain)
+  - Processing params (Tmp_samplingRate, SuperResolution, Ali/Cls_samplingRate) unchanged
+  - TypeScript compiles without errors
+
 Developer: Completed 2026-03-15 [TASK-002b-Aa-α-2]
   Task: TASK-002b-Aa-α-2 - DirectoryPickerModal entry rendering (directory buttons + file divs)
   - Created directoryPickerConstants.ts exporting NO_SUBDIRECTORIES constant
@@ -536,3 +546,10 @@ Developer: Completed 2026-03-16 [TASK-003/DEV self-audit]
   - v1_filesystem.py:112-116 — Error detail "no HOME environment variable is set" not always accurate; changed to "the HOME directory could not be resolved"
 
   Validation: tsc --noEmit → 0 errors; pytest backend/tests/ → 62 passed, 1 skipped
+
+Developer: Completed TASK-025 [2026-03-16]
+  - Removed 'emClarity GUI' fallback span from Header.tsx (lines 79-81)
+  - Renamed 'Expert' → 'Experimental' label in Sidebar.tsx NAV_ITEMS
+  - Removed §{tab.tutorialSection} span from ActionsPage.tsx tab buttons
+  - TypeScript compiles without errors
+  - Three surgical edits, no surrounding code refactored
