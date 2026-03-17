@@ -40,7 +40,7 @@ const NAV_ITEMS = [
   { path: 'results', label: 'Results', icon: BarChart3 },
   { path: 'settings', label: 'Settings', icon: Settings },
   { path: 'jobs', label: 'Jobs', icon: Activity },
-  { path: 'expert', label: 'Expert', icon: FlaskConical },
+  { path: 'expert', label: 'Experimental', icon: FlaskConical },
 ] as const
 
 // ---------------------------------------------------------------------------

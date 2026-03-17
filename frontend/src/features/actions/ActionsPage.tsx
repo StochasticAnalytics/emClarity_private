@@ -1476,9 +1476,6 @@ export function ActionsPage() {
                   : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600',
               ].join(' ')}
             >
-              <span className="text-xs font-semibold text-gray-400 dark:text-gray-500 mb-0.5">
-                §{tab.tutorialSection}
-              </span>
               <span className="text-center leading-snug">{tab.shortLabel}</span>
             </button>
           )
