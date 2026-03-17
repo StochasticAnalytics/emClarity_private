@@ -1210,6 +1210,7 @@ function ViewerLauncher({ projectId, isDemo }: ViewerLauncherProps) {
   const [launching, setLaunching] = useState<boolean>(false)
   const [message, setMessage] = useState<string | null>(null)
   const [projectDirectory, setProjectDirectory] = useState<string | null>(null)
+  const gearButtonRef = useRef<HTMLButtonElement>(null)
 
   // Read stored viewer path on mount
   useEffect(() => {
@@ -1279,6 +1280,7 @@ function ViewerLauncher({ projectId, isDemo }: ViewerLauncherProps) {
     localStorage.setItem(VIEWER_PATH_KEY, draftPath.trim())
     setViewerPath(draftPath.trim())
     setConfigOpen(false)
+    gearButtonRef.current?.focus()
   }, [draftPath])
 
   return (
@@ -1295,6 +1297,7 @@ function ViewerLauncher({ projectId, isDemo }: ViewerLauncherProps) {
           {launching ? 'Launching…' : 'Open in Viewer\u2026'}
         </button>
         <button
+          ref={gearButtonRef}
           type="button"
           onClick={() => setConfigOpen((v) => !v)}
           aria-expanded={configOpen}
@@ -1314,10 +1317,12 @@ function ViewerLauncher({ projectId, isDemo }: ViewerLauncherProps) {
       >
         {message}
       </div>
-      {/* Always rendered so aria-controls="viewer-config-panel" references a valid DOM element;
-          hidden attribute collapses it visually and removes it from the accessibility tree
-          when closed, satisfying WAI-ARIA 1.2 §6.2.4 without breaking the IDREF. */}
-      <div id="viewer-config-panel" hidden={!configOpen} className="mt-3 flex items-center gap-2">
+      {/* Always rendered so aria-controls="viewer-config-panel" references a valid DOM element.
+          Inline style is used instead of the `hidden` HTML attribute because Tailwind v4's
+          `flex` utility (applied via className) overrides the attribute-derived display:none,
+          making the panel permanently visible. An inline style has higher cascade specificity
+          than any class rule and reliably hides the panel when configOpen is false. */}
+      <div id="viewer-config-panel" style={configOpen ? undefined : { display: 'none' }} className="mt-3 flex items-center gap-2">
         <input
           type="text"
           value={draftPath}
@@ -1335,7 +1340,7 @@ function ViewerLauncher({ projectId, isDemo }: ViewerLauncherProps) {
         </button>
         <button
           type="button"
-          onClick={() => { setDraftPath(viewerPath); setConfigOpen(false) }}
+          onClick={() => { setDraftPath(viewerPath); setConfigOpen(false); gearButtonRef.current?.focus() }}
           className="rounded border border-gray-300 dark:border-gray-600 px-2 py-1 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
         >
           Cancel

@@ -97,5 +97,8 @@ def set_default_viewer(request: SetDefaultRequest) -> DefaultViewerResponse:
     if not os.path.exists(viewer_path):
         raise HTTPException(status_code=404, detail=f"Viewer not found: {viewer_path}")
 
+    if not os.path.isfile(viewer_path):
+        raise HTTPException(status_code=400, detail=f"Path is not a file: {viewer_path}")
+
     _default_viewer_path = viewer_path
     return DefaultViewerResponse(viewer_path=_default_viewer_path)
