@@ -381,12 +381,14 @@ const ACTION_TABS: ActionTabDef[] = [
     ],
     notes:
       'Requires IMOD (tilt and tiltalign). Works with or without gold beads. ' +
-      'If beadDiameter=0, beads are ignored but the .erase file is still generated.',
+      'If no beads are present, patch-tracking alignment is used without bead refinement.',
     params: [
-      // Optional
-      { name: 'autoAli_max_resolution',         group: 'Alignment settings', optional: true },
-      { name: 'autoAli_min_sampling_rate',      group: 'Alignment settings', optional: true },
-      { name: 'autoAli_max_sampling_rate',      group: 'Alignment settings', optional: true },
+      // Required (*)
+      { name: 'autoAli_max_resolution',         group: 'Alignment settings', optional: false },
+      { name: 'autoAli_min_sampling_rate',      group: 'Alignment settings', optional: false },
+      { name: 'autoAli_max_sampling_rate',      group: 'Alignment settings', optional: false },
+      { name: 'autoAli_refine_on_beads',        group: 'Bead refinement',  optional: false },
+      // Expert options
       { name: 'autoAli_iterations_per_bin',     group: 'Patch tracking',   optional: true },
       { name: 'autoAli_n_iters_no_rotation',    group: 'Patch tracking',   optional: true },
       { name: 'autoAli_patch_size_factor',      group: 'Patch tracking',   optional: true },
@@ -394,7 +396,6 @@ const ACTION_TABS: ActionTabDef[] = [
       { name: 'autoAli_patch_overlap',          group: 'Patch tracking',   optional: true },
       { name: 'autoAli_max_shift_in_angstroms', group: 'Patch tracking',   optional: true },
       { name: 'autoAli_max_shift_factor',       group: 'Patch tracking',   optional: true },
-      { name: 'autoAli_refine_on_beads',        group: 'Bead refinement',  optional: true },
     ],
   },
 
@@ -468,8 +469,8 @@ const ACTION_TABS: ActionTabDef[] = [
       'This step does NOT use a parameter file — it uses the recScript2.sh shell script.',
     params: [
       // Table 5 fields (recon.coords format — informational, not a param file)
-      { name: 'super_sample',group: 'Reference parameters', optional: true  },
-      { name: 'expand_lines', group: 'Reference parameters', optional: true },
+      { name: 'super_sample', group: 'Reference parameters', optional: false },
+      { name: 'expand_lines', group: 'Reference parameters', optional: false },
     ],
   },
 
@@ -485,7 +486,7 @@ const ACTION_TABS: ActionTabDef[] = [
     objectives:
       'Pick particles (subtomograms) using template matching. Each particle is described by ' +
       'its x, y, z coordinates and φ, θ, ψ Euler angles. Requires a template (reference volume) ' +
-      'at the same pixel size as PIXEL_SIZE.',
+      'at the same pixel size as the reconstructed tomogram.',
     commandSignature:
       'emClarity ctf 3d <param> templateSearch   # Generate tomograms\n' +
       'emClarity templateSearch <param> <prefix> <region> <template> <symmetry> <GPU>',
