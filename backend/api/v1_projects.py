@@ -102,13 +102,6 @@ def _set_project(project_id: str, record: _ProjectRecord) -> None:
 # In-memory project registry (keyed by UUID string)
 # ---------------------------------------------------------------------------
 
-_projects: dict[str, _ProjectRecord] = {}
-_project_service = ProjectService()
-
-# Load persisted registry at startup
-_load_registry()
-
-
 class _ProjectRecord(BaseModel):
     """Internal record stored in memory for each created project."""
 
@@ -118,6 +111,13 @@ class _ProjectRecord(BaseModel):
     state: ProjectState
     parameters: dict[str, Any]
     current_cycle: int = 0
+
+
+_projects: dict[str, _ProjectRecord] = {}
+_project_service = ProjectService()
+
+# Load persisted registry at startup
+_load_registry()
 
 
 # ---------------------------------------------------------------------------

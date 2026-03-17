@@ -150,7 +150,7 @@ def locked_json_read_write(
         # Open in "a+" so the file is created if it doesn't exist,
         # then seek back to read.  We hold the flock for the entire
         # read-modify-write cycle.
-        with open(path, "a+") as f:
+        with open(path, "a+", encoding="utf-8") as f:
             fcntl.flock(f.fileno(), fcntl.LOCK_EX)
             try:
                 f.seek(0)
