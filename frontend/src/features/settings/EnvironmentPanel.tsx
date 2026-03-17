@@ -1,5 +1,5 @@
 /**
- * EnvironmentPanel – scaffold for the Environment tab in Settings.
+ * EnvironmentPanel – Environment tab in Settings.
  *
  * Sections:
  *   1. Executable Paths  – path inputs + Validate buttons for emClarity binary and IMOD
@@ -7,13 +7,14 @@
  *   3. SSH Connections   – derived from run profiles; shows Test button per entry
  *   4. Run Profile Validation – "Validate All Profiles" + per-profile status badges
  *
- * All validation actions are UI-only stubs in this task (TASK-028).
- * Backend wiring is deferred to TASK-029.
+ * Sections 1–3 are wired to real backend API endpoints (TASK-029).
+ * Section 4 remains a stub (deferred).
  */
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { CheckCircle, XCircle, Circle, Terminal, Network, Server, ShieldCheck } from 'lucide-react'
 import type { RunProfile } from '@/types/runProfile'
+import { apiClient } from '@/api/client'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -33,6 +34,29 @@ interface Dependency {
   path: string
   status: ValidationStatus
   version: string
+}
+
+interface ValidatePathResponse {
+  valid: boolean
+  version: string | null
+  error: string | null
+}
+
+interface DependencyResult {
+  name: string
+  path: string | null
+  found: boolean
+  version: string | null
+}
+
+interface CheckDepsResponse {
+  dependencies: DependencyResult[]
+}
+
+interface TestSSHResponse {
+  connected: boolean
+  error: string | null
+  latency_ms: number | null
 }
 
 // ---------------------------------------------------------------------------
@@ -94,6 +118,26 @@ function StubNotice({ visible }: { visible: boolean }) {
   )
 }
 
+/** Inline spinner for loading states. */
+function Spinner() {
+  return (
+    <svg
+      className="animate-spin h-3 w-3 text-current"
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path
+        className="opacity-75"
+        fill="currentColor"
+        d="M4 12a8 8 0 018-8V0C5.373 0 12 0 12 0v4a8 8 0 00-8 8H0z"
+      />
+    </svg>
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Section: Executable Paths
 // ---------------------------------------------------------------------------
@@ -116,49 +160,58 @@ const EXECUTABLE_PATHS: ExecutablePath[] = [
 interface ExecutableRowState {
   path: string
   status: ValidationStatus
-  stubVisible: boolean
+  loading: boolean
+  version: string | null
 }
 
 function ExecutablePathsSection() {
   const [rows, setRows] = useState<Record<string, ExecutableRowState>>(() =>
     Object.fromEntries(
-      EXECUTABLE_PATHS.map((ep) => [
-        ep.id,
-        { path: '', status: 'untested' as ValidationStatus, stubVisible: false },
-      ]),
+      EXECUTABLE_PATHS.map((ep) => {
+        const savedPath = localStorage.getItem(`env-path-${ep.id}`) ?? ''
+        return [
+          ep.id,
+          { path: savedPath, status: 'untested' as ValidationStatus, loading: false, version: null },
+        ]
+      }),
     ),
   )
-  const validateTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
-
-  useEffect(() => {
-    const timers = validateTimers.current
-    return () => { Object.values(timers).forEach(clearTimeout) }
-  }, [])
 
   const handlePathChange = useCallback((id: string, value: string) => {
+    localStorage.setItem(`env-path-${id}`, value)
     setRows((prev) => ({
       ...prev,
-      [id]: { ...prev[id], path: value, status: 'untested', stubVisible: false },
+      [id]: { ...prev[id], path: value, status: 'untested', version: null },
     }))
   }, [])
 
-  const handleValidate = useCallback((id: string) => {
+  const handleValidate = useCallback(async (id: string) => {
+    const path = rows[id]?.path ?? ''
     setRows((prev) => ({
       ...prev,
-      [id]: { ...prev[id], stubVisible: true },
+      [id]: { ...prev[id], loading: true },
     }))
-    // Cancel any pending timer for this row before starting a new one
-    if (validateTimers.current[id] !== undefined) {
-      clearTimeout(validateTimers.current[id])
-    }
-    validateTimers.current[id] = setTimeout(() => {
+    try {
+      const result = await apiClient.post<ValidatePathResponse>(
+        '/api/v1/environment/validate-path',
+        { path },
+      )
       setRows((prev) => ({
         ...prev,
-        [id]: { ...prev[id], stubVisible: false },
+        [id]: {
+          ...prev[id],
+          loading: false,
+          status: result.valid ? 'valid' : 'invalid',
+          version: result.version,
+        },
       }))
-      delete validateTimers.current[id]
-    }, 3000)
-  }, [])
+    } catch {
+      setRows((prev) => ({
+        ...prev,
+        [id]: { ...prev[id], loading: false, status: 'invalid', version: null },
+      }))
+    }
+  }, [rows])
 
   return (
     <section aria-labelledby="exec-paths-heading" className="mb-6">
@@ -192,15 +245,27 @@ function ExecutablePathsSection() {
                 className="flex-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1.5 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
               />
               <StatusBadge status={row.status} />
+              {row.status === 'valid' && row.version !== null && (
+                <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">
+                  {row.version}
+                </span>
+              )}
               <button
                 type="button"
-                onClick={() => handleValidate(ep.id)}
+                onClick={() => { void handleValidate(ep.id) }}
+                disabled={row.loading}
                 aria-label={`Validate ${ep.label} path`}
-                className="rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors flex-shrink-0"
+                className="rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors flex-shrink-0 inline-flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                Validate
+                {row.loading ? (
+                  <>
+                    <Spinner />
+                    Validating…
+                  </>
+                ) : (
+                  'Validate'
+                )}
               </button>
-              <StubNotice visible={row.stubVisible} />
             </div>
           )
         })}
@@ -220,21 +285,34 @@ const INITIAL_DEPENDENCIES: Dependency[] = [
 ]
 
 function DependenciesSection() {
-  const [deps] = useState<Dependency[]>(INITIAL_DEPENDENCIES)
-  const [checkAllStub, setCheckAllStub] = useState(false)
-  const checkAllTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [deps, setDeps] = useState<Dependency[]>(INITIAL_DEPENDENCIES)
+  const [checkAllLoading, setCheckAllLoading] = useState(false)
+  const [checkAllError, setCheckAllError] = useState<string | null>(null)
 
-  useEffect(() => {
-    return () => { if (checkAllTimer.current !== null) clearTimeout(checkAllTimer.current) }
-  }, [])
-
-  const handleCheckAll = useCallback(() => {
-    if (checkAllTimer.current !== null) clearTimeout(checkAllTimer.current)
-    setCheckAllStub(true)
-    checkAllTimer.current = setTimeout(() => {
-      setCheckAllStub(false)
-      checkAllTimer.current = null
-    }, 3000)
+  const handleCheckAll = useCallback(async () => {
+    setCheckAllLoading(true)
+    setCheckAllError(null)
+    try {
+      const result = await apiClient.get<CheckDepsResponse>('/api/v1/environment/check-dependencies')
+      const depMap = new Map(result.dependencies.map((d) => [d.name, d]))
+      setDeps((prev) =>
+        prev.map((dep) => {
+          const found = depMap.get(dep.name)
+          if (found === undefined) return dep
+          return {
+            name: dep.name,
+            path: found.path ?? '',
+            status: (found.found ? 'valid' : 'invalid') as ValidationStatus,
+            version: found.version ?? '',
+          }
+        }),
+      )
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error'
+      setCheckAllError(message)
+    } finally {
+      setCheckAllLoading(false)
+    }
   }, [])
 
   return (
@@ -301,13 +379,28 @@ function DependenciesSection() {
       <div className="mt-2 flex items-center gap-2">
         <button
           type="button"
-          onClick={handleCheckAll}
+          onClick={() => { void handleCheckAll() }}
+          disabled={checkAllLoading}
           aria-label="Check all dependencies"
-          className="rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+          className="rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors inline-flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          Check All
+          {checkAllLoading ? (
+            <>
+              <Spinner />
+              Checking…
+            </>
+          ) : (
+            'Check All'
+          )}
         </button>
-        <StubNotice visible={checkAllStub} />
+        {checkAllError !== null && (
+          <span
+            role="alert"
+            className="text-xs text-red-600 dark:text-red-400"
+          >
+            {checkAllError}
+          </span>
+        )}
       </div>
     </section>
   )
@@ -321,6 +414,56 @@ interface SSHConnectionsSectionProps {
   profiles: RunProfile[]
 }
 
+interface ParsedSSH {
+  host: string
+  user: string | null
+  port: number
+}
+
+/** Parse SSH connection parameters from a commandTemplate string.
+ *
+ * Handles patterns like:
+ *   ssh user@host
+ *   ssh -p 2222 user@host
+ *   ssh host
+ */
+function parseSSHParams(commandTemplate: string): ParsedSSH | null {
+  // Find the ssh invocation - grab everything after "ssh" up to the next
+  // shell metacharacter or end of string
+  const sshMatch = commandTemplate.match(/\bssh\s+(.*?)(?:\s*(?:&&|\||;|$))/i)
+  if (sshMatch === null) return null
+
+  const args = sshMatch[1].trim()
+  let remaining = args
+  let port = 22
+  let userAtHost = ''
+
+  // Extract -p PORT
+  const portMatch = remaining.match(/-p\s+(\d+)/)
+  if (portMatch !== null) {
+    port = parseInt(portMatch[1], 10)
+    remaining = remaining.replace(portMatch[0], '').trim()
+  }
+
+  // Strip any remaining flags (e.g. -o, -i, etc.)
+  const tokens = remaining.split(/\s+/).filter((t) => !t.startsWith('-'))
+  // The last non-flag token should be user@host or host
+  userAtHost = tokens[tokens.length - 1] ?? ''
+
+  if (userAtHost === '') return null
+
+  const atIndex = userAtHost.indexOf('@')
+  if (atIndex !== -1) {
+    return {
+      user: userAtHost.slice(0, atIndex),
+      host: userAtHost.slice(atIndex + 1),
+      port,
+    }
+  }
+
+  return { host: userAtHost, user: null, port }
+}
+
 function SSHConnectionsSection({ profiles }: SSHConnectionsSectionProps) {
   // Derive SSH-capable profiles: those whose commandTemplate contains "ssh"
   const sshProfiles = profiles.filter((p) =>
@@ -328,25 +471,43 @@ function SSHConnectionsSection({ profiles }: SSHConnectionsSectionProps) {
   )
 
   const [connectionStatuses, setConnectionStatuses] = useState<Record<string, ValidationStatus>>({})
-  const [testStubs, setTestStubs] = useState<Record<string, boolean>>({})
-  const testTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  const [loading, setLoading] = useState<Record<string, boolean>>({})
+  const [latency, setLatency] = useState<Record<string, number | null>>({})
+  const [errorMessages, setErrorMessages] = useState<Record<string, string | null>>({})
 
-  useEffect(() => {
-    const timers = testTimers.current
-    return () => { Object.values(timers).forEach(clearTimeout) }
+  const handleTest = useCallback(async (profileId: string, commandTemplate: string) => {
+    const parsed = parseSSHParams(commandTemplate)
+    if (parsed === null) {
+      setConnectionStatuses((prev) => ({ ...prev, [profileId]: 'invalid' }))
+      setErrorMessages((prev) => ({ ...prev, [profileId]: 'Could not parse SSH host from command template' }))
+      return
+    }
+
+    setLoading((prev) => ({ ...prev, [profileId]: true }))
+    setErrorMessages((prev) => ({ ...prev, [profileId]: null }))
+
+    try {
+      const result = await apiClient.post<TestSSHResponse>(
+        '/api/v1/environment/test-ssh',
+        { host: parsed.host, user: parsed.user, port: parsed.port },
+      )
+      setConnectionStatuses((prev) => ({
+        ...prev,
+        [profileId]: result.connected ? 'valid' : 'invalid',
+      }))
+      setLatency((prev) => ({ ...prev, [profileId]: result.latency_ms }))
+      if (result.error !== null) {
+        setErrorMessages((prev) => ({ ...prev, [profileId]: result.error }))
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Connection failed'
+      setConnectionStatuses((prev) => ({ ...prev, [profileId]: 'invalid' }))
+      setErrorMessages((prev) => ({ ...prev, [profileId]: message }))
+      setLatency((prev) => ({ ...prev, [profileId]: null }))
+    } finally {
+      setLoading((prev) => ({ ...prev, [profileId]: false }))
+    }
   }, [])
-
-  const handleTest = useCallback((id: string) => {
-    setTestStubs((prev) => ({ ...prev, [id]: true }))
-    if (testTimers.current[id] !== undefined) clearTimeout(testTimers.current[id])
-    testTimers.current[id] = setTimeout(() => {
-      setTestStubs((prev) => ({ ...prev, [id]: false }))
-      delete testTimers.current[id]
-    }, 3000)
-  }, [])
-
-  // Expose setter for TASK-029 backend wiring; suppress unused-var lint in scaffold
-  void setConnectionStatuses
 
   return (
     <section aria-labelledby="ssh-heading" className="mb-6">
@@ -365,31 +526,57 @@ function SSHConnectionsSection({ profiles }: SSHConnectionsSectionProps) {
         </p>
       ) : (
         <ul aria-label="SSH connection profiles" className="space-y-2">
-          {sshProfiles.map((profile) => (
-            <li
-              key={profile.id}
-              className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-2.5"
-            >
-              <span className="flex-1 min-w-0">
-                <span className="block text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-                  {profile.name}
-                </span>
-                <span className="block text-xs font-mono text-gray-500 dark:text-gray-400 truncate">
-                  {profile.commandTemplate}
-                </span>
-              </span>
-              <StatusBadge status={connectionStatuses[profile.id] ?? 'untested'} />
-              <button
-                type="button"
-                onClick={() => handleTest(profile.id)}
-                aria-label={`Test SSH connection for profile "${profile.name}"`}
-                className="rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors flex-shrink-0"
+          {sshProfiles.map((profile) => {
+            const isLoading = loading[profile.id] ?? false
+            const profileLatency = latency[profile.id]
+            const errorMsg = errorMessages[profile.id] ?? null
+            const status = connectionStatuses[profile.id] ?? 'untested'
+            return (
+              <li
+                key={profile.id}
+                className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-2.5"
               >
-                Test
-              </button>
-              <StubNotice visible={testStubs[profile.id] ?? false} />
-            </li>
-          ))}
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                    {profile.name}
+                  </span>
+                  <span className="block text-xs font-mono text-gray-500 dark:text-gray-400 truncate">
+                    {profile.commandTemplate}
+                  </span>
+                  {errorMsg !== null && (
+                    <span
+                      role="alert"
+                      className="block text-xs text-red-600 dark:text-red-400 mt-0.5"
+                    >
+                      {errorMsg}
+                    </span>
+                  )}
+                </span>
+                <StatusBadge status={status} />
+                {status === 'valid' && profileLatency !== null && profileLatency !== undefined && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    {profileLatency} ms
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => { void handleTest(profile.id, profile.commandTemplate) }}
+                  disabled={isLoading}
+                  aria-label={`Test SSH connection for profile "${profile.name}"`}
+                  className="rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors flex-shrink-0 inline-flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isLoading ? (
+                    <>
+                      <Spinner />
+                      Testing…
+                    </>
+                  ) : (
+                    'Test'
+                  )}
+                </button>
+              </li>
+            )
+          })}
         </ul>
       )}
     </section>
