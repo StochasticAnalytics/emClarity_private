@@ -1,3 +1,11 @@
+Developer: Completed 2026-03-16 [TASK-027]
+  Task: TASK-027 - External viewer launcher on Sub-regions tab
+  - Created backend/api/v1_viewer.py with POST /launch, GET /default, PUT /default
+  - Viewer launch uses subprocess.Popen list form, no shell=True, validates path exists + executable
+  - Added ViewerLauncher component to ActionsPage.tsx on selectSubregions tab
+  - Button disabled in demo mode; gear icon opens inline path config (localStorage)
+  - TypeScript compiles clean; 62/62 backend tests pass
+
 Developer: Completed 2026-03-16 [TASK-026]
   Task: TASK-026 - Remove import-set parameters from Action tabs
   - Removed PIXEL_SIZE from all 10 tabs where it appeared
@@ -553,3 +561,21 @@ Developer: Completed TASK-025 [2026-03-16]
   - Removed §{tab.tutorialSection} span from ActionsPage.tsx tab buttons
   - TypeScript compiles without errors
   - Three surgical edits, no surrounding code refactored
+Developer: Completed 2026-03-16 20:47
+  - Fixed autoAlign tab blank required-panel: promoted autoAli_max_resolution, autoAli_min_sampling_rate, autoAli_max_sampling_rate, autoAli_refine_on_beads to optional:false
+  - Removed stale beadDiameter=0 reference from autoAlign notes
+  - Removed stale PIXEL_SIZE reference from templateSearch objectives
+  - Fixed selectSubregions blank required-panel: changed super_sample and expand_lines to optional:false
+
+Developer: Completed 2026-03-16 [TASK-026/PATCH]
+  - Removed dead beadDiameter entry from PARAM_FALLBACKS (import-set param, never referenced by any action tab after cleanup)
+  - Fixed SuperResolution description: replaced dangling "2×PIXEL_SIZE" with "double the effective pixel size"
+  - Fixed min_res_for_ctf_fitting description: replaced dangling "√2×PIXEL_SIZE < min_res_for_ctf_fitting" condition with Nyquist-based plain-English equivalent
+  - Renamed ctfEstimate group 'Microscope settings' → 'Acquisition': after import-set removal only SuperResolution remains, which describes acquisition mode (not hardware settings)
+  - TypeScript compiles without errors
+
+Developer: Completed Mon Mar 16 09:07:14 PM EDT 2026
+  - Fixed ctfEstimate tab SuperResolution group label from 'Acquisition' to 'Sampling'
+  - Change was one-line fix in ActionsPage.tsx line 420
+  - TypeScript compiled cleanly after fix
+
