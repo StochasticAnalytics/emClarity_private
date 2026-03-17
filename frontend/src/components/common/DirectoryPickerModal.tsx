@@ -13,8 +13,7 @@
  *                 'file' shows all entries returned by the backend
  */
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { browseDirectory, type FilesystemBrowseResponse } from '@/api/filesystem.ts'
-import { ApiError } from '@/api/client.ts'
+import { browseDirectory, ApiError, type FilesystemBrowseResponse } from '@/api/filesystem.ts'
 
 export interface DirectoryPickerModalProps {
   isOpen: boolean
@@ -250,58 +249,60 @@ export function DirectoryPickerModal({
         </div>
 
         {/* Breadcrumb navigation */}
-        <div className="flex flex-wrap items-center gap-0.5 border-b border-gray-100 px-4 py-2 dark:border-gray-800">
+        <nav aria-label="Breadcrumb" className="border-b border-gray-100 px-4 py-2 dark:border-gray-800">
           {breadcrumbs.length > 0 ? (
-            breadcrumbs.map((seg, idx) => (
-              <span key={seg.path} className="flex items-center">
-                {idx > 0 && (
-                  <svg
-                    className="mx-0.5 h-3 w-3 shrink-0 text-gray-400"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    aria-hidden="true"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                )}
-                {idx === breadcrumbs.length - 1 ? (
-                  /* Current segment — not clickable */
-                  <span
-                    aria-current="page"
-                    title={seg.path}
-                    className="max-w-[120px] truncate font-mono text-xs font-medium text-gray-700 dark:text-gray-300"
-                  >
-                    {seg.label}
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => navigate(seg.path)}
-                    aria-label={`Navigate to ${seg.path}`}
-                    title={seg.path}
-                    className="max-w-[120px] truncate rounded px-1 font-mono text-xs text-blue-600 hover:bg-gray-100 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-blue-400 dark:hover:bg-gray-800"
-                  >
-                    {seg.label}
-                  </button>
-                )}
-              </span>
-            ))
+            <ol className="flex flex-wrap items-center gap-0.5">
+              {breadcrumbs.map((seg, idx) => (
+                <li key={seg.path} className="flex items-center">
+                  {idx > 0 && (
+                    <svg
+                      className="mx-0.5 h-3 w-3 shrink-0 text-gray-400"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  )}
+                  {idx === breadcrumbs.length - 1 ? (
+                    /* Current segment — not clickable */
+                    <span
+                      aria-current="page"
+                      title={seg.path}
+                      className="max-w-[120px] truncate font-mono text-xs font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {seg.label}
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => navigate(seg.path)}
+                      aria-label={`Navigate to ${seg.path}`}
+                      title={seg.path}
+                      className="max-w-[120px] truncate rounded px-1 font-mono text-xs text-blue-600 hover:bg-gray-100 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-blue-400 dark:hover:bg-gray-800"
+                    >
+                      {seg.label}
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ol>
           ) : (
             <span className="font-mono text-xs text-gray-400 dark:text-gray-500">…</span>
           )}
-        </div>
+        </nav>
 
         {/* Directory listing */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto" aria-live="polite" aria-atomic="true">
           {isLoading && (
-            <p className="px-4 py-6 text-center text-sm text-gray-400 dark:text-gray-500">
+            <p role="status" className="px-4 py-6 text-center text-sm text-gray-400 dark:text-gray-500">
               Loading…
             </p>
           )}
 
           {!isLoading && error !== null && (
-            <div className="px-4 py-4">
+            <div className="px-4 py-4" role="alert">
               <p className="mb-2 text-sm text-red-600 dark:text-red-400">{error}</p>
               <button
                 type="button"
@@ -360,7 +361,7 @@ export function DirectoryPickerModal({
                 onSelect(data.path)
               }
             }}
-            disabled={data === null || isLoading}
+            disabled={!data?.path || isLoading}
             className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-blue-500 dark:hover:bg-blue-600"
           >
             Select
