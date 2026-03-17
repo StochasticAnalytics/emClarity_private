@@ -78,15 +78,12 @@ class ParameterService:
     def save_parameter_file(self, param_file: ParameterFile) -> None:
         """Write parameter values to a MATLAB-style .m file atomically.
 
-        Uses :func:`atomic_write` (temp file + ``os.replace()``) to
+        Uses :func:`atomic_write_text` (temp file + ``os.replace()``) to
         prevent partial writes from corrupting the parameter file on disk.
         """
-        from backend.utils.safe_json import atomic_write as _atomic_write_json
-        import os as _os
-        from pathlib import Path as _Path
+        from backend.utils.safe_json import atomic_write_text
 
         file_path = Path(param_file.path)
-        file_path.parent.mkdir(parents=True, exist_ok=True)
 
         lines: list[str] = []
         lines.append("% emClarity parameter file")
@@ -99,17 +96,7 @@ class ParameterService:
 
         content = "\n".join(lines) + "\n"
 
-        # Atomic write: write to temp file then os.replace()
-        tmp = file_path.with_suffix(".tmp")
-        try:
-            tmp.write_text(content)
-            _os.replace(tmp, file_path)
-        except Exception:
-            try:
-                tmp.unlink(missing_ok=True)
-            except OSError:
-                pass
-            raise
+        atomic_write_text(file_path, content)
 
     def validate_parameters(
         self, parameters: list[ParameterValue]

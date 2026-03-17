@@ -32,6 +32,34 @@ T = TypeVar("T")
 _lock = threading.Lock()
 
 
+def atomic_write_text(path: Path | str, content: str) -> None:
+    """Write *content* as text to *path* atomically.
+
+    Writes to a temporary file in the same directory, then uses
+    ``os.replace()`` which is atomic on POSIX filesystems.  This avoids
+    partial/corrupt reads if the process is interrupted mid-write.
+
+    Unlike :func:`atomic_write`, this accepts a raw string rather than
+    JSON-serialisable data.
+
+    Args:
+        path: Destination file path.
+        content: Text content to write.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    try:
+        tmp.write_text(content)
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+
+
 def atomic_write(path: Path | str, data: Any, *, indent: int = 2) -> None:
     """Write *data* as JSON to *path* atomically.
 
@@ -57,6 +85,38 @@ def atomic_write(path: Path | str, data: Any, *, indent: int = 2) -> None:
         except OSError:
             pass
         raise
+
+
+def locked_json_read(path: Path | str) -> Any:
+    """Thread-safe AND process-safe JSON read (no write-back).
+
+    Acquires dual locks (``threading.Lock`` + ``fcntl.flock``) to ensure
+    a consistent read even if a concurrent writer is active, but does
+    **not** write the data back to disk afterwards.
+
+    Use this instead of :func:`locked_json_read_write` when you only
+    need to read the file contents without modifying them.
+
+    Args:
+        path: Path to the JSON file.
+
+    Returns:
+        The parsed JSON data, or ``None`` if the file is empty or missing.
+    """
+    path = Path(path)
+    if not path.exists():
+        return None
+
+    with _lock:
+        with open(path, "r") as f:
+            fcntl.flock(f.fileno(), fcntl.LOCK_SH)
+            try:
+                content = f.read()
+                if content.strip():
+                    return json.loads(content)
+                return None
+            finally:
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
 
 def locked_json_read_write(

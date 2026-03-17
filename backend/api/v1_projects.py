@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 
 from backend.models.project import ProjectState, TiltSeries
 from backend.services.project_service import ProjectService
-from backend.utils.safe_json import atomic_write, locked_json_read_write
+from backend.utils.safe_json import atomic_write, locked_json_read, locked_json_read_write
 
 log = logging.getLogger(__name__)
 
@@ -61,17 +61,13 @@ def _save_registry() -> None:
 def _load_registry() -> None:
     """Load the project registry from disk (called once at module import).
 
-    Uses :func:`locked_json_read_write` so that a concurrent writer
-    cannot produce a partial read.
+    Uses :func:`locked_json_read` so that a concurrent writer
+    cannot produce a partial read, without redundantly rewriting the file.
     """
     if not _REGISTRY_FILE.exists():
         return
     try:
-        # Read the file content through the lock but don't modify it
-        def _identity(data: Any) -> Any:
-            return data
-
-        raw = locked_json_read_write(_REGISTRY_FILE, _identity)
+        raw = locked_json_read(_REGISTRY_FILE)
         if raw is None:
             return
 
