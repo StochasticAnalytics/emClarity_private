@@ -82,6 +82,9 @@ def validate_path(request: ValidatePathRequest) -> ValidatePathResponse:
     if not os.path.exists(path):
         return ValidatePathResponse(valid=False, version=None, error=f"Path does not exist: {path}")
 
+    if not os.path.isfile(path):
+        return ValidatePathResponse(valid=False, version=None, error=f"Path is not a file: {path}")
+
     if not os.access(path, os.X_OK):
         return ValidatePathResponse(valid=False, version=None, error=f"Path is not executable: {path}")
 
@@ -117,6 +120,7 @@ def test_ssh(request: TestSshRequest) -> TestSshResponse:
         "-o", "BatchMode=yes",
         "-o", "StrictHostKeyChecking=accept-new",
         "-p", str(request.port),
+        "--",
         user_at_host,
         "true",
     ]
@@ -141,6 +145,10 @@ def test_ssh(request: TestSshRequest) -> TestSshResponse:
         return TestSshResponse(connected=False, error="SSH connection timed out", latency_ms=None)
     except FileNotFoundError:
         return TestSshResponse(connected=False, error="ssh executable not found", latency_ms=None)
+    except PermissionError as exc:
+        return TestSshResponse(connected=False, error=f"Permission denied running ssh: {exc}", latency_ms=None)
+    except OSError as exc:
+        return TestSshResponse(connected=False, error=f"OS error running ssh: {exc}", latency_ms=None)
 
 
 # ---------------------------------------------------------------------------

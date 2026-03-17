@@ -132,7 +132,7 @@ function Spinner() {
       <path
         className="opacity-75"
         fill="currentColor"
-        d="M4 12a8 8 0 018-8V0C5.373 0 12 0 12 0v4a8 8 0 00-8 8H0z"
+        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
       />
     </svg>
   )
@@ -470,9 +470,9 @@ function parseSSHParams(commandTemplate: string): ParsedSSH | null {
   }
 
   // Strip any remaining flags (e.g. -o, -i, etc.)
+  // The first non-flag token is user@host; any tokens after it are remote commands.
   const tokens = remaining.split(/\s+/).filter((t) => !t.startsWith('-'))
-  // The last non-flag token should be user@host or host
-  userAtHost = tokens[tokens.length - 1] ?? ''
+  userAtHost = tokens[0] ?? ''
 
   if (userAtHost === '') return null
 
@@ -575,6 +575,17 @@ function SSHConnectionsSection({ profiles }: SSHConnectionsSectionProps) {
                       {errorMsg}
                     </span>
                   )}
+                </span>
+                {/* aria-live region: always mounted so screen readers register it before content is injected */}
+                <span
+                  role="status"
+                  aria-live="polite"
+                  aria-atomic="true"
+                  className="sr-only"
+                >
+                  {status !== 'untested'
+                    ? `${profile.name}: ${status}${status === 'valid' && profileLatency !== null ? `. Latency ${profileLatency.toFixed(1)} ms` : errorMsg ? `. ${errorMsg}` : ''}`
+                    : ''}
                 </span>
                 <StatusBadge status={status} />
                 {status === 'valid' && profileLatency !== null && profileLatency !== undefined && (
