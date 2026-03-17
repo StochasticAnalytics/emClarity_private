@@ -55,7 +55,11 @@ def _save_registry() -> None:
 
         locked_json_read_write(_REGISTRY_FILE, _replace)
     except Exception as exc:  # noqa: BLE001
-        log.warning("Could not persist project registry: %s", exc)
+        log.error("Could not persist project registry: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to persist project registry: {exc}",
+        ) from exc
 
 
 def _load_registry() -> None:
@@ -361,12 +365,13 @@ async def mark_project_accessed(project_id: str) -> ProjectResponse:
     Used by the frontend to track recently accessed projects.
     Returns 404 if the project ID is not found.
     """
-    record = _get_project(project_id)
-    if record is None:
-        raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found")
+    with _registry_lock:
+        record = _projects.get(project_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found")
+        record.last_accessed = datetime.now(timezone.utc).isoformat()
+        # record is already in _projects; no need to re-insert
 
-    record.last_accessed = datetime.now(timezone.utc).isoformat()
-    _set_project(project_id, record)
     _save_registry()
 
     return _to_response(record)

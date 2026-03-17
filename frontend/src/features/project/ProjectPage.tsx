@@ -7,8 +7,9 @@
  *  2. Open Existing Project – enter a directory path and call
  *     POST /api/v1/projects/load to open it.
  *
- * Also shows recent projects from localStorage (with Zod-validated entries).
- * Stale entries (backend returns 404) are automatically removed.
+ * Recent projects are fetched from the server-side registry via
+ * useRecentProjects. Stale entries (backend returns 404) are automatically
+ * removed.
  */
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -390,7 +391,7 @@ function LoadProjectPanel({ onLoaded }: LoadProjectPanelProps) {
 interface RecentProjectsListProps {
   projects: { id: string; name: string; directory: string; lastAccessed: string }[]
   onOpen: (projectId: string, name: string, directory: string) => void
-  onRemove: (projectId: string) => void
+  onRemove: (projectId: string) => void | Promise<void>
 }
 
 function RecentProjectsList({ projects, onOpen, onRemove }: RecentProjectsListProps) {
@@ -426,7 +427,7 @@ function RecentProjectsList({ projects, onOpen, onRemove }: RecentProjectsListPr
         if (existing !== undefined) clearTimeout(existing)
         const timer = setTimeout(() => {
           removeTimersRef.current.delete(id)
-          onRemove(id)
+          void onRemove(id)
         }, 2000)
         removeTimersRef.current.set(id, timer)
       } else {
@@ -479,11 +480,11 @@ function RecentProjectsList({ projects, onOpen, onRemove }: RecentProjectsListPr
               <span className="block truncate font-mono text-xs text-gray-400 dark:text-gray-500">
                 {p.directory}
               </span>
-              {errorId === p.id && (
-                <span className="text-xs text-red-500">
-                  {errorMessage ?? 'Project not found on server — entry removed'}
-                </span>
-              )}
+              <span aria-live="assertive" className="text-xs text-red-500">
+                {errorId === p.id
+                  ? (errorMessage ?? 'Project not found on server — entry removed')
+                  : ''}
+              </span>
             </div>
             <div className="shrink-0 text-right">
               <span className="block text-xs text-gray-400 dark:text-gray-500">
@@ -491,7 +492,7 @@ function RecentProjectsList({ projects, onOpen, onRemove }: RecentProjectsListPr
               </span>
               <button
                 type="button"
-                onClick={() => onRemove(p.id)}
+                onClick={() => { void onRemove(p.id) }}
                 className="mt-0.5 text-xs text-gray-300 hover:text-red-500 dark:text-gray-600 dark:hover:text-red-400"
                 aria-label={`Remove ${p.name} from recent projects`}
               >
@@ -517,6 +518,8 @@ interface NewProjectDialogProps {
 
 function NewProjectDialog({ isOpen, onClose, onCreated }: NewProjectDialogProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
 
   // Escape key + focus trap
   useEffect(() => {
@@ -529,7 +532,7 @@ function NewProjectDialog({ isOpen, onClose, onCreated }: NewProjectDialogProps)
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        onClose()
+        onCloseRef.current()
         return
       }
 
@@ -562,7 +565,7 @@ function NewProjectDialog({ isOpen, onClose, onCreated }: NewProjectDialogProps)
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, onClose])
+  }, [isOpen])
 
   if (!isOpen) return null
 

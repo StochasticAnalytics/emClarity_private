@@ -64,18 +64,11 @@ export function useRecentProjects() {
         const localEntries: unknown = JSON.parse(raw)
         if (!Array.isArray(localEntries) || localEntries.length === 0) return
 
-        // Only migrate if server projects have no last_accessed timestamps
-        const anyServerTimestamp = serverProjects.some((p) => p.last_accessed !== null)
-        if (anyServerTimestamp) {
-          // Server already has timestamps; just clear localStorage
-          localStorage.removeItem(STORAGE_KEY)
-          return
-        }
+        // Build a map of server projects by ID for matching
+        const serverById = new Map(serverProjects.map((p) => [p.id, p]))
 
-        // Build a set of server project IDs for matching
-        const serverIds = new Set(serverProjects.map((p) => p.id))
-
-        // Call PATCH for each matching project
+        // Collect localStorage IDs that exist on the server
+        const localIds: string[] = []
         for (const entry of localEntries) {
           if (
             entry !== null &&
@@ -83,23 +76,32 @@ export function useRecentProjects() {
             'id' in entry &&
             typeof (entry as Record<string, unknown>).id === 'string'
           ) {
-            const id = (entry as Record<string, unknown>).id as string
-            if (serverIds.has(id)) {
-              try {
-                await apiClient.patch<ProjectResponse>(
-                  `/api/v1/projects/${id}/accessed`,
-                )
-              } catch {
-                // Best effort – continue with remaining entries
-              }
+            localIds.push((entry as Record<string, unknown>).id as string)
+          }
+        }
+
+        // Only migrate entries whose server record has no timestamp yet
+        let migratedAny = false
+        for (const id of localIds) {
+          const serverRecord = serverById.get(id)
+          if (serverRecord && serverRecord.last_accessed === null) {
+            try {
+              await apiClient.patch<ProjectResponse>(
+                `/api/v1/projects/${id}/accessed`,
+              )
+              migratedAny = true
+            } catch {
+              // Best effort – continue with remaining entries
             }
           }
         }
 
         localStorage.removeItem(STORAGE_KEY)
 
-        // Refetch to get updated timestamps
-        await fetchProjects()
+        // Refetch to get updated timestamps only if we migrated entries
+        if (migratedAny) {
+          await fetchProjects()
+        }
       } catch {
         // Migration is best-effort; don't break the hook
       }
@@ -142,8 +144,9 @@ export function useRecentProjects() {
           `/api/v1/projects/${entry.id}/accessed`,
         )
         await fetchProjects()
-      } catch {
-        // Best effort – at least add to local state
+      } catch (err) {
+        // Server call failed – add optimistic entry but log for debugging
+        console.warn('[useRecentProjects] addProject failed, using optimistic entry:', err)
         const now = new Date().toISOString()
         setProjects((prev) => {
           const filtered = prev.filter((p) => p.id !== entry.id)
