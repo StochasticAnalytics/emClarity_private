@@ -75,16 +75,21 @@ function StatusBadge({ status }: { status: ValidationStatus }) {
   )
 }
 
-/** Inline "Not yet implemented" notice that auto-dismisses. */
+/** Inline "Not yet implemented" notice that auto-dismisses.
+ *
+ * The aria-live region must always be present in the DOM so that screen
+ * readers register it before any content is injected. Mounting with content
+ * already present (by returning null then a populated span) means the
+ * announcement is skipped. We keep the element mounted at all times and only
+ * swap its text content. */
 function StubNotice({ visible }: { visible: boolean }) {
-  if (!visible) return null
   return (
     <span
       role="status"
       aria-live="polite"
       className="ml-2 text-xs text-amber-600 dark:text-amber-400 font-medium"
     >
-      Not yet implemented
+      {visible ? 'Not yet implemented' : ''}
     </span>
   )
 }
