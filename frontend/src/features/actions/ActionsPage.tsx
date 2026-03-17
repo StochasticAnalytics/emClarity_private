@@ -416,8 +416,8 @@ const ACTION_TABS: ActionTabDef[] = [
       'fixedStacks/ctf/<prefix>_ali1_ctf.tlt — tilt-series CTF metadata',
     ],
     params: [
-      // Acquisition (required *)
-      { name: 'SuperResolution',       group: 'Acquisition',         optional: false },
+      // Sampling (required *)
+      { name: 'SuperResolution',       group: 'Sampling',            optional: false },
       // Fiducials (optional)
       { name: 'erase_beads_after_ctf', group: 'Fiducials',           optional: true },
       // Tilt-scheme (required *)
