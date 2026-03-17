@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import threading
 import uuid
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,7 @@ from pydantic import BaseModel, Field
 
 from backend.models.project import ProjectState, TiltSeries
 from backend.services.project_service import ProjectService
+from backend.utils.safe_json import atomic_write, locked_json_read_write
 
 log = logging.getLogger(__name__)
 
@@ -33,37 +35,79 @@ router = APIRouter(prefix="/api/v1/projects", tags=["projects-v1"])
 _REGISTRY_DIR = Path.home() / ".emclarity"
 _REGISTRY_FILE = _REGISTRY_DIR / "projects.json"
 
+# In-process lock protecting _projects dict access.
+_registry_lock = threading.Lock()
+
 
 def _save_registry() -> None:
-    """Persist the in-memory project registry to disk."""
+    """Persist the in-memory project registry to disk using dual-locking.
+
+    Serialises the current in-memory ``_projects`` dict through the
+    locked-JSON read-modify-write pattern so that concurrent threads
+    and processes cannot corrupt the file.
+    """
     try:
-        _REGISTRY_DIR.mkdir(parents=True, exist_ok=True)
-        data = {k: v.model_dump(mode="json") for k, v in _projects.items()}
-        _REGISTRY_FILE.write_text(json.dumps(data, indent=2))
+        with _registry_lock:
+            snapshot = {k: v.model_dump(mode="json") for k, v in _projects.items()}
+
+        def _replace(_existing: Any) -> dict[str, Any]:
+            return snapshot
+
+        locked_json_read_write(_REGISTRY_FILE, _replace)
     except Exception as exc:  # noqa: BLE001
         log.warning("Could not persist project registry: %s", exc)
 
 
 def _load_registry() -> None:
-    """Load the project registry from disk (called once at module import)."""
+    """Load the project registry from disk (called once at module import).
+
+    Uses :func:`locked_json_read_write` so that a concurrent writer
+    cannot produce a partial read.
+    """
     if not _REGISTRY_FILE.exists():
         return
     try:
-        raw = json.loads(_REGISTRY_FILE.read_text())
-        for project_id, record_data in raw.items():
-            try:
-                _projects[project_id] = _ProjectRecord(**record_data)
-            except Exception as exc:  # noqa: BLE001
-                log.warning("Skipping corrupt registry entry %s: %s", project_id, exc)
+        # Read the file content through the lock but don't modify it
+        def _identity(data: Any) -> Any:
+            return data
+
+        raw = locked_json_read_write(_REGISTRY_FILE, _identity)
+        if raw is None:
+            return
+
+        with _registry_lock:
+            for project_id, record_data in raw.items():
+                try:
+                    _projects[project_id] = _ProjectRecord(**record_data)
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("Skipping corrupt registry entry %s: %s", project_id, exc)
     except Exception as exc:  # noqa: BLE001
         log.warning("Could not load project registry from %s: %s", _REGISTRY_FILE, exc)
+
+
+def _get_projects() -> dict[str, _ProjectRecord]:
+    """Return a snapshot of the in-memory registry (thread-safe)."""
+    with _registry_lock:
+        return dict(_projects)
+
+
+def _get_project(project_id: str) -> _ProjectRecord | None:
+    """Look up a single project by ID (thread-safe)."""
+    with _registry_lock:
+        return _projects.get(project_id)
+
+
+def _set_project(project_id: str, record: _ProjectRecord) -> None:
+    """Insert or update a project in the in-memory registry (thread-safe)."""
+    with _registry_lock:
+        _projects[project_id] = record
 
 
 # ---------------------------------------------------------------------------
 # In-memory project registry (keyed by UUID string)
 # ---------------------------------------------------------------------------
 
-_projects: dict[str, "_ProjectRecord"] = {}
+_projects: dict[str, _ProjectRecord] = {}
 _project_service = ProjectService()
 
 # Load persisted registry at startup
@@ -297,7 +341,7 @@ async def create_project(request: CreateProjectRequest) -> ProjectResponse:
         parameters=request.parameters,
         current_cycle=0,
     )
-    _projects[project_id] = record
+    _set_project(project_id, record)
     _save_registry()
 
     return ProjectResponse(
@@ -329,7 +373,7 @@ async def load_project(request: LoadProjectRequest) -> ProjectResponse:
 
     # Check if this directory is already registered (by resolved path)
     resolved = str(project_path.resolve())
-    for existing_id, existing_record in _projects.items():
+    for existing_id, existing_record in _get_projects().items():
         if Path(existing_record.directory).resolve() == Path(resolved):
             return ProjectResponse(
                 id=existing_id,
@@ -356,7 +400,7 @@ async def load_project(request: LoadProjectRequest) -> ProjectResponse:
         parameters={},
         current_cycle=project.current_cycle,
     )
-    _projects[project_id] = record
+    _set_project(project_id, record)
     _save_registry()
 
     return ProjectResponse(
@@ -375,7 +419,7 @@ async def get_project(project_id: str) -> ProjectResponse:
 
     Returns 404 if the project ID is not found.
     """
-    record = _projects.get(project_id)
+    record = _get_project(project_id)
     if record is None:
         raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found")
 
@@ -396,7 +440,7 @@ async def get_project_statistics(project_id: str) -> ProjectStatisticsResponse:
     Inspects the project directory to count particles and estimate resolution.
     Returns 404 if the project ID is not found.
     """
-    record = _projects.get(project_id)
+    record = _get_project(project_id)
     if record is None:
         raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found")
 
@@ -421,7 +465,7 @@ async def list_tilt_series(project_id: str) -> TiltSeriesListResponse:
     Returns an empty list for new projects with no data in rawData/.
     Returns 404 if the project ID is not found.
     """
-    record = _projects.get(project_id)
+    record = _get_project(project_id)
     if record is None:
         raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found")
 
