@@ -157,7 +157,7 @@ function ThreePanelLayout({
                       </label>
                     )}
                     <button
-                      aria-current={isSelected ? 'true' : undefined}
+                      aria-pressed={isSelected}
                       type="button"
                       className={
                         'flex-1 flex items-center text-left px-2 py-2 text-sm transition-colors ' +
@@ -887,13 +887,14 @@ function ParticleStatsTab() {
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [state, setState] = useState<FetchState<ParticleStats>>({ status: 'loading' })
 
-  const fetchStats = useCallback(async (cycleIndex: number) => {
+  const fetchStats = useCallback(async (cycleIndex: number, signal: { cancelled: boolean }) => {
     setState({ status: 'loading' })
     try {
       const cycleLabel = PARTICLE_STATS_CYCLES[cycleIndex] ?? `cycle${String(cycleIndex).padStart(3, '0')}`
       const data = await apiClient.get<ParticleStats>(`/api/v1/results/particles?cycle=${cycleLabel}`)
-      setState({ status: 'success', data })
+      if (!signal.cancelled) setState({ status: 'success', data })
     } catch (err) {
+      if (signal.cancelled) return
       if (err instanceof ApiError && err.status === 404) {
         setState({ status: 'not_available' })
       } else {
@@ -909,7 +910,9 @@ function ParticleStatsTab() {
   }, [])
 
   useEffect(() => {
-    void fetchStats(selectedIndex)
+    const signal = { cancelled: false }
+    void fetchStats(selectedIndex, signal)
+    return () => { signal.cancelled = true }
   }, [fetchStats, selectedIndex])
 
   return (
@@ -949,7 +952,7 @@ function ParticleStatsTab() {
             <p className="text-sm text-red-700 dark:text-red-400">{state.message}</p>
             <button
               type="button"
-              onClick={() => void fetchStats(selectedIndex)}
+              onClick={() => void fetchStats(selectedIndex, { cancelled: false })}
               className="mt-2 text-sm text-red-600 dark:text-red-400 underline hover:no-underline"
             >
               Retry

@@ -35,7 +35,7 @@ interface ProjectStatistics {
   project_id: string
   particle_count: number | null
   resolution_angstrom: number | null
-  tilt_series_count: number | null
+  tilt_series_count: number
 }
 
 interface AvailableCommandsResponse {
@@ -229,7 +229,9 @@ function getActiveCycleStepId(jobs: Job[]): string {
 
     if (job.status === 'RUNNING' || job.status === 'PENDING') {
       // Whichever command is currently running is the active step
-      return commandToStepId(cmd)
+      const stepId = commandToStepId(cmd)
+      if (stepId !== null) return stepId
+      continue
     }
 
     if (job.status === 'COMPLETED') {
@@ -245,7 +247,7 @@ function getActiveCycleStepId(jobs: Job[]): string {
   return 'avg'
 }
 
-function commandToStepId(command: string): string {
+function commandToStepId(command: string): string | null {
   switch (command) {
     // Pre-cycle linear steps
     case 'autoAlign': return 'align-ts'
@@ -263,7 +265,8 @@ function commandToStepId(command: string): string {
     // Post-cycle step
     case 'reconstruct': return 'final'
     default:
-      return 'avg'
+      console.warn('commandToStepId: unknown command:', command)
+      return null
   }
 }
 
@@ -612,19 +615,19 @@ export function OverviewPage() {
   // Jobs state for stepper (populated by RecentJobsSection)
   const [allJobs, setAllJobs] = useState<Job[]>([])
 
-  const { data: project, isLoading: projectLoading } = useApiQuery<ProjectDetails>(
+  const { data: project, isLoading: projectLoading, isError: projectError } = useApiQuery<ProjectDetails>(
     ['project-details', projectId ?? ''],
     `/api/v1/projects/${projectId ?? ''}`,
     { enabled: !!projectId && !isDemo },
   )
 
-  const { data: statistics, isLoading: statsLoading } = useApiQuery<ProjectStatistics>(
+  const { data: statistics, isLoading: statsLoading, isError: statsError } = useApiQuery<ProjectStatistics>(
     ['project-statistics', projectId ?? ''],
     `/api/v1/projects/${projectId ?? ''}/statistics`,
     { enabled: !!projectId && !isDemo },
   )
 
-  const { data: workflowData } = useApiQuery<AvailableCommandsResponse>(
+  const { data: workflowData, isError: workflowError } = useApiQuery<AvailableCommandsResponse>(
     ['overview-workflow-state', projectId ?? ''],
     `/api/v1/workflow/${projectId ?? ''}/available-commands`,
     { enabled: !!projectId && !isDemo },
@@ -642,6 +645,7 @@ export function OverviewPage() {
   }, [project, projectId, addProject])
 
   const isLoading = projectLoading || statsLoading
+  const isError = projectError || statsError || workflowError
 
   const displayName = activeProject?.name ?? project?.name ?? (isDemo ? null : projectId) ?? '—'
   const state = workflowData?.state ?? activeProject?.state ?? project?.state ?? 'UNINITIALIZED'
@@ -675,6 +679,15 @@ export function OverviewPage() {
         <div className="flex items-center gap-3 py-8">
           <div className="h-6 w-6 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
           <span className="text-gray-500 dark:text-gray-400">Loading project details…</span>
+        </div>
+      ) : isError ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-6 dark:border-red-800 dark:bg-red-900/20">
+          <h3 className="text-sm font-semibold text-red-800 dark:text-red-300">
+            Failed to load project data
+          </h3>
+          <p className="mt-1 text-sm text-red-700 dark:text-red-400">
+            Could not fetch project details from the server. Check that the backend is running and the project ID is valid.
+          </p>
         </div>
       ) : (
         <>
@@ -715,8 +728,7 @@ export function OverviewPage() {
             />
             <StatCard
               label="Tilt Series"
-              value={tiltCount !== null && tiltCount !== undefined ? String(tiltCount) : '—'}
-              sub={statistics !== undefined && tiltCount === null ? 'Available after import' : undefined}
+              value={tiltCount !== undefined ? String(tiltCount) : '—'}
             />
             <StatCard
               label="Particles"

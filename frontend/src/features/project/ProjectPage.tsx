@@ -96,7 +96,15 @@ function NewProjectForm({ onCreated }: NewProjectFormProps) {
         onCreated(response.id, data.name, data.directory)
       } catch (err) {
         if (err instanceof ApiError) {
-          setSubmitError(`Failed to create project: ${err.message}`)
+          const rawBody: unknown = err.body
+          const detail =
+            rawBody !== null &&
+            typeof rawBody === 'object' &&
+            'detail' in rawBody &&
+            typeof (rawBody as Record<string, unknown>).detail === 'string'
+              ? ((rawBody as Record<string, unknown>).detail as string)
+              : undefined
+          setSubmitError(`Failed to create project: ${detail ?? err.message}`)
         } else {
           setSubmitError('An unexpected error occurred. Is the backend running?')
         }
@@ -388,11 +396,12 @@ interface RecentProjectsListProps {
 function RecentProjectsList({ projects, onOpen, onRemove }: RecentProjectsListProps) {
   const [loadingId, setLoadingId] = useState<string | null>(null)
   const [errorId, setErrorId] = useState<string | null>(null)
-  const removeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const removeTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
 
   useEffect(() => {
+    const timers = removeTimersRef.current
     return () => {
-      if (removeTimerRef.current !== null) clearTimeout(removeTimerRef.current)
+      timers.forEach((timer) => clearTimeout(timer))
     }
   }, [])
 
@@ -411,11 +420,13 @@ function RecentProjectsList({ projects, onOpen, onRemove }: RecentProjectsListPr
         // Show error on the entry first, then remove it after a brief delay
         // so the user sees the "not found" message before it disappears.
         setErrorId(id)
-        if (removeTimerRef.current !== null) clearTimeout(removeTimerRef.current)
-        removeTimerRef.current = setTimeout(() => {
-          removeTimerRef.current = null
+        const existing = removeTimersRef.current.get(id)
+        if (existing !== undefined) clearTimeout(existing)
+        const timer = setTimeout(() => {
+          removeTimersRef.current.delete(id)
           onRemove(id)
         }, 2000)
+        removeTimersRef.current.set(id, timer)
       }
     } finally {
       setLoadingId(null)
