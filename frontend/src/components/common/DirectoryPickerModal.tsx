@@ -78,6 +78,9 @@ export function DirectoryPickerModal({
 
     setIsLoading(true)
     setError(null)
+    // Clear stale data so breadcrumbs don't show the previous path while
+    // the new fetch is in-flight.
+    setData(null)
 
     browseDirectory(path, controller.signal)
       .then((result) => {
@@ -99,8 +102,10 @@ export function DirectoryPickerModal({
               ? ((rawBody as Record<string, unknown>).detail as string)
               : null
           message = detail ?? err.message
-        } else if (err instanceof TypeError) {
-          // Network / connection error — fetch() itself threw before receiving a response.
+        } else if (err instanceof TypeError && /fetch|network/i.test(err.message)) {
+          // Network / connection error — fetch() itself threw before receiving a
+          // response.  We narrow on the message so that programming TypeErrors
+          // (e.g. "Cannot read properties of null") are not misreported here.
           message = 'Cannot connect to server — is the backend running?'
         } else if (err instanceof Error) {
           message = err.message
@@ -232,7 +237,10 @@ export function DirectoryPickerModal({
                 )}
                 {idx === breadcrumbs.length - 1 ? (
                   /* Current segment — not clickable */
-                  <span className="max-w-[120px] truncate font-mono text-xs font-medium text-gray-700 dark:text-gray-300">
+                  <span
+                    title={seg.path}
+                    className="max-w-[120px] truncate font-mono text-xs font-medium text-gray-700 dark:text-gray-300"
+                  >
                     {seg.label}
                   </span>
                 ) : (
@@ -240,6 +248,7 @@ export function DirectoryPickerModal({
                     type="button"
                     onClick={() => navigate(seg.path)}
                     aria-label={`Navigate to ${seg.path}`}
+                    title={seg.path}
                     className="max-w-[120px] truncate rounded px-1 font-mono text-xs text-blue-600 hover:bg-gray-100 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-blue-400 dark:hover:bg-gray-800"
                   >
                     {seg.label}
