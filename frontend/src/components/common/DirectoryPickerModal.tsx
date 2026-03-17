@@ -70,11 +70,20 @@ export function DirectoryPickerModal({
 
   const dialogRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
+  // Tracks the path that was last *requested* so the Retry button can re-attempt
+  // the exact same path even after data has been cleared to null.
+  const lastRequestedPathRef = useRef<string | undefined>(initialPath)
+  // Holds the element that had focus before the modal opened, so focus can be
+  // restored on close (WCAG 2.1 SC 2.4.3).
+  const previousFocusRef = useRef<HTMLElement | null>(null)
 
   const navigate = useCallback((path?: string) => {
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
+
+    // Record the path we are about to request so Retry can replay it.
+    lastRequestedPathRef.current = path
 
     setIsLoading(true)
     setError(null)
@@ -102,10 +111,15 @@ export function DirectoryPickerModal({
               ? ((rawBody as Record<string, unknown>).detail as string)
               : null
           message = detail ?? err.message
-        } else if (err instanceof TypeError && /fetch|network/i.test(err.message)) {
-          // Network / connection error — fetch() itself threw before receiving a
-          // response.  We narrow on the message so that programming TypeErrors
-          // (e.g. "Cannot read properties of null") are not misreported here.
+        } else if (
+          err instanceof TypeError &&
+          // Catch cross-browser network / connection errors before a response is
+          // received.  Chrome/Firefox use messages like "Failed to fetch" or
+          // "NetworkError"; Safari uses "Load failed".  We narrow on the message
+          // so that programming TypeErrors (e.g. "Cannot read properties of null")
+          // are not misreported here.
+          /fetch|network|load failed/i.test(err.message)
+        ) {
           message = 'Cannot connect to server — is the backend running?'
         } else if (err instanceof Error) {
           message = err.message
@@ -118,12 +132,22 @@ export function DirectoryPickerModal({
       })
   }, [])
 
-  // Load initial directory when modal opens
+  // Load initial directory when modal opens; restore focus when it closes.
   useEffect(() => {
     if (!isOpen) return
+
+    // Save the element that currently has focus so we can return to it on close.
+    previousFocusRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null
+
     navigate(initialPath)
+
     return () => {
       abortRef.current?.abort()
+      // Restore focus to the element that triggered the modal (WCAG 2.1 SC 2.4.3).
+      previousFocusRef.current?.focus()
+      previousFocusRef.current = null
     }
   }, [isOpen, initialPath, navigate])
 
@@ -274,7 +298,7 @@ export function DirectoryPickerModal({
               <p className="mb-2 text-sm text-red-600 dark:text-red-400">{error}</p>
               <button
                 type="button"
-                onClick={() => navigate(data?.path ?? initialPath)}
+                onClick={() => navigate(lastRequestedPathRef.current)}
                 className="rounded bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
               >
                 Retry
