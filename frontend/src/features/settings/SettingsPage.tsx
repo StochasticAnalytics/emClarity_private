@@ -502,8 +502,7 @@ export function SettingsPage() {
         id="settings-tabpanel-runProfiles"
         role="tabpanel"
         aria-labelledby="settings-tab-runProfiles"
-        hidden={activeTab !== 'runProfiles'}
-        className="flex-1 overflow-y-auto px-6 py-5 flex flex-col min-h-0"
+        className={activeTab === 'runProfiles' ? 'flex-1 overflow-y-auto px-6 py-5 flex flex-col min-h-0' : 'hidden'}
       >
         {/* System params banner */}
         <SystemParamsBanner
@@ -544,8 +543,7 @@ export function SettingsPage() {
         id="settings-tabpanel-environment"
         role="tabpanel"
         aria-labelledby="settings-tab-environment"
-        hidden={activeTab !== 'environment'}
-        className="flex-1 overflow-hidden"
+        className={activeTab === 'environment' ? 'flex-1 overflow-hidden' : 'hidden'}
       >
         <EnvironmentPanel profiles={profiles} />
       </div>
