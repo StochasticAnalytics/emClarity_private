@@ -8,7 +8,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from backend.api import jobs, parameters, projects, system, workflow
-from backend.api import v1_filesystem, v1_projects, v1_workflow, v1_system, v1_jobs, v1_utilities
+from backend.api import v1_filesystem, v1_projects, v1_workflow, v1_system, v1_jobs, v1_utilities, v1_viewer
 
 router = APIRouter()
 
@@ -29,3 +29,4 @@ router.include_router(v1_system.router)
 router.include_router(v1_jobs.router)
 router.include_router(v1_utilities.router)
 router.include_router(v1_filesystem.router)
+router.include_router(v1_viewer.router)

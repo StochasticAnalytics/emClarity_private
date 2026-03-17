@@ -23,6 +23,7 @@ import rawSchema from '@/data/parameter-schema.json'
 import type { ParameterDefinition } from '@/types/parameters'
 import type { ActionTabId } from '@/data/parameterRegistry'
 import { useRunProfiles } from '@/hooks/useRunProfiles'
+import { apiClient } from '@/api/client'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1192,6 +1193,113 @@ function RunBar({ command, onRun, isRunning, runMessage }: RunBarProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Viewer launcher
+// ---------------------------------------------------------------------------
+
+const VIEWER_PATH_KEY = 'emclarity_viewer_path'
+
+interface ViewerLauncherProps {
+  projectId: string
+  isDemo: boolean
+}
+
+function ViewerLauncher({ projectId: _projectId, isDemo }: ViewerLauncherProps) {
+  const [viewerPath, setViewerPath] = useState<string>('')
+  const [configOpen, setConfigOpen] = useState<boolean>(false)
+  const [draftPath, setDraftPath] = useState<string>('')
+  const [launching, setLaunching] = useState<boolean>(false)
+  const [message, setMessage] = useState<string | null>(null)
+
+  // Read stored viewer path on mount
+  useEffect(() => {
+    const stored = localStorage.getItem(VIEWER_PATH_KEY) ?? ''
+    setViewerPath(stored)
+    setDraftPath(stored)
+  }, [])
+
+  const handleLaunch = useCallback(async () => {
+    if (!viewerPath) {
+      setMessage('Set a viewer path first (click the gear icon)')
+      return
+    }
+    setLaunching(true)
+    setMessage(null)
+    try {
+      const result = await apiClient.post<{ launched: boolean; pid: number }>(
+        '/api/v1/viewer/launch',
+        { viewer_path: viewerPath, args: [] },
+      )
+      setMessage(`Viewer launched (PID ${result.pid})`)
+    } catch (err: unknown) {
+      const detail = err instanceof Error ? err.message : 'Failed to launch viewer'
+      setMessage(`Error: ${detail}`)
+    } finally {
+      setLaunching(false)
+    }
+  }, [viewerPath])
+
+  const handleSavePath = useCallback(() => {
+    localStorage.setItem(VIEWER_PATH_KEY, draftPath.trim())
+    setViewerPath(draftPath.trim())
+    setConfigOpen(false)
+  }, [draftPath])
+
+  return (
+    <div className="border-t border-gray-200 dark:border-gray-700 px-4 py-3 bg-gray-50 dark:bg-gray-800/30">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          disabled={isDemo || launching}
+          onClick={() => { void handleLaunch() }}
+          className="flex items-center gap-1.5 rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+          aria-label="Open project in external viewer"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+          {launching ? 'Launching…' : 'Open in Viewer\u2026'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setConfigOpen((v) => !v)}
+          className="rounded p-1.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+          aria-label="Configure viewer path"
+        >
+          <Settings2 className="h-4 w-4" />
+        </button>
+      </div>
+      {message && (
+        <p className="mt-1.5 text-xs text-gray-600 dark:text-gray-400">{message}</p>
+      )}
+      {configOpen && (
+        <div className="mt-3 flex items-center gap-2">
+          <input
+            type="text"
+            value={draftPath}
+            onChange={(e) => setDraftPath(e.target.value)}
+            placeholder="/usr/bin/3dmod"
+            className="flex-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1 text-xs font-mono text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            aria-label="External viewer executable path"
+          />
+          <button
+            type="button"
+            onClick={handleSavePath}
+            className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            Save
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfigOpen(false)}
+            className="rounded border border-gray-300 dark:border-gray-600 px-2 py-1 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Action tab content
 // ---------------------------------------------------------------------------
 
@@ -1204,6 +1312,8 @@ interface ActionTabContentProps {
   onRun: () => void
   isRunning: boolean
   runMessage: string | null
+  projectId: string
+  isDemo: boolean
 }
 
 function ActionTabContent({
@@ -1215,6 +1325,8 @@ function ActionTabContent({
   onRun,
   isRunning,
   runMessage,
+  projectId,
+  isDemo,
 }: ActionTabContentProps) {
   // Resolve all params for this tab from schema / fallbacks
   const resolvedParams = useMemo(
@@ -1305,6 +1417,11 @@ function ActionTabContent({
           <HelpPanel tab={tab} />
         </div>
       </div>
+
+      {/* Viewer launcher — only on selectSubregions tab */}
+      {tab.id === 'selectSubregions' && (
+        <ViewerLauncher projectId={projectId} isDemo={isDemo} />
+      )}
 
       {/* Bottom run bar */}
       <RunBar
@@ -1485,6 +1602,8 @@ export function ActionsPage() {
                 onRun={handleRun}
                 isRunning={currentRun.running}
                 runMessage={currentRun.message}
+                projectId={projectId}
+                isDemo={projectId === DEMO_PROJECT_ID}
               />
             )}
           </div>
