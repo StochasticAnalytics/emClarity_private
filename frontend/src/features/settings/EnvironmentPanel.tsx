@@ -11,7 +11,7 @@
  * Backend wiring is deferred to TASK-029.
  */
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { CheckCircle, XCircle, Circle, Terminal, Network, Server, ShieldCheck } from 'lucide-react'
 import type { RunProfile } from '@/types/runProfile'
 
@@ -66,7 +66,7 @@ function StatusBadge({ status }: { status: ValidationStatus }) {
   // untested
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-gray-700 px-2 py-0.5 text-xs font-medium text-gray-500 dark:text-gray-400"
+      className="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-gray-700 px-2 py-0.5 text-xs font-medium text-gray-600 dark:text-gray-300"
       aria-label="Untested"
     >
       <Circle className="h-3 w-3" aria-hidden="true" />
@@ -327,6 +327,7 @@ function SSHConnectionsSection({ profiles }: SSHConnectionsSectionProps) {
     p.commandTemplate.toLowerCase().includes('ssh'),
   )
 
+  const [connectionStatuses, setConnectionStatuses] = useState<Record<string, ValidationStatus>>({})
   const [testStubs, setTestStubs] = useState<Record<string, boolean>>({})
   const testTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
@@ -343,6 +344,9 @@ function SSHConnectionsSection({ profiles }: SSHConnectionsSectionProps) {
       delete testTimers.current[id]
     }, 3000)
   }, [])
+
+  // Expose setter for TASK-029 backend wiring; suppress unused-var lint in scaffold
+  void setConnectionStatuses
 
   return (
     <section aria-labelledby="ssh-heading" className="mb-6">
@@ -374,7 +378,7 @@ function SSHConnectionsSection({ profiles }: SSHConnectionsSectionProps) {
                   {profile.commandTemplate}
                 </span>
               </span>
-              <StatusBadge status="untested" />
+              <StatusBadge status={connectionStatuses[profile.id] ?? 'untested'} />
               <button
                 type="button"
                 onClick={() => handleTest(profile.id)}
@@ -401,8 +405,9 @@ interface RunProfileValidationSectionProps {
 }
 
 function RunProfileValidationSection({ profiles }: RunProfileValidationSectionProps) {
-  const [profileStatuses] = useState<Record<string, ValidationStatus>>(
+  const profileStatuses = useMemo<Record<string, ValidationStatus>>(
     () => Object.fromEntries(profiles.map((p) => [p.id, 'untested' as ValidationStatus])),
+    [profiles],
   )
   const [validateAllStub, setValidateAllStub] = useState(false)
   const validateAllTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
