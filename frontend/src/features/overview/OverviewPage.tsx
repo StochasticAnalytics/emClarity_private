@@ -221,7 +221,7 @@ function getActiveCycleStepId(jobs: Job[]): string {
   if (jobs.length === 0) return 'avg'
 
   // Find the most recent job that is a cycle-relevant command
-  const cycleCommands = new Set(['avg', 'alignRaw', 'tomoCPR', 'pca', 'cluster'])
+  const cycleCommands = new Set(['avg', 'alignRaw', 'tomoCPR', 'pca', 'cluster', 'fsc'])
 
   for (const job of jobs) {
     const cmd = job.command
@@ -262,10 +262,11 @@ function commandToStepId(command: string): string | null {
     case 'tomoCPR': return 'tomocpr'
     case 'pca':
     case 'cluster': return 'classify'
+    // FSC — maps to avg step (resolution check performed alongside averaging)
+    case 'fsc': return 'avg'
     // Post-cycle step
     case 'reconstruct': return 'final'
     default:
-      console.warn('commandToStepId: unknown command:', command)
       return null
   }
 }
@@ -645,7 +646,7 @@ export function OverviewPage() {
   }, [project, projectId, addProject])
 
   const isLoading = projectLoading || statsLoading
-  const isError = projectError || statsError || workflowError
+  const isError = projectError || statsError
 
   const displayName = activeProject?.name ?? project?.name ?? (isDemo ? null : projectId) ?? '—'
   const state = workflowData?.state ?? activeProject?.state ?? project?.state ?? 'UNINITIALIZED'

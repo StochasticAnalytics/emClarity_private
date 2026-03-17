@@ -396,6 +396,7 @@ interface RecentProjectsListProps {
 function RecentProjectsList({ projects, onOpen, onRemove }: RecentProjectsListProps) {
   const [loadingId, setLoadingId] = useState<string | null>(null)
   const [errorId, setErrorId] = useState<string | null>(null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const removeTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
 
   useEffect(() => {
@@ -411,6 +412,7 @@ function RecentProjectsList({ projects, onOpen, onRemove }: RecentProjectsListPr
   const handleOpen = async (id: string, name: string, directory: string) => {
     setLoadingId(id)
     setErrorId(null)
+    setErrorMessage(null)
     try {
       // Verify project still exists on backend before navigating
       await apiClient.get<ProjectResponse>(`/api/v1/projects/${id}`)
@@ -427,6 +429,16 @@ function RecentProjectsList({ projects, onOpen, onRemove }: RecentProjectsListPr
           onRemove(id)
         }, 2000)
         removeTimersRef.current.set(id, timer)
+      } else {
+        // For non-404 errors (403, 500, network failures) show a message on the entry
+        setErrorId(id)
+        const msg =
+          err instanceof ApiError
+            ? `Could not open project (${err.status} ${err.statusText})`
+            : err instanceof Error
+              ? `Could not open project: ${err.message}`
+              : 'Could not open project — unexpected error'
+        setErrorMessage(msg)
       }
     } finally {
       setLoadingId(null)
@@ -469,7 +481,7 @@ function RecentProjectsList({ projects, onOpen, onRemove }: RecentProjectsListPr
               </span>
               {errorId === p.id && (
                 <span className="text-xs text-red-500">
-                  Project not found on server — entry removed
+                  {errorMessage ?? 'Project not found on server — entry removed'}
                 </span>
               )}
             </div>

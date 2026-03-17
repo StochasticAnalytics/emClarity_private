@@ -19,7 +19,7 @@
  *   GET /api/v1/results/particles  — Particle statistics (returns 404 if not available)
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   LineChart,
   Line,
@@ -134,7 +134,7 @@ function ThreePanelLayout({
               {listLabel}
             </p>
           </div>
-          <ul aria-label={listLabel} className="flex-1 overflow-y-auto py-1">
+          <ul role="listbox" aria-label={listLabel} className="flex-1 overflow-y-auto py-1">
             {listItems.length === 0 ? (
               <li className="px-3 py-3 text-xs text-gray-400 dark:text-gray-500 italic">
                 No items available
@@ -157,7 +157,8 @@ function ThreePanelLayout({
                       </label>
                     )}
                     <button
-                      aria-pressed={isSelected}
+                      role="option"
+                      aria-selected={isSelected}
                       type="button"
                       className={
                         'flex-1 flex items-center text-left px-2 py-2 text-sm transition-colors ' +
@@ -886,8 +887,14 @@ const PARTICLE_STATS_CYCLES = ['cycle000', 'cycle001', 'cycle002', 'cycle003']
 function ParticleStatsTab() {
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [state, setState] = useState<FetchState<ParticleStats>>({ status: 'loading' })
+  const activeSignalRef = useRef<{ cancelled: boolean }>({ cancelled: false })
 
-  const fetchStats = useCallback(async (cycleIndex: number, signal: { cancelled: boolean }) => {
+  const fetchStats = useCallback(async (cycleIndex: number) => {
+    // Cancel any in-flight request (including a previous retry) before starting a new one
+    activeSignalRef.current.cancelled = true
+    const signal = { cancelled: false }
+    activeSignalRef.current = signal
+
     setState({ status: 'loading' })
     try {
       const cycleLabel = PARTICLE_STATS_CYCLES[cycleIndex] ?? `cycle${String(cycleIndex).padStart(3, '0')}`
@@ -910,9 +917,8 @@ function ParticleStatsTab() {
   }, [])
 
   useEffect(() => {
-    const signal = { cancelled: false }
-    void fetchStats(selectedIndex, signal)
-    return () => { signal.cancelled = true }
+    void fetchStats(selectedIndex)
+    return () => { activeSignalRef.current.cancelled = true }
   }, [fetchStats, selectedIndex])
 
   return (
@@ -952,7 +958,7 @@ function ParticleStatsTab() {
             <p className="text-sm text-red-700 dark:text-red-400">{state.message}</p>
             <button
               type="button"
-              onClick={() => void fetchStats(selectedIndex, { cancelled: false })}
+              onClick={() => void fetchStats(selectedIndex)}
               className="mt-2 text-sm text-red-600 dark:text-red-400 underline hover:no-underline"
             >
               Retry
