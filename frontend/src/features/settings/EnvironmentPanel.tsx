@@ -210,7 +210,7 @@ const INITIAL_DEPENDENCIES: Dependency[] = [
 ]
 
 function DependenciesSection() {
-  const [deps, setDeps] = useState<Dependency[]>(INITIAL_DEPENDENCIES)
+  const [deps] = useState<Dependency[]>(INITIAL_DEPENDENCIES)
   const [checkAllStub, setCheckAllStub] = useState(false)
 
   const handleCheckAll = useCallback(() => {
@@ -298,6 +298,23 @@ function DependenciesSection() {
 // Section: SSH Connections
 // ---------------------------------------------------------------------------
 
+/**
+ * Extract user and host from an SSH command template.
+ *
+ * Handles common patterns such as:
+ *   ssh user@host $command
+ *   ssh -p 2222 user@host $command
+ *   ssh -i ~/.ssh/id_rsa user@host $command
+ *
+ * Returns null if no recognisable user@host pattern is found.
+ */
+function parseSSHUserHost(commandTemplate: string): { user: string; host: string } | null {
+  // Match the first "word@word" that follows an "ssh" keyword (ignoring flags)
+  const match = commandTemplate.match(/\bssh\b[^@]*?([\w][\w.-]*)@([\w.-]+)/)
+  if (!match) return null
+  return { user: match[1], host: match[2] }
+}
+
 interface SSHConnectionsSectionProps {
   profiles: RunProfile[]
 }
@@ -334,7 +351,9 @@ function SSHConnectionsSection({ profiles }: SSHConnectionsSectionProps) {
         </p>
       ) : (
         <ul aria-label="SSH connection profiles" className="space-y-2">
-          {sshProfiles.map((profile) => (
+          {sshProfiles.map((profile) => {
+            const sshTarget = parseSSHUserHost(profile.commandTemplate)
+            return (
             <li
               key={profile.id}
               className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-2.5"
@@ -343,9 +362,19 @@ function SSHConnectionsSection({ profiles }: SSHConnectionsSectionProps) {
                 <span className="block text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
                   {profile.name}
                 </span>
-                <span className="block text-xs font-mono text-gray-500 dark:text-gray-400 truncate">
-                  {profile.commandTemplate}
-                </span>
+                {sshTarget ? (
+                  <span className="block text-xs text-gray-500 dark:text-gray-400">
+                    <span className="font-medium">host:</span>{' '}
+                    <span className="font-mono">{sshTarget.host}</span>
+                    <span className="mx-1.5 text-gray-300 dark:text-gray-600">·</span>
+                    <span className="font-medium">user:</span>{' '}
+                    <span className="font-mono">{sshTarget.user}</span>
+                  </span>
+                ) : (
+                  <span className="block text-xs font-mono text-gray-500 dark:text-gray-400 truncate">
+                    {profile.commandTemplate}
+                  </span>
+                )}
               </span>
               <StatusBadge status="untested" />
               <button
@@ -358,7 +387,8 @@ function SSHConnectionsSection({ profiles }: SSHConnectionsSectionProps) {
               </button>
               <StubNotice visible={testStubs[profile.id] ?? false} />
             </li>
-          ))}
+          )
+          })}
         </ul>
       )}
     </section>
@@ -374,7 +404,7 @@ interface RunProfileValidationSectionProps {
 }
 
 function RunProfileValidationSection({ profiles }: RunProfileValidationSectionProps) {
-  const [profileStatuses, setProfileStatuses] = useState<Record<string, ValidationStatus>>(
+  const [profileStatuses] = useState<Record<string, ValidationStatus>>(
     () => Object.fromEntries(profiles.map((p) => [p.id, 'untested' as ValidationStatus])),
   )
   const [validateAllStub, setValidateAllStub] = useState(false)
