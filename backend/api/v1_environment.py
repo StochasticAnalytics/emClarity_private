@@ -25,10 +25,16 @@ import shutil
 import subprocess
 import time
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/api/v1/environment", tags=["environment-v1"])
+
+# ---------------------------------------------------------------------------
+# Whitelist of environment variables that may be resolved via the API
+# ---------------------------------------------------------------------------
+
+ALLOWED_ENV_VARS = {"EMCLARITY_PATH", "IMOD_DIR", "CUDA_HOME", "IMOD_BIN"}
 
 
 # ---------------------------------------------------------------------------
@@ -199,3 +205,24 @@ def check_dependencies() -> CheckDependenciesResponse:
             results.append(DependencyInfo(name=display_name, path=binary_path, found=True, version=version))
 
     return CheckDependenciesResponse(dependencies=results)
+
+
+# ---------------------------------------------------------------------------
+# GET /resolve-env
+# ---------------------------------------------------------------------------
+
+class ResolveEnvResponse(BaseModel):
+    value: str | None
+    found: bool
+
+
+@router.get("/resolve-env", response_model=ResolveEnvResponse)
+def resolve_env(var: str) -> ResolveEnvResponse:
+    """Resolve a whitelisted environment variable."""
+    if var not in ALLOWED_ENV_VARS:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Environment variable '{var}' is not in the allowed list",
+        )
+    value = os.environ.get(var)
+    return ResolveEnvResponse(value=value, found=value is not None)

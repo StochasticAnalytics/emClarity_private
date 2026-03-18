@@ -583,7 +583,7 @@ export function SettingsPage() {
         aria-labelledby="settings-tab-environment"
         className={activeTab === 'environment' ? 'flex-1 overflow-hidden' : 'hidden'}
       >
-        <EnvironmentPanel profiles={profiles} />
+        <EnvironmentPanel profiles={profiles} projectId={projectId} />
       </div>
     </div>
   )

@@ -157,76 +157,317 @@ const EXECUTABLE_PATHS: ExecutablePath[] = [
   },
 ]
 
+/** Mapping from executable path IDs to server-side environment variable names. */
+const EXEC_PATH_ENV_VARS: Record<string, string> = {
+  'emclarity-binary': 'EMCLARITY_PATH',
+  'imod-imodinfo': 'IMOD_DIR',
+}
+
+interface ResolveEnvResponse {
+  value: string | null
+  found: boolean
+}
+
+interface EnvResolveState {
+  loading: boolean
+  value: string | null
+  found: boolean | null
+  error: string | null
+}
+
+interface ProjectSettingsResponse {
+  executable_paths: Record<string, string> | null
+}
+
 interface ExecutableRowState {
   path: string
   status: ValidationStatus
   loading: boolean
   version: string | null
   error: string | null
+  envResolve: EnvResolveState
 }
 
-function ExecutablePathsSection() {
-  const [rows, setRows] = useState<Record<string, ExecutableRowState>>(() =>
-    Object.fromEntries(
-      EXECUTABLE_PATHS.map((ep) => {
-        const savedPath = localStorage.getItem(`env-path-${ep.id}`) ?? ''
-        return [
-          ep.id,
-          { path: savedPath, status: 'untested' as ValidationStatus, loading: false, version: null, error: null },
-        ]
-      }),
-    ),
-  )
+function buildEmptyRow(): ExecutableRowState {
+  return {
+    path: '',
+    status: 'untested',
+    loading: false,
+    version: null,
+    error: null,
+    envResolve: { loading: false, value: null, found: null, error: null },
+  }
+}
 
-  const handlePathChange = useCallback((id: string, value: string) => {
-    localStorage.setItem(`env-path-${id}`, value)
-    setRows((prev) => ({
-      ...prev,
-      [id]: { ...prev[id], path: value, status: 'untested', version: null, error: null },
-    }))
+function buildRows(paths: Record<string, string>): Record<string, ExecutableRowState> {
+  return Object.fromEntries(
+    EXECUTABLE_PATHS.map((ep) => [
+      ep.id,
+      {
+        ...buildEmptyRow(),
+        path: paths[ep.id] ?? '',
+      },
+    ]),
+  )
+}
+
+interface ExecutablePathsSectionProps {
+  projectId: string | null
+}
+
+function ExecutablePathsSection({ projectId }: ExecutablePathsSectionProps) {
+  const [rows, setRows] = useState<Record<string, ExecutableRowState>>(() => buildRows({}))
+  const [initialLoading, setInitialLoading] = useState(!!projectId)
+  const [fetchError, setFetchError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  // Track the latest paths for saving without stale closures
+  const rowsRef = useRef(rows)
+  rowsRef.current = rows
+
+  const getCurrentPaths = useCallback((): Record<string, string> => {
+    const paths: Record<string, string> = {}
+    for (const ep of EXECUTABLE_PATHS) {
+      const row = rowsRef.current[ep.id]
+      if (row && row.path) {
+        paths[ep.id] = row.path
+      }
+    }
+    return paths
   }, [])
 
-  const handleValidate = useCallback(async (id: string) => {
-    const path = rows[id]?.path ?? ''
-    setRows((prev) => ({
-      ...prev,
-      [id]: { ...prev[id], loading: true },
-    }))
-    try {
-      const result = await apiClient.post<ValidatePathResponse>(
-        '/api/v1/environment/validate-path',
-        { path },
-      )
-      setRows((prev) => {
-        // Discard stale result if the user changed the path while the request was in flight
-        if (prev[id]?.path !== path) {
-          return { ...prev, [id]: { ...prev[id], loading: false } }
+  // Debounce timer for saving paths to server
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current !== null) clearTimeout(saveTimerRef.current)
+    }
+  }, [])
+
+  // Fetch settings from server and migrate from localStorage if needed
+  useEffect(() => {
+    if (!projectId) {
+      setInitialLoading(false)
+      return
+    }
+
+    const fetchAndMigrate = async () => {
+      setInitialLoading(true)
+      setFetchError(null)
+      try {
+        const settings = await apiClient.get<ProjectSettingsResponse>(
+          `/api/v1/projects/${projectId}/settings`,
+        )
+
+        // Check if migration from localStorage is needed
+        const localPaths: Record<string, string> = {}
+        for (const ep of EXECUTABLE_PATHS) {
+          const val = localStorage.getItem(`env-path-${ep.id}`)
+          if (val) localPaths[ep.id] = val
         }
-        return {
+
+        const serverPaths = settings.executable_paths ?? {}
+        const serverEmpty = Object.keys(serverPaths).length === 0
+
+        if (Object.keys(localPaths).length > 0 && serverEmpty) {
+          // Migrate localStorage values to server
+          await apiClient.patch(`/api/v1/projects/${projectId}/settings`, {
+            executable_paths: localPaths,
+          })
+          // Clear localStorage keys after successful migration
+          for (const ep of EXECUTABLE_PATHS) {
+            localStorage.removeItem(`env-path-${ep.id}`)
+          }
+          setRows(buildRows(localPaths))
+        } else {
+          // Use server paths; clear any stale localStorage keys
+          setRows(buildRows(serverPaths))
+          for (const ep of EXECUTABLE_PATHS) {
+            localStorage.removeItem(`env-path-${ep.id}`)
+          }
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to load settings'
+        setFetchError(message)
+      } finally {
+        setInitialLoading(false)
+      }
+    }
+
+    void fetchAndMigrate()
+  }, [projectId])
+
+  const savePaths = useCallback(
+    (updatedPaths: Record<string, string>) => {
+      if (!projectId) return
+      setSaveError(null)
+
+      if (saveTimerRef.current !== null) clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = setTimeout(() => {
+        const doSave = async () => {
+          try {
+            await apiClient.patch(`/api/v1/projects/${projectId}/settings`, {
+              executable_paths: updatedPaths,
+            })
+          } catch (err) {
+            const message = err instanceof Error ? err.message : 'Failed to save path'
+            setSaveError(message)
+          }
+        }
+        void doSave()
+      }, 500)
+    },
+    [projectId],
+  )
+
+  const handlePathChange = useCallback(
+    (id: string, value: string) => {
+      setRows((prev) => {
+        const updated = {
           ...prev,
           [id]: {
             ...prev[id],
-            loading: false,
-            status: result.valid ? 'valid' : 'invalid',
-            version: result.version,
-            error: result.error,
+            path: value,
+            status: 'untested' as ValidationStatus,
+            version: null,
+            error: null,
           },
         }
-      })
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Validation failed'
-      setRows((prev) => {
-        // Discard stale result if the user changed the path while the request was in flight
-        if (prev[id]?.path !== path) {
-          return { ...prev, [id]: { ...prev[id], loading: false } }
+        // Build paths from updated rows for saving
+        const paths: Record<string, string> = {}
+        for (const ep of EXECUTABLE_PATHS) {
+          const row = updated[ep.id]
+          if (row && row.path) {
+            paths[ep.id] = row.path
+          }
         }
-        return {
+        savePaths(paths)
+        return updated
+      })
+    },
+    [savePaths],
+  )
+
+  const handleValidate = useCallback(
+    async (id: string) => {
+      const path = rowsRef.current[id]?.path ?? ''
+      setRows((prev) => ({
+        ...prev,
+        [id]: { ...prev[id], loading: true },
+      }))
+      try {
+        const result = await apiClient.post<ValidatePathResponse>(
+          '/api/v1/environment/validate-path',
+          { path },
+        )
+        setRows((prev) => {
+          if (prev[id]?.path !== path) {
+            return { ...prev, [id]: { ...prev[id], loading: false } }
+          }
+          return {
+            ...prev,
+            [id]: {
+              ...prev[id],
+              loading: false,
+              status: result.valid ? 'valid' : 'invalid',
+              version: result.version,
+              error: result.error,
+            },
+          }
+        })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Validation failed'
+        setRows((prev) => {
+          if (prev[id]?.path !== path) {
+            return { ...prev, [id]: { ...prev[id], loading: false } }
+          }
+          return {
+            ...prev,
+            [id]: { ...prev[id], loading: false, status: 'invalid', version: null, error: message },
+          }
+        })
+      }
+    },
+    [],
+  )
+
+  const handleResolveEnv = useCallback(
+    async (id: string) => {
+      const envVar = EXEC_PATH_ENV_VARS[id]
+      if (!envVar) return
+
+      setRows((prev) => ({
+        ...prev,
+        [id]: {
+          ...prev[id],
+          envResolve: { loading: true, value: null, found: null, error: null },
+        },
+      }))
+
+      try {
+        const result = await apiClient.get<ResolveEnvResponse>(
+          `/api/v1/environment/resolve-env?var=${encodeURIComponent(envVar)}`,
+        )
+        setRows((prev) => ({
           ...prev,
-          [id]: { ...prev[id], loading: false, status: 'invalid', version: null, error: message },
-        }
-      })
-    }
-  }, [rows])
+          [id]: {
+            ...prev[id],
+            envResolve: {
+              loading: false,
+              value: result.value,
+              found: result.found,
+              error: null,
+            },
+          },
+        }))
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to resolve environment variable'
+        setRows((prev) => ({
+          ...prev,
+          [id]: {
+            ...prev[id],
+            envResolve: { loading: false, value: null, found: null, error: message },
+          },
+        }))
+      }
+    },
+    [],
+  )
+
+  const handleUseEnvPath = useCallback(
+    (id: string, value: string) => {
+      handlePathChange(id, value)
+      // Clear the env resolve state after using the value
+      setRows((prev) => ({
+        ...prev,
+        [id]: {
+          ...prev[id],
+          envResolve: { loading: false, value: null, found: null, error: null },
+        },
+      }))
+    },
+    [handlePathChange],
+  )
+
+  if (initialLoading) {
+    return (
+      <section aria-labelledby="exec-paths-heading" className="mb-6">
+        <div className="flex items-center gap-2 mb-3">
+          <Terminal className="h-4 w-4 text-gray-500 dark:text-gray-400" aria-hidden="true" />
+          <h3
+            id="exec-paths-heading"
+            className="text-sm font-semibold text-gray-900 dark:text-gray-100"
+          >
+            Executable Paths
+          </h3>
+        </div>
+        <p role="status" className="text-sm text-gray-500 dark:text-gray-400">
+          Loading executable paths…
+        </p>
+      </section>
+    )
+  }
 
   return (
     <section aria-labelledby="exec-paths-heading" className="mb-6">
@@ -239,9 +480,24 @@ function ExecutablePathsSection() {
           Executable Paths
         </h3>
       </div>
+
+      {fetchError !== null && (
+        <div role="alert" className="mb-3 rounded border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-3 py-2 text-xs text-red-700 dark:text-red-300">
+          <span className="font-medium">Failed to load:</span> {fetchError}
+        </div>
+      )}
+
+      {saveError !== null && (
+        <div role="alert" className="mb-3 rounded border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+          <span className="font-medium">Save failed:</span> {saveError}
+        </div>
+      )}
+
       <div className="space-y-3">
         {EXECUTABLE_PATHS.map((ep) => {
           const row = rows[ep.id]
+          const envVar = EXEC_PATH_ENV_VARS[ep.id]
+          const envResolve = row.envResolve
           return (
             <div key={ep.id} className="space-y-1">
               <div className="flex items-center gap-3">
@@ -293,6 +549,24 @@ function ExecutablePathsSection() {
                     'Validate'
                   )}
                 </button>
+                {envVar !== undefined && (
+                  <button
+                    type="button"
+                    onClick={() => { void handleResolveEnv(ep.id) }}
+                    disabled={envResolve.loading}
+                    aria-label={`Get ${ep.label} path from environment variable ${envVar}`}
+                    className="rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors flex-shrink-0 inline-flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {envResolve.loading ? (
+                      <>
+                        <Spinner />
+                        Checking…
+                      </>
+                    ) : (
+                      'Get from environment'
+                    )}
+                  </button>
+                )}
               </div>
               {row.status === 'invalid' && row.error !== null && (
                 <span
@@ -300,6 +574,35 @@ function ExecutablePathsSection() {
                   className="block ml-36 pl-3 text-xs text-red-600 dark:text-red-400"
                 >
                   {row.error}
+                </span>
+              )}
+              {/* Env resolve result */}
+              {envResolve.error !== null && (
+                <span
+                  role="alert"
+                  className="block ml-36 pl-3 text-xs text-red-600 dark:text-red-400"
+                >
+                  {envResolve.error}
+                </span>
+              )}
+              {envResolve.found === true && envResolve.value !== null && (
+                <div className="ml-36 pl-3 flex items-center gap-2">
+                  <span className="text-xs text-gray-600 dark:text-gray-400 font-mono truncate max-w-md">
+                    {envResolve.value}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleUseEnvPath(ep.id, envResolve.value!)}
+                    aria-label={`Use environment value for ${ep.label}`}
+                    className="rounded border border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/30 px-2 py-0.5 text-xs font-medium text-green-700 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-900/50 focus:outline-none focus:ring-1 focus:ring-green-500 transition-colors"
+                  >
+                    Use this path
+                  </button>
+                </div>
+              )}
+              {envResolve.found === false && (
+                <span className="block ml-36 pl-3 text-xs text-gray-500 dark:text-gray-400 italic">
+                  Environment variable not set
                 </span>
               )}
             </div>
@@ -760,12 +1063,13 @@ function RunProfileValidationSection({ profiles }: RunProfileValidationSectionPr
 
 interface EnvironmentPanelProps {
   profiles: RunProfile[]
+  projectId: string | null
 }
 
-export function EnvironmentPanel({ profiles }: EnvironmentPanelProps) {
+export function EnvironmentPanel({ profiles, projectId }: EnvironmentPanelProps) {
   return (
     <div className="overflow-y-auto h-full px-6 py-5">
-      <ExecutablePathsSection />
+      <ExecutablePathsSection projectId={projectId} />
       <DependenciesSection />
       <SSHConnectionsSection profiles={profiles} />
       <RunProfileValidationSection profiles={profiles} />
