@@ -408,7 +408,7 @@ const SETTINGS_TABS: SettingsTab[] = [
 
 export function SettingsPage() {
   const { projectId } = useProject()
-  const { profiles, selectedId, selectedProfile, select, create, update, remove, systemParams, setSystemParams, loading, error } =
+  const { profiles, selectedId, selectedProfile, select, create, update, remove, systemParams, setSystemParams, loading, loadError, saveError } =
     useRunProfiles(projectId)
 
   // Active settings tab — switching tabs must NOT reset profile edit state
@@ -446,17 +446,17 @@ export function SettingsPage() {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center h-full bg-white dark:bg-gray-900">
-        <p className="text-gray-500 dark:text-gray-400 text-sm">Loading settings...</p>
+        <p role="status" className="text-gray-500 dark:text-gray-400 text-sm">Loading settings...</p>
       </div>
     )
   }
 
-  if (error) {
+  if (loadError) {
     return (
       <div className="flex flex-col items-center justify-center h-full bg-white dark:bg-gray-900">
         <div role="alert" className="text-center">
           <p className="text-red-600 dark:text-red-400 text-sm font-medium">Failed to load settings</p>
-          <p className="text-gray-500 dark:text-gray-400 text-xs mt-1">{error}</p>
+          <p className="text-gray-500 dark:text-gray-400 text-xs mt-1">{loadError}</p>
         </div>
       </div>
     )
@@ -471,6 +471,13 @@ export function SettingsPage() {
           Configure system hardware parameters and manage run profiles.
         </p>
       </div>
+
+      {/* Non-destructive save error banner (defect 1: does NOT replace the page) */}
+      {saveError && (
+        <div role="alert" className="mx-6 mt-3 rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-4 py-2 text-sm text-red-700 dark:text-red-300">
+          <span className="font-medium">Save failed:</span> {saveError}
+        </div>
+      )}
 
       {/* Horizontal tab bar */}
       <div

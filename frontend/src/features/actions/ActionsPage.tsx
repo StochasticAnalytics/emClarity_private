@@ -1058,7 +1058,7 @@ interface RunBarProps {
 function RunBar({ command, onRun, isRunning, runMessage }: RunBarProps) {
   const navigate = useNavigate()
   const { projectId } = useParams<{ projectId: string }>()
-  const { profiles, selectedId, select } = useRunProfiles(projectId ?? null)
+  const { profiles, selectedId, select, loading, saveError } = useRunProfiles(projectId ?? null)
   const isDemo = projectId === DEMO_PROJECT_ID
 
   // Brief visible feedback when a keyboard user activates the button while in demo mode.
@@ -1092,9 +1092,11 @@ function RunBar({ command, onRun, isRunning, runMessage }: RunBarProps) {
           value={selectedId}
           onChange={(e) => select(e.target.value)}
           className="rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1 text-xs text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          disabled={profiles.length === 0}
+          disabled={profiles.length === 0 || loading}
         >
-          {profiles.length === 0 ? (
+          {loading ? (
+            <option value="">Loading profiles…</option>
+          ) : profiles.length === 0 ? (
             <option value="">No profiles — create one in Settings</option>
           ) : (
             profiles.map((p) => (
@@ -1114,7 +1116,10 @@ function RunBar({ command, onRun, isRunning, runMessage }: RunBarProps) {
       </div>
 
       <div className="flex-1 min-w-0">
-        {runMessage && (
+        {saveError && (
+          <p role="alert" className="text-xs text-red-600 dark:text-red-400 truncate">{saveError}</p>
+        )}
+        {!saveError && runMessage && (
           <p className="text-xs text-green-700 dark:text-green-400 truncate">{runMessage}</p>
         )}
       </div>

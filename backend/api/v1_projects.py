@@ -21,7 +21,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, ValidationError
 
 from backend.models.project import ProjectState, TiltSeries
-from backend.models.project_settings import ProjectSettings
+from backend.models.project_settings import ProjectSettings, ProjectSettingsPatch
 from backend.services.project_service import ProjectService
 from backend.utils.safe_json import locked_json_read, locked_json_read_write
 
@@ -531,26 +531,28 @@ async def get_project_settings(project_id: str) -> ProjectSettings:
 
 
 @router.patch("/{project_id}/settings")
-async def update_project_settings(project_id: str, patch: dict[str, Any]) -> ProjectSettings:
+async def update_project_settings(project_id: str, patch: ProjectSettingsPatch) -> ProjectSettings:
     """Partial update of project settings.
 
-    Accepts a partial ProjectSettings dict, merges with existing settings.
-    Uses locked write pattern for concurrent safety.
+    Accepts a typed partial-update model, merges provided fields with
+    existing settings. Uses locked write pattern for concurrent safety.
     """
     record = _get_project(project_id)
     if record is None:
         raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found")
+
+    # Get only the fields that were explicitly provided in the request body
+    provided = patch.model_dump(exclude_unset=True)
 
     with _registry_lock:
         record = _projects.get(project_id)
         if record is None:
             raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found")
 
-        # Merge: existing settings dict + patch
+        # Merge: existing settings dict + provided fields
         existing = record.settings.model_dump()
 
-        # Deep merge for specific fields
-        for key, value in patch.items():
+        for key, value in provided.items():
             if key == "run_profiles" and value is not None:
                 existing["run_profiles"] = value
             elif key == "executable_paths" and value is not None and isinstance(value, dict):

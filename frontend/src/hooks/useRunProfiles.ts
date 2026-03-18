@@ -13,7 +13,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import type { RunProfile, SystemParams } from '@/types/runProfile'
 import { DEFAULT_SYSTEM_PARAMS } from '@/types/runProfile'
-import { apiClient } from '@/api/client'
+import { apiClient, ApiError } from '@/api/client'
 
 // ---------------------------------------------------------------------------
 // localStorage keys (used only for one-time migration)
@@ -130,6 +130,11 @@ export interface UseRunProfilesResult {
   systemParams: SystemParams
   setSystemParams: (patch: Partial<SystemParams>) => void
   loading: boolean
+  /** Error from the initial settings fetch (fatal — no data loaded). */
+  loadError: string | null
+  /** Error from a save/PATCH operation (non-fatal — data is still loaded). */
+  saveError: string | null
+  /** Legacy alias: returns loadError (for backwards compat with SettingsPage). */
   error: string | null
 }
 
@@ -142,10 +147,14 @@ export function useRunProfiles(projectId: string | null = null): UseRunProfilesR
   const [selectedId, setSelectedIdState] = useState<string>('')
   const [systemParams, setSystemParamsState] = useState<SystemParams>(DEFAULT_SYSTEM_PARAMS)
   const [loading, setLoading] = useState<boolean>(false)
-  const [error, setError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   // Track whether initial fetch + migration has happened for this projectId
   const fetchedProjectRef = useRef<string | null>(null)
+
+  // Track whether migration localStorage cleanup is pending (defect 7)
+  const migrationCleanupPendingRef = useRef<boolean>(false)
 
   // -----------------------------------------------------------------------
   // Fetch settings from server (with optional migration from localStorage)
@@ -157,7 +166,8 @@ export function useRunProfiles(projectId: string | null = null): UseRunProfilesR
       setProfilesState([])
       setSelectedIdState('')
       setSystemParamsState(DEFAULT_SYSTEM_PARAMS)
-      setError(null)
+      setLoadError(null)
+      setSaveError(null)
       setLoading(false)
       fetchedProjectRef.current = null
       return
@@ -171,7 +181,8 @@ export function useRunProfiles(projectId: string | null = null): UseRunProfilesR
 
     async function fetchAndMigrate() {
       setLoading(true)
-      setError(null)
+      setLoadError(null)
+      setSaveError(null)
 
       try {
         let settings = await apiClient.get<ProjectSettings>(
@@ -194,24 +205,28 @@ export function useRunProfiles(projectId: string | null = null): UseRunProfilesR
             migrationPayload.system_params = localSystemParams
           }
           if (localSelectedId) {
-            // The selected_run_profile on the backend is the profile name.
-            // In the old frontend, selectedId could be something like 'local-1gpu'.
-            // Find the matching profile's name to use as the selection.
             const matchingProfile = localProfiles.find((p) => p.id === localSelectedId)
             if (matchingProfile) {
               migrationPayload.selected_run_profile = matchingProfile.name
             }
           }
 
+          // Mark cleanup pending before the PATCH so unmount can clean up (defect 7)
+          migrationCleanupPendingRef.current = true
+
           settings = await apiClient.patch<ProjectSettings>(
             `/api/v1/projects/${projectId}/settings`,
             migrationPayload,
           )
 
-          if (cancelled) return
+          if (cancelled) {
+            // Component unmounted during migration — cleanup runs in the return
+            return
+          }
 
           // Clear localStorage after successful migration
           clearLocalStorageKeys()
+          migrationCleanupPendingRef.current = false
         }
 
         // Apply server state to local React state
@@ -237,7 +252,7 @@ export function useRunProfiles(projectId: string | null = null): UseRunProfilesR
       } catch (err: unknown) {
         if (cancelled) return
         const message = err instanceof Error ? err.message : 'Failed to load settings'
-        setError(message)
+        setLoadError(message)
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -248,6 +263,12 @@ export function useRunProfiles(projectId: string | null = null): UseRunProfilesR
     return () => {
       cancelled = true
       controller.abort()
+      // Defect 7: if migration PATCH completed but cleanup hasn't run yet,
+      // ensure localStorage is cleared on unmount so stale data doesn't persist
+      if (migrationCleanupPendingRef.current) {
+        clearLocalStorageKeys()
+        migrationCleanupPendingRef.current = false
+      }
     }
   }, [projectId])
 
@@ -259,14 +280,39 @@ export function useRunProfiles(projectId: string | null = null): UseRunProfilesR
     async (payload: Record<string, unknown>): Promise<ProjectSettings | null> => {
       if (!projectId) return null
       try {
-        setError(null)
+        setSaveError(null)
         return await apiClient.patch<ProjectSettings>(
           `/api/v1/projects/${projectId}/settings`,
           payload,
         )
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : 'Failed to save settings'
-        setError(message)
+        // Defect 4: extract specific backend validation detail from ApiError body
+        let message = 'Failed to save settings'
+        if (err instanceof ApiError) {
+          const body = err.body as Record<string, unknown> | null
+          if (body && typeof body === 'object' && 'detail' in body) {
+            const detail = body.detail
+            if (typeof detail === 'string') {
+              message = detail
+            } else if (Array.isArray(detail)) {
+              // Pydantic validation errors are an array of objects with msg/loc
+              message = detail
+                .map((d: Record<string, unknown>) => {
+                  const loc = Array.isArray(d.loc) ? d.loc.join(' → ') : ''
+                  const msg = typeof d.msg === 'string' ? d.msg : String(d)
+                  return loc ? `${loc}: ${msg}` : msg
+                })
+                .join('; ')
+            } else {
+              message = String(detail)
+            }
+          } else {
+            message = err.message
+          }
+        } else if (err instanceof Error) {
+          message = err.message
+        }
+        setSaveError(message)
         return null
       }
     },
@@ -280,16 +326,25 @@ export function useRunProfiles(projectId: string | null = null): UseRunProfilesR
   const select = useCallback(
     (id: string) => {
       setSelectedIdState(id)
-      // Find the profile name corresponding to this id (id === name in server-backed mode)
+      // Persist selection to server — patchSettings sets saveError on failure (defect 6)
       void patchSettings({ selected_run_profile: id })
     },
     [patchSettings],
   )
 
   const create = useCallback((): RunProfile => {
+    // Defect 2: generate a unique name instead of hardcoded 'New Profile'
+    const existingNames = new Set(profiles.map((p) => p.name))
+    let uniqueName = 'New Profile'
+    let counter = 1
+    while (existingNames.has(uniqueName)) {
+      counter++
+      uniqueName = `New Profile ${counter}`
+    }
+
     const newProfile: RunProfile = {
       id: generateId(),
-      name: 'New Profile',
+      name: uniqueName,
       nGPUs: systemParams.nGPUs,
       nCpuCores: systemParams.nCpuCores,
       fastScratchDisk: systemParams.fastScratchDisk,
@@ -299,18 +354,11 @@ export function useRunProfiles(projectId: string | null = null): UseRunProfilesR
     setProfilesState(nextProfiles)
     setSelectedIdState(newProfile.id)
 
+    // Defect 3: fire-and-forget — do NOT re-sync from server response
+    // to avoid overwriting in-flight user edits
     void patchSettings({
       run_profiles: nextProfiles.map(frontendToBackend),
       selected_run_profile: newProfile.name,
-    }).then((settings) => {
-      if (settings) {
-        // Re-sync: the server may have normalized names
-        const synced = settings.run_profiles.map(backendToFrontend)
-        setProfilesState(synced)
-        // Find the newly created profile by name
-        const created = synced.find((p) => p.name === newProfile.name)
-        if (created) setSelectedIdState(created.id)
-      }
     })
 
     return newProfile
@@ -389,6 +437,8 @@ export function useRunProfiles(projectId: string | null = null): UseRunProfilesR
     systemParams,
     setSystemParams,
     loading,
-    error,
+    loadError,
+    saveError,
+    error: loadError, // legacy alias for backwards compat
   }
 }
