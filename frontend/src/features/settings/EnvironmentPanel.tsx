@@ -1199,12 +1199,13 @@ function RegistryPathSection() {
               readOnly
               value={registryPath ?? ''}
               aria-label="Registry path"
+              aria-describedby="registry-path-description"
               title="Set EMCLARITY_REGISTRY_DIR environment variable before starting the backend to change this."
-              className="flex-1 bg-slate-900/50 text-slate-300 text-sm px-3 py-2 rounded border border-slate-600 cursor-default focus:outline-none"
+              className="flex-1 bg-slate-900/50 text-slate-300 text-sm px-3 py-2 rounded border border-slate-600 cursor-default focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-0"
             />
           </div>
         )}
-        <p className="text-xs text-slate-500 mt-2">
+        <p id="registry-path-description" className="text-xs text-slate-500 mt-2">
           Set <code className="text-slate-400">EMCLARITY_REGISTRY_DIR</code> environment variable before starting the backend to change this.
         </p>
       </div>

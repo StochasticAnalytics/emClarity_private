@@ -3,8 +3,11 @@
 Provides CRUD operations for emClarity projects using UUID-based identifiers.
 Projects are backed by on-disk directory structures following emClarity conventions.
 
-The in-memory registry is persisted to ~/.emclarity/projects.json so that
-project IDs remain valid across backend restarts.
+The in-memory registry is persisted to ``<registry_dir>/projects.json`` so that
+project IDs remain valid across backend restarts.  The registry directory
+defaults to ``~/.emclarity`` but can be overridden via the
+``EMCLARITY_REGISTRY_DIR`` environment variable (see
+:func:`backend.utils.machine_config.get_registry_dir`).
 """
 
 from __future__ import annotations

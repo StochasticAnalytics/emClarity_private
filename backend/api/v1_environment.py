@@ -28,6 +28,8 @@ import time
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from backend.utils.machine_config import get_registry_dir
+
 router = APIRouter(prefix="/api/v1/environment", tags=["environment-v1"])
 
 # ---------------------------------------------------------------------------
@@ -237,9 +239,12 @@ class RegistryPathResponse(BaseModel):
     path: str
 
 
+# Freeze the registry path at module-import time so the endpoint always
+# returns the value that is actually in use (consistent with v1_projects).
+_REGISTRY_PATH: str = str(get_registry_dir())
+
+
 @router.get("/registry-path", response_model=RegistryPathResponse)
 def get_registry_path() -> RegistryPathResponse:
     """Return the current registry directory path."""
-    from backend.utils.machine_config import get_registry_dir
-
-    return RegistryPathResponse(path=str(get_registry_dir()))
+    return RegistryPathResponse(path=_REGISTRY_PATH)
