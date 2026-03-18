@@ -226,3 +226,20 @@ def resolve_env(var: str) -> ResolveEnvResponse:
         )
     value = os.environ.get(var)
     return ResolveEnvResponse(value=value, found=value is not None)
+
+
+# ---------------------------------------------------------------------------
+# GET /registry-path
+# ---------------------------------------------------------------------------
+
+
+class RegistryPathResponse(BaseModel):
+    path: str
+
+
+@router.get("/registry-path", response_model=RegistryPathResponse)
+def get_registry_path() -> RegistryPathResponse:
+    """Return the current registry directory path."""
+    from backend.utils.machine_config import get_registry_dir
+
+    return RegistryPathResponse(path=str(get_registry_dir()))

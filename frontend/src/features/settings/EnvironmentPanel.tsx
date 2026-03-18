@@ -12,7 +12,7 @@
  */
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
-import { CheckCircle, XCircle, Circle, Terminal, Network, Server, ShieldCheck } from 'lucide-react'
+import { CheckCircle, XCircle, Circle, Terminal, Network, Server, ShieldCheck, Database } from 'lucide-react'
 import type { RunProfile } from '@/types/runProfile'
 import { apiClient } from '@/api/client'
 
@@ -57,6 +57,10 @@ interface TestSSHResponse {
   connected: boolean
   error: string | null
   latency_ms: number | null
+}
+
+interface RegistryPathResponse {
+  path: string
 }
 
 // ---------------------------------------------------------------------------
@@ -1147,6 +1151,71 @@ function RunProfileValidationSection({ profiles }: RunProfileValidationSectionPr
 // EnvironmentPanel (exported)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Registry Path Section
+// ---------------------------------------------------------------------------
+
+function RegistryPathSection() {
+  const [registryPath, setRegistryPath] = useState<string | null>(null)
+  const [registryPathLoading, setRegistryPathLoading] = useState(true)
+  const [registryPathError, setRegistryPathError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setRegistryPathLoading(true)
+    setRegistryPathError(null)
+    apiClient.get<RegistryPathResponse>('/api/v1/environment/registry-path')
+      .then((data) => {
+        if (!cancelled) {
+          setRegistryPath(data.path)
+          setRegistryPathLoading(false)
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          const message = err instanceof Error ? err.message : 'Failed to load registry path'
+          setRegistryPathError(message)
+          setRegistryPathLoading(false)
+        }
+      })
+    return () => { cancelled = true }
+  }, [])
+
+  return (
+    <section aria-labelledby="registry-path-heading" className="mb-8">
+      <h3 id="registry-path-heading" className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
+        <Database className="h-4 w-4" />
+        Registry Path
+      </h3>
+      <div className="bg-slate-800/50 rounded-lg p-4">
+        {registryPathLoading ? (
+          <p className="text-sm text-slate-400">Loading registry path…</p>
+        ) : registryPathError ? (
+          <p className="text-sm text-red-400" role="alert">{registryPathError}</p>
+        ) : (
+          <div className="flex items-center gap-3">
+            <input
+              type="text"
+              readOnly
+              value={registryPath ?? ''}
+              aria-label="Registry path"
+              title="Set EMCLARITY_REGISTRY_DIR environment variable before starting the backend to change this."
+              className="flex-1 bg-slate-900/50 text-slate-300 text-sm px-3 py-2 rounded border border-slate-600 cursor-default focus:outline-none"
+            />
+          </div>
+        )}
+        <p className="text-xs text-slate-500 mt-2">
+          Set <code className="text-slate-400">EMCLARITY_REGISTRY_DIR</code> environment variable before starting the backend to change this.
+        </p>
+      </div>
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Main Panel
+// ---------------------------------------------------------------------------
+
 interface EnvironmentPanelProps {
   profiles: RunProfile[]
   projectId: string | null
@@ -1155,6 +1224,7 @@ interface EnvironmentPanelProps {
 export function EnvironmentPanel({ profiles, projectId }: EnvironmentPanelProps) {
   return (
     <div className="overflow-y-auto h-full px-6 py-5">
+      <RegistryPathSection />
       <ExecutablePathsSection projectId={projectId} />
       <DependenciesSection />
       <SSHConnectionsSection profiles={profiles} />

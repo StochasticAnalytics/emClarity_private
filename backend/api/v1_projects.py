@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field, ValidationError
 from backend.models.project import ProjectState, TiltSeries
 from backend.models.project_settings import ProjectSettings, ProjectSettingsPatch
 from backend.services.project_service import ProjectService
+from backend.utils.machine_config import get_registry_dir
 from backend.utils.safe_json import locked_json_read, locked_json_read_write
 
 log = logging.getLogger(__name__)
@@ -33,7 +34,8 @@ router = APIRouter(prefix="/api/v1/projects", tags=["projects-v1"])
 # Persistence
 # ---------------------------------------------------------------------------
 
-_REGISTRY_DIR = Path.home() / ".emclarity"
+_REGISTRY_DIR = get_registry_dir()
+_REGISTRY_DIR.mkdir(parents=True, exist_ok=True)
 _REGISTRY_FILE = _REGISTRY_DIR / "projects.json"
 
 # In-process lock protecting _projects dict access.
