@@ -1253,8 +1253,9 @@ function ViewerLauncher({ projectId, isDemo }: ViewerLauncherProps) {
             const migrated = updated.viewer_path ?? ''
             setViewerPath(migrated)
             setDraftPath(migrated)
-          } catch {
+          } catch (migrationErr: unknown) {
             // Migration failed — fall back to localStorage value for now
+            console.warn('[ViewerLauncher] Failed to migrate viewer path from localStorage to server:', migrationErr)
             setViewerPath(localPath)
             setDraftPath(localPath)
           }
@@ -1363,6 +1364,7 @@ function ViewerLauncher({ projectId, isDemo }: ViewerLauncherProps) {
       }
     }
     setViewerPath(trimmed)
+    setSettingsError(null)
     setConfigOpen(false)
     gearButtonRef.current?.focus()
   }, [draftPath, isDemo, projectId])
@@ -1383,10 +1385,11 @@ function ViewerLauncher({ projectId, isDemo }: ViewerLauncherProps) {
         <button
           ref={gearButtonRef}
           type="button"
+          disabled={settingsLoading}
           onClick={() => setConfigOpen((v) => !v)}
           aria-expanded={configOpen}
           aria-controls="viewer-config-panel"
-          className="rounded p-1.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+          className="rounded p-1.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           aria-label="Configure viewer path"
         >
           <Settings2 className="h-4 w-4" />
@@ -1400,6 +1403,7 @@ function ViewerLauncher({ projectId, isDemo }: ViewerLauncherProps) {
         className="mt-1.5 text-xs text-gray-600 dark:text-gray-400 min-h-[1rem]"
       >
         {settingsError && <span className="text-amber-600 dark:text-amber-400">{settingsError}</span>}
+        {settingsError && message && <span aria-hidden="true"> — </span>}
         {message}
       </div>
       {/* Always rendered so aria-controls="viewer-config-panel" references a valid DOM element.
