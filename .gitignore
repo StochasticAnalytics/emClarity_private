@@ -17,6 +17,7 @@ testScripts/EMC_test/fixtures
 
 # Nested repos (managed separately)
 autonomous-build/
+autonomous-build-worktrees/
 
 *.db
 *.png
