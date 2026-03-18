@@ -224,9 +224,13 @@ interface ExecutablePathsSectionProps {
 
 function ExecutablePathsSection({ projectId }: ExecutablePathsSectionProps) {
   const [rows, setRows] = useState<Record<string, ExecutableRowState>>(() => buildRows({}))
+  // Fix defect 6: always start as loading when there is a projectId so the
+  // pre-effect render never exposes empty/stale inputs.
   const [initialLoading, setInitialLoading] = useState(!!projectId)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
+  // Increment to re-trigger the fetch effect (used by Retry button, defect 5).
+  const [fetchAttempt, setFetchAttempt] = useState(0)
 
   // Track the latest paths for saving without stale closures
   const rowsRef = useRef(rows)
@@ -241,13 +245,18 @@ function ExecutablePathsSection({ projectId }: ExecutablePathsSectionProps) {
     }
   }, [])
 
-  // Clear stale debounce timer + saveError on projectId change (defects 5, 6)
+  // Fix defect 6: reset initialLoading synchronously when projectId changes so
+  // the very first render after a project switch shows the loading state rather
+  // than stale/empty inputs.
   useEffect(() => {
     if (saveTimerRef.current !== null) {
       clearTimeout(saveTimerRef.current)
       saveTimerRef.current = null
     }
     setSaveError(null)
+    setFetchError(null)
+    setRows(buildRows({}))
+    setInitialLoading(!!projectId)
   }, [projectId])
 
   // Fetch settings from server and migrate from localStorage if needed
@@ -269,7 +278,9 @@ function ExecutablePathsSection({ projectId }: ExecutablePathsSectionProps) {
 
         if (cancelled) return
 
-        // Check if migration from localStorage is needed
+        // Fix defect 3: merge per-key — migrate any localStorage path that is
+        // absent from the server response, rather than skipping migration
+        // entirely when the server already has at least one path.
         const localPaths: Record<string, string> = {}
         for (const ep of EXECUTABLE_PATHS) {
           const val = localStorage.getItem(`env-path-${ep.id}`)
@@ -277,19 +288,25 @@ function ExecutablePathsSection({ projectId }: ExecutablePathsSectionProps) {
         }
 
         const serverPaths = settings.executable_paths ?? {}
-        const serverEmpty = Object.keys(serverPaths).length === 0
 
-        if (Object.keys(localPaths).length > 0 && serverEmpty) {
-          // Migrate localStorage values to server
+        // Collect keys that exist in localStorage but are missing on the server.
+        const keysToMigrate = Object.keys(localPaths).filter(
+          (k) => !serverPaths[k],
+        )
+
+        if (keysToMigrate.length > 0) {
+          const migrationPatch: Record<string, string> = {}
+          for (const k of keysToMigrate) migrationPatch[k] = localPaths[k]
+          const merged = { ...serverPaths, ...migrationPatch }
           await apiClient.patch(`/api/v1/projects/${projectId}/settings`, {
-            executable_paths: localPaths,
+            executable_paths: merged,
           })
           if (cancelled) return
-          // Clear localStorage keys after successful migration
+          // Clear all localStorage keys after successful migration
           for (const ep of EXECUTABLE_PATHS) {
             localStorage.removeItem(`env-path-${ep.id}`)
           }
-          setRows(buildRows(localPaths))
+          setRows(buildRows(merged))
         } else {
           // Use server paths; clear any stale localStorage keys
           setRows(buildRows(serverPaths))
@@ -309,11 +326,14 @@ function ExecutablePathsSection({ projectId }: ExecutablePathsSectionProps) {
     void fetchAndMigrate()
 
     return () => { cancelled = true }
-  }, [projectId])
+  // fetchAttempt is included so the Retry button re-triggers this effect (defect 5).
+  }, [projectId, fetchAttempt])
 
   const savePaths = useCallback(
     (updatedPaths: Record<string, string>) => {
-      if (!projectId) return
+      // Fix defect 1: do not save when a fetch error is active — the rows are
+      // empty/untrusted and saving now would overwrite all server-stored paths.
+      if (!projectId || fetchError !== null) return
       setSaveError(null)
 
       if (saveTimerRef.current !== null) clearTimeout(saveTimerRef.current)
@@ -331,7 +351,7 @@ function ExecutablePathsSection({ projectId }: ExecutablePathsSectionProps) {
         void doSave()
       }, 500)
     },
-    [projectId],
+    [projectId, fetchError],
   )
 
   const handlePathChange = useCallback(
@@ -402,10 +422,19 @@ function ExecutablePathsSection({ projectId }: ExecutablePathsSectionProps) {
     [],
   )
 
+  // Fix defect 2: track the current projectId in a ref so the async callback
+  // can detect a project switch and discard stale results. Updated eagerly so
+  // any in-flight resolve started before the switch sees the mismatch.
+  const projectIdAtResolveRef = useRef<string | null>(projectId)
+  projectIdAtResolveRef.current = projectId
+
   const handleResolveEnv = useCallback(
     async (id: string) => {
       const mapping = EXEC_PATH_ENV_VARS[id]
       if (!mapping) return
+
+      // Snapshot the projectId at the time the request is initiated.
+      const projectIdAtStart = projectIdAtResolveRef.current
 
       setRows((prev) => ({
         ...prev,
@@ -419,11 +448,19 @@ function ExecutablePathsSection({ projectId }: ExecutablePathsSectionProps) {
         const result = await apiClient.get<ResolveEnvResponse>(
           `/api/v1/environment/resolve-env?var=${encodeURIComponent(mapping.envVar)}`,
         )
-        // Append pathSuffix if the env var points to a directory (defect 1)
+
+        // Fix defect 2: discard the response if the project changed while the
+        // request was in-flight.
+        if (projectIdAtResolveRef.current !== projectIdAtStart) return
+
+        // Fix defect 4: trim trailing slash from the resolved env var value
+        // before appending pathSuffix to avoid double-slash paths such as
+        // /usr/local/IMOD/bin//imodinfo.
+        const trimmedValue = result.value !== null ? result.value.replace(/\/+$/, '') : null
         const resolvedValue =
-          result.value !== null && mapping.pathSuffix
-            ? result.value + mapping.pathSuffix
-            : result.value
+          trimmedValue !== null && mapping.pathSuffix
+            ? trimmedValue + mapping.pathSuffix
+            : trimmedValue
         setRows((prev) => ({
           ...prev,
           [id]: {
@@ -437,6 +474,7 @@ function ExecutablePathsSection({ projectId }: ExecutablePathsSectionProps) {
           },
         }))
       } catch (err) {
+        if (projectIdAtResolveRef.current !== projectIdAtStart) return
         const message = err instanceof Error ? err.message : 'Failed to resolve environment variable'
         setRows((prev) => ({
           ...prev,
@@ -504,8 +542,20 @@ function ExecutablePathsSection({ projectId }: ExecutablePathsSectionProps) {
       </div>
 
       {fetchError !== null && (
-        <div role="alert" className="mb-3 rounded border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-3 py-2 text-xs text-red-700 dark:text-red-300">
-          <span className="font-medium">Failed to load:</span> {fetchError}
+        <div role="alert" className="mb-3 rounded border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-3 py-2 text-xs text-red-700 dark:text-red-300 flex items-center gap-2">
+          <span className="flex-1">
+            <span className="font-medium">Failed to load:</span> {fetchError}
+          </span>
+          {/* Fix defect 5: provide a Retry button so users can recover without
+              a full page reload; also prevents defect 1 from being triggered
+              because savePaths is gated on fetchError === null. */}
+          <button
+            type="button"
+            onClick={() => setFetchAttempt((n) => n + 1)}
+            className="rounded border border-red-300 dark:border-red-700 bg-white dark:bg-gray-900 px-2 py-0.5 text-xs font-medium text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 focus:outline-none focus:ring-1 focus:ring-red-500 transition-colors flex-shrink-0"
+          >
+            Retry
+          </button>
         </div>
       )}
 
