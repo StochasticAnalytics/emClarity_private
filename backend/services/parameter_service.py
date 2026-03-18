@@ -474,12 +474,23 @@ class ParameterService:
             )
 
         snapshot_path = matching[0]
-        data = json.loads(snapshot_path.read_text(encoding="utf-8"))
-        return {
-            "snapshot_id": data["snapshot_id"],
-            "parameters": data.get("parameters", {}),
-            "created_at": data["created_at"],
-        }
+        try:
+            data = json.loads(snapshot_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as exc:
+            raise ValueError(
+                f"Snapshot file is corrupted or unreadable: {snapshot_path.name}"
+            ) from exc
+
+        try:
+            return {
+                "snapshot_id": data["snapshot_id"],
+                "parameters": data.get("parameters", {}),
+                "created_at": data["created_at"],
+            }
+        except KeyError as exc:
+            raise ValueError(
+                f"Snapshot file is missing required field {exc}: {snapshot_path.name}"
+            ) from exc
 
     # ------------------------------------------------------------------
     # Internal helpers

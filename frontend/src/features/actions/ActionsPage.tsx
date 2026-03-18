@@ -16,6 +16,7 @@
  */
 
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useParams, Navigate, useNavigate } from 'react-router-dom'
 import { useTabParam } from '@/hooks/useTabParam'
 import { DEMO_PROJECT_ID } from '@/constants'
@@ -1554,11 +1555,15 @@ function SnapshotHistoryDropdown({
     })
   }, [])
 
-  // Close on click outside
+  // Close on click outside (check both trigger container and portal menu)
   useEffect(() => {
     if (!isOpen) return
     function handleClickOutside(e: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      const target = e.target as Node
+      if (
+        dropdownRef.current && !dropdownRef.current.contains(target) &&
+        menuRef.current && !menuRef.current.contains(target)
+      ) {
         closeDropdown()
       }
     }
@@ -1596,6 +1601,40 @@ function SnapshotHistoryDropdown({
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [isOpen, closeDropdown, snapshots.length])
+
+  // Track dropdown position for portal placement (defect #1)
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  // Update portal position on scroll/resize when open (defect #1)
+  useEffect(() => {
+    if (!isOpen) return
+    function updatePosition() {
+      if (triggerRef.current) {
+        const rect = triggerRef.current.getBoundingClientRect()
+        setMenuPos({ top: rect.bottom + 4, left: rect.left })
+      }
+    }
+    updatePosition()
+    window.addEventListener('scroll', updatePosition, true)
+    window.addEventListener('resize', updatePosition)
+    return () => {
+      window.removeEventListener('scroll', updatePosition, true)
+      window.removeEventListener('resize', updatePosition)
+    }
+  }, [isOpen])
+
+  // Move focus into menu when it opens (defect #3)
+  useEffect(() => {
+    if (isOpen && !loading && !listError && snapshots.length > 0) {
+      requestAnimationFrame(() => {
+        if (itemRefs.current[0]) {
+          setActiveIndex(0)
+          itemRefs.current[0]?.focus()
+        }
+      })
+    }
+  }, [isOpen, loading, listError, snapshots.length])
 
   const handleToggle = useCallback(async () => {
     if (isOpen) {
@@ -1682,28 +1721,36 @@ function SnapshotHistoryDropdown({
         Load from previous run
       </button>
 
-      {/* Defect #8: Confirmation message after snapshot loaded */}
-      {loadedMessage && !isOpen && (
+      {/* Defect #2: Use portal so confirmation message is not clipped by overflow-hidden ancestors */}
+      {loadedMessage && !isOpen && createPortal(
         <span
           role="status"
           aria-live="polite"
-          className="absolute left-0 top-full mt-1 text-xs text-green-600 dark:text-green-400 whitespace-nowrap"
+          className="text-xs text-green-600 dark:text-green-400 whitespace-nowrap pointer-events-none"
+          style={{
+            position: 'fixed',
+            top: triggerRef.current ? triggerRef.current.getBoundingClientRect().bottom + 4 : 0,
+            left: triggerRef.current ? triggerRef.current.getBoundingClientRect().left : 0,
+            zIndex: 10000,
+          }}
         >
           {loadedMessage}
-        </span>
+        </span>,
+        document.body,
       )}
 
-      {isOpen && (
+      {/* Defect #1: Use ReactDOM.createPortal to avoid scroll/resize drift */}
+      {/* Defect #4: Remove aria-live from role="menu" to prevent duplicate announcements */}
+      {isOpen && createPortal(
         <div
+          ref={menuRef}
           role="menu"
           aria-label="Snapshot history"
-          aria-live="polite"
-          className="absolute left-0 top-full mt-1 w-80 max-h-64 overflow-y-auto bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-md shadow-lg z-[9999]"
-          style={{ position: 'fixed', left: triggerRef.current ? triggerRef.current.getBoundingClientRect().left + 'px' : undefined, top: triggerRef.current ? triggerRef.current.getBoundingClientRect().bottom + 4 + 'px' : undefined }}
+          className="w-80 max-h-64 overflow-y-auto bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-md shadow-lg"
+          style={{ position: 'fixed', left: menuPos.left, top: menuPos.top, zIndex: 10000 }}
         >
-          {/* Defect #7: Loading/error states announced to screen readers via aria-live on parent */}
           {loading && (
-            <div className="p-3 text-sm text-gray-500 dark:text-gray-400" role="status">Loading snapshots...</div>
+            <div className="p-3 text-sm text-gray-500 dark:text-gray-400" role="status" aria-live="polite">Loading snapshots...</div>
           )}
 
           {listError && (
@@ -1752,7 +1799,8 @@ function SnapshotHistoryDropdown({
               </div>
             )
           })}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )
@@ -1825,8 +1873,8 @@ function ExportMButton({ projectId, isDemo, currentParams }: ExportMButtonProps)
       </button>
       {message && (
         <span
-          role="status"
-          aria-live="polite"
+          role={message.startsWith('Error:') ? 'alert' : 'status'}
+          aria-live={message.startsWith('Error:') ? 'assertive' : 'polite'}
           className={`text-xs ${message.startsWith('Error:') ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}
         >
           {message}

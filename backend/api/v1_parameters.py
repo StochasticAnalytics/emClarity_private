@@ -161,7 +161,7 @@ def export_snapshot_m(
 
     if len(matching) > 1:
         raise HTTPException(
-            status_code=409,
+            status_code=422,
             detail=f"Snapshot ID prefix '{snapshot_id}' is ambiguous: matches {len(matching)} files",
         )
 
@@ -230,7 +230,7 @@ def get_snapshot(project_id: str, snapshot_id: str) -> SnapshotDetailResponse:
         ) from exc
     except ValueError as exc:
         raise HTTPException(
-            status_code=409,
+            status_code=422,
             detail=str(exc),
         ) from exc
     except Exception as exc:
