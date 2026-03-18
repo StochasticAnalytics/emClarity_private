@@ -251,6 +251,10 @@ export function useRunProfiles(projectId: string | null = null): UseRunProfilesR
         fetchedProjectRef.current = projectId
       } catch (err: unknown) {
         if (cancelled) return
+        // If the migration PATCH failed, clear the pending flag so the unmount
+        // cleanup does not incorrectly wipe localStorage data that was never
+        // successfully migrated to the server.
+        migrationCleanupPendingRef.current = false
         const message = err instanceof Error ? err.message : 'Failed to load settings'
         setLoadError(message)
       } finally {
@@ -343,7 +347,7 @@ export function useRunProfiles(projectId: string | null = null): UseRunProfilesR
     }
 
     const newProfile: RunProfile = {
-      id: generateId(),
+      id: uniqueName,
       name: uniqueName,
       nGPUs: systemParams.nGPUs,
       nCpuCores: systemParams.nCpuCores,
@@ -366,6 +370,15 @@ export function useRunProfiles(projectId: string | null = null): UseRunProfilesR
 
   const update = useCallback(
     (id: string, patch: Partial<Omit<RunProfile, 'id'>>) => {
+      // Guard: if renaming, ensure the new name is not already used by another profile
+      if (patch.name !== undefined) {
+        const conflict = profiles.some((p) => p.id !== id && p.name === patch.name)
+        if (conflict) {
+          setSaveError(`A profile named "${patch.name}" already exists`)
+          return
+        }
+      }
+
       const nextProfiles = profiles.map((p) => {
         if (p.id !== id) return p
         const updated = { ...p, ...patch }

@@ -553,11 +553,20 @@ async def update_project_settings(project_id: str, patch: ProjectSettingsPatch) 
         existing = record.settings.model_dump()
 
         for key, value in provided.items():
-            if key == "run_profiles" and value is not None:
+            if key == "run_profiles":
+                if value is None:
+                    raise HTTPException(
+                        status_code=422,
+                        detail="run_profiles must be a list, not null",
+                    )
                 existing["run_profiles"] = value
-            elif key == "executable_paths" and value is not None and isinstance(value, dict):
-                existing.setdefault("executable_paths", {})
-                existing["executable_paths"].update(value)
+            elif key == "executable_paths":
+                if value is None:
+                    raise HTTPException(
+                        status_code=422,
+                        detail="executable_paths must be an object, not null",
+                    )
+                existing["executable_paths"] = value
             elif key == "system_params" and value is not None and isinstance(value, dict):
                 if existing.get("system_params") is not None:
                     existing["system_params"].update(value)
