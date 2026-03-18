@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from backend.models.project import ProjectState, TiltSeries
 from backend.models.project_settings import ProjectSettings
@@ -564,7 +564,13 @@ async def update_project_settings(project_id: str, patch: dict[str, Any]) -> Pro
             else:
                 existing[key] = value
 
-        record.settings = ProjectSettings(**existing)
+        try:
+            record.settings = ProjectSettings(**existing)
+        except ValidationError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=exc.errors(),
+            )
 
     _save_registry()
     return record.settings
