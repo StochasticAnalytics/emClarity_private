@@ -1,8 +1,12 @@
-"""Parameter snapshot endpoints for saving and exporting parameter snapshots.
+"""Parameter snapshot endpoints for saving, listing, loading, and exporting.
 
 Provides:
 - POST /api/v1/projects/{project_id}/parameter-snapshots
   Save a parameter snapshot to the project's parameters/ directory.
+- GET  /api/v1/projects/{project_id}/parameter-snapshots
+  List all snapshots sorted by date descending.
+- GET  /api/v1/projects/{project_id}/parameter-snapshots/{snapshot_id}
+  Load full parameter values for a specific snapshot.
 - POST /api/v1/projects/{project_id}/parameter-snapshots/{snapshot_id}/export-m
   Export a snapshot to MATLAB .m format.
 """
@@ -50,6 +54,25 @@ class CreateSnapshotResponse(BaseModel):
 class ExportMResponse(BaseModel):
     """Response after exporting a snapshot to .m format."""
     m_file_path: str
+
+
+class SnapshotListItem(BaseModel):
+    """Metadata for a single snapshot in a listing."""
+    snapshot_id: str
+    filename: str
+    created_at: str
+
+
+class SnapshotListResponse(BaseModel):
+    """Response containing a list of parameter snapshots."""
+    snapshots: list[SnapshotListItem]
+
+
+class SnapshotDetailResponse(BaseModel):
+    """Response containing a full parameter snapshot with its data."""
+    snapshot_id: str
+    parameters: dict[str, Any]
+    created_at: str
 
 
 # ---------------------------------------------------------------------------
@@ -154,3 +177,62 @@ def export_snapshot_m(
         ) from exc
 
     return ExportMResponse(m_file_path=str(m_file_path))
+
+
+@router.get("", response_model=SnapshotListResponse)
+def list_snapshots(project_id: str) -> SnapshotListResponse:
+    """List all parameter snapshots sorted by date descending."""
+    record = _get_project(project_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    project_dir = Path(record.directory)
+    if not project_dir.is_dir():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Project directory does not exist: {record.directory}",
+        )
+
+    try:
+        items = _parameter_service.list_snapshots(project_dir)
+    except Exception as exc:
+        log.exception("Failed to list snapshots for project %s", project_id)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to list snapshots: {exc}",
+        ) from exc
+
+    return SnapshotListResponse(
+        snapshots=[SnapshotListItem(**item) for item in items]
+    )
+
+
+@router.get("/{snapshot_id}", response_model=SnapshotDetailResponse)
+def get_snapshot(project_id: str, snapshot_id: str) -> SnapshotDetailResponse:
+    """Load a specific parameter snapshot."""
+    record = _get_project(project_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    project_dir = Path(record.directory)
+    if not project_dir.is_dir():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Project directory does not exist: {record.directory}",
+        )
+
+    try:
+        data = _parameter_service.load_snapshot(project_dir, snapshot_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Snapshot {snapshot_id} not found in project {project_id}",
+        ) from exc
+    except Exception as exc:
+        log.exception("Failed to load snapshot %s for project %s", snapshot_id, project_id)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to load snapshot: {exc}",
+        ) from exc
+
+    return SnapshotDetailResponse(**data)

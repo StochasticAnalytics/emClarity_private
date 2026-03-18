@@ -411,6 +411,64 @@ class ParameterService:
             except OSError:
                 pass  # best-effort cleanup
 
+    def list_snapshots(self, project_dir: Path) -> list[dict[str, str]]:
+        """List all parameter snapshots sorted by creation date descending.
+
+        Returns list of dicts with keys: snapshot_id, filename, created_at.
+        Reads the JSON content to get snapshot_id and created_at.
+        Sorted by created_at descending (newest first).
+        """
+        params_dir = project_dir / "parameters"
+        if not params_dir.is_dir():
+            return []
+
+        results: list[dict[str, str]] = []
+        for f in params_dir.iterdir():
+            if not (f.name.startswith("snapshot_") and f.suffix == ".json"):
+                continue
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+                results.append({
+                    "snapshot_id": data["snapshot_id"],
+                    "filename": f.name,
+                    "created_at": data["created_at"],
+                })
+            except (json.JSONDecodeError, KeyError, OSError):
+                continue
+
+        results.sort(key=lambda r: r["created_at"], reverse=True)
+        return results
+
+    def load_snapshot(self, project_dir: Path, snapshot_id: str) -> dict[str, Any]:
+        """Load a specific snapshot by ID.
+
+        Returns dict with keys: snapshot_id, parameters (dict), created_at.
+        Raises FileNotFoundError if snapshot not found.
+        """
+        params_dir = project_dir / "parameters"
+        if not params_dir.is_dir():
+            raise FileNotFoundError(
+                f"Parameters directory not found: {params_dir}"
+            )
+
+        matching = [
+            f for f in params_dir.iterdir()
+            if f.name.startswith(f"snapshot_{snapshot_id}") and f.suffix == ".json"
+        ]
+
+        if not matching:
+            raise FileNotFoundError(
+                f"Snapshot {snapshot_id} not found"
+            )
+
+        snapshot_path = matching[0]
+        data = json.loads(snapshot_path.read_text(encoding="utf-8"))
+        return {
+            "snapshot_id": data["snapshot_id"],
+            "parameters": data.get("parameters", {}),
+            "created_at": data["created_at"],
+        }
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------

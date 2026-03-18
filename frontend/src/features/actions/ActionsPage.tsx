@@ -19,7 +19,7 @@ import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { useParams, Navigate, useNavigate } from 'react-router-dom'
 import { useTabParam } from '@/hooks/useTabParam'
 import { DEMO_PROJECT_ID } from '@/constants'
-import { ChevronDown, ChevronRight, Settings2, Play, BookOpen, Info, ExternalLink } from 'lucide-react'
+import { ChevronDown, ChevronRight, Settings2, Play, BookOpen, Info, ExternalLink, History, Download } from 'lucide-react'
 import rawSchema from '@/data/parameter-schema.json'
 import type { ParameterDefinition } from '@/types/parameters'
 import { ACTION_TAB_IDS, type ActionTabId } from '@/data/parameterRegistry'
@@ -48,6 +48,23 @@ interface SnapshotResponse {
 /** Response from exporting a snapshot to .m format. */
 interface ExportMResponse {
   m_file_path: string
+}
+
+/** Snapshot list item from the list endpoint */
+interface SnapshotListItem {
+  snapshot_id: string
+  filename: string
+  created_at: string
+}
+
+interface SnapshotListResponse {
+  snapshots: SnapshotListItem[]
+}
+
+interface SnapshotDetailResponse {
+  snapshot_id: string
+  parameters: Record<string, unknown>
+  created_at: string
 }
 
 /** Response from the workflow run endpoint. */
@@ -1487,6 +1504,256 @@ function ViewerLauncher({ projectId, isDemo }: ViewerLauncherProps) {
 }
 
 // ---------------------------------------------------------------------------
+// SnapshotHistoryDropdown
+// ---------------------------------------------------------------------------
+
+interface SnapshotHistoryDropdownProps {
+  projectId: string
+  isDemo: boolean
+  onLoadSnapshot: (parameters: Record<string, string>) => void
+}
+
+function formatSnapshotDate(isoString: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }).format(new Date(isoString))
+  } catch {
+    return isoString
+  }
+}
+
+function SnapshotHistoryDropdown({
+  projectId,
+  isDemo,
+  onLoadSnapshot,
+}: SnapshotHistoryDropdownProps) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [snapshots, setSnapshots] = useState<SnapshotListItem[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [loadingSnapshotId, setLoadingSnapshotId] = useState<string | null>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  // Close on click outside
+  useEffect(() => {
+    if (!isOpen) return
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [isOpen])
+
+  // Close on Escape
+  useEffect(() => {
+    if (!isOpen) return
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen])
+
+  const handleToggle = useCallback(async () => {
+    if (isOpen) {
+      setIsOpen(false)
+      return
+    }
+    setIsOpen(true)
+    setLoading(true)
+    setError(null)
+    try {
+      const result = await apiClient.get<SnapshotListResponse>(
+        `/api/v1/projects/${projectId}/parameter-snapshots`,
+      )
+      setSnapshots(result.snapshots)
+    } catch (err: unknown) {
+      let detail = 'Failed to load snapshots'
+      if (err instanceof ApiError) {
+        const body = err.body as Record<string, unknown> | null
+        detail = (body && typeof body.detail === 'string') ? body.detail : err.statusText
+      } else if (err instanceof Error) {
+        detail = err.message
+      }
+      setError(detail)
+    } finally {
+      setLoading(false)
+    }
+  }, [isOpen, projectId])
+
+  const handleSelectSnapshot = useCallback(async (snapshotId: string) => {
+    setLoadingSnapshotId(snapshotId)
+    try {
+      const result = await apiClient.get<SnapshotDetailResponse>(
+        `/api/v1/projects/${projectId}/parameter-snapshots/${snapshotId}`,
+      )
+      // Convert all parameter values to strings for the form
+      const stringParams: Record<string, string> = {}
+      for (const [key, value] of Object.entries(result.parameters)) {
+        stringParams[key] = String(value ?? '')
+      }
+      onLoadSnapshot(stringParams)
+      setIsOpen(false)
+    } catch (err: unknown) {
+      let detail = 'Failed to load snapshot'
+      if (err instanceof ApiError) {
+        const body = err.body as Record<string, unknown> | null
+        detail = (body && typeof body.detail === 'string') ? body.detail : err.statusText
+      } else if (err instanceof Error) {
+        detail = err.message
+      }
+      setError(detail)
+    } finally {
+      setLoadingSnapshotId(null)
+    }
+  }, [projectId, onLoadSnapshot])
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={isDemo ? undefined : handleToggle}
+        disabled={isDemo}
+        aria-label="Load parameters from a previous run"
+        aria-expanded={isOpen}
+        aria-haspopup="listbox"
+        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <History className="h-4 w-4" />
+        Load from previous run
+      </button>
+
+      {isOpen && (
+        <div
+          role="listbox"
+          aria-label="Snapshot history"
+          className="absolute left-0 top-full mt-1 w-80 max-h-64 overflow-y-auto bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-md shadow-lg z-20"
+        >
+          {loading && (
+            <div className="p-3 text-sm text-gray-500 dark:text-gray-400">Loading snapshots...</div>
+          )}
+
+          {error && (
+            <div className="p-3 text-sm text-red-600 dark:text-red-400">{error}</div>
+          )}
+
+          {!loading && !error && snapshots.length === 0 && (
+            <div className="p-3 text-sm text-gray-500 dark:text-gray-400">No previous snapshots found.</div>
+          )}
+
+          {!loading && !error && snapshots.map((snap) => {
+            const truncatedFilename = snap.filename.length > 30
+              ? snap.filename.slice(0, 27) + '...'
+              : snap.filename
+            return (
+              <button
+                key={snap.snapshot_id}
+                type="button"
+                role="option"
+                aria-selected={false}
+                aria-label={`Load snapshot ${snap.filename} from ${formatSnapshotDate(snap.created_at)}`}
+                disabled={loadingSnapshotId === snap.snapshot_id}
+                onClick={() => handleSelectSnapshot(snap.snapshot_id)}
+                className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors border-b border-gray-100 dark:border-gray-700 last:border-b-0 disabled:opacity-50"
+              >
+                <div className="font-medium text-gray-800 dark:text-gray-200">
+                  {formatSnapshotDate(snap.created_at)}
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                  {truncatedFilename}
+                </div>
+                {loadingSnapshotId === snap.snapshot_id && (
+                  <div className="text-xs text-blue-500 mt-0.5">Loading...</div>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// ExportMButton
+// ---------------------------------------------------------------------------
+
+interface ExportMButtonProps {
+  projectId: string
+  isDemo: boolean
+  currentParams: Record<string, string>
+}
+
+function ExportMButton({ projectId, isDemo, currentParams }: ExportMButtonProps) {
+  const [loading, setLoading] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+
+  const handleExport = useCallback(async () => {
+    setLoading(true)
+    setMessage(null)
+    try {
+      // Step 1: Save a snapshot of current parameters
+      const snapshotResult = await apiClient.post<SnapshotResponse>(
+        `/api/v1/projects/${projectId}/parameter-snapshots`,
+        { parameters: currentParams },
+      )
+
+      if (!snapshotResult.snapshot_id) {
+        throw new Error('Snapshot response missing snapshot_id')
+      }
+
+      // Step 2: Export to .m format
+      const exportResult = await apiClient.post<ExportMResponse>(
+        `/api/v1/projects/${projectId}/parameter-snapshots/${snapshotResult.snapshot_id}/export-m`,
+      )
+
+      setMessage(`Exported to: ${exportResult.m_file_path}`)
+    } catch (err: unknown) {
+      let detail = 'Export failed'
+      if (err instanceof ApiError) {
+        const body = err.body as Record<string, unknown> | null
+        detail = (body && typeof body.detail === 'string') ? body.detail : err.statusText
+      } else if (err instanceof Error) {
+        detail = err.message
+      }
+      setMessage(`Error: ${detail}`)
+    } finally {
+      setLoading(false)
+    }
+  }, [projectId, currentParams])
+
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={isDemo ? undefined : handleExport}
+        disabled={loading || isDemo}
+        aria-label="Export current parameters to .m file"
+        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <Download className="h-4 w-4" />
+        {loading ? 'Exporting...' : 'Export to .m file'}
+      </button>
+      {message && (
+        <span className={`text-xs ${message.startsWith('Error:') ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
+          {message}
+        </span>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Action tab content
 // ---------------------------------------------------------------------------
 
@@ -1547,6 +1814,24 @@ function ActionTabContent({
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Left: Parameters panel */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3 min-w-0">
+          {/* Snapshot controls */}
+          <div className="flex items-center gap-2 pb-3 border-b border-gray-200 dark:border-gray-700">
+            <SnapshotHistoryDropdown
+              projectId={projectId}
+              isDemo={isDemo}
+              onLoadSnapshot={(params) => {
+                for (const [name, value] of Object.entries(params)) {
+                  onValueChange(name, value)
+                }
+              }}
+            />
+            <ExportMButton
+              projectId={projectId}
+              isDemo={isDemo}
+              currentParams={values}
+            />
+          </div>
+
           {/* Required parameters */}
           {Array.from(visibleGroups.entries()).map(([groupName, params]) => (
             <AccordionSection key={groupName} title={groupName} defaultOpen={true}>
