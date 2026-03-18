@@ -196,6 +196,10 @@ class RunCommandRequest(BaseModel):
         default_factory=dict,
         description="Command-specific arguments",
     )
+    param_file: str | None = Field(
+        default=None,
+        description="Path to the .m parameter file for this run",
+    )
 
 
 class RunCommandResponse(BaseModel):
@@ -205,6 +209,7 @@ class RunCommandResponse(BaseModel):
     command: str
     status: str = "accepted"
     message: str = ""
+    param_file: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -318,4 +323,5 @@ async def run_command(project_id: str, request: RunCommandRequest) -> RunCommand
         command=request.command,
         status="accepted",
         message=f"Command '{request.command}' accepted for execution",
+        param_file=request.param_file,
     )

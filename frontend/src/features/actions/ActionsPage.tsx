@@ -50,6 +50,15 @@ interface ExportMResponse {
   m_file_path: string
 }
 
+/** Response from the workflow run endpoint. */
+interface RunCommandResponse {
+  project_id: string
+  command: string
+  status: string
+  message: string
+  param_file: string | null
+}
+
 /** A parameter entry within a tab's accordion section. */
 interface TabParamDef {
   /** Parameter name – matches schema key (best-effort). */
@@ -1673,12 +1682,22 @@ export function ActionsPage() {
         `/api/v1/projects/${projectId}/parameter-snapshots/${snapshotResult.snapshot_id}/export-m`,
       )
 
+      // Step 3: Launch the command via workflow run endpoint, passing .m file path
+      const runResult = await apiClient.post<RunCommandResponse>(
+        `/api/v1/workflow/${projectId}/run`,
+        {
+          command: activeTab.command,
+          args: currentParams,
+          param_file: exportResult.m_file_path,
+        },
+      )
+
       // Show success with .m file path
       setRunState((prev) => ({
         ...prev,
         [activeTabId]: {
           running: false,
-          message: `\u2713 Command '${activeTab.command}' queued. Parameters saved to: ${exportResult.m_file_path}`,
+          message: `\u2713 ${runResult.message || `Command '${activeTab.command}' queued.`} Parameters saved to: ${exportResult.m_file_path}`,
         },
       }))
     } catch (err: unknown) {
@@ -1694,7 +1713,7 @@ export function ActionsPage() {
         ...prev,
         [activeTabId]: {
           running: false,
-          message: `\u2717 Failed to save parameters: ${detail}`,
+          message: `\u2717 Failed to launch command: ${detail}`,
         },
       }))
     }
