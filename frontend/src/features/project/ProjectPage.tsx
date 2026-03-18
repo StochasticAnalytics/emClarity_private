@@ -463,6 +463,11 @@ function RecentProjectsList({ projects, onOpen, onRemove }: RecentProjectsListPr
       <h3 className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
         Recent Projects
       </h3>
+      {/* Single aria-live region for all row-level errors — avoids N simultaneous
+          live regions and uses 'polite' urgency which is appropriate for non-critical errors */}
+      <span aria-live="polite" className="sr-only">
+        {errorId !== null ? (errorMessage ?? 'Project not found on server — entry removed') : ''}
+      </span>
       <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white dark:divide-gray-700 dark:border-gray-700 dark:bg-gray-900">
         {projects.map((p) => (
           <li key={p.id} className="flex items-center justify-between gap-3 px-4 py-3">
@@ -480,7 +485,7 @@ function RecentProjectsList({ projects, onOpen, onRemove }: RecentProjectsListPr
               <span className="block truncate font-mono text-xs text-gray-400 dark:text-gray-500">
                 {p.directory}
               </span>
-              <span aria-live="assertive" className="text-xs text-red-500">
+              <span className="text-xs text-red-500" aria-hidden="true">
                 {errorId === p.id
                   ? (errorMessage ?? 'Project not found on server — entry removed')
                   : ''}

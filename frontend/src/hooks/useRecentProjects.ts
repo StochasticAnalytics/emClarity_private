@@ -82,6 +82,7 @@ export function useRecentProjects() {
 
         // Only migrate entries whose server record has no timestamp yet
         let migratedAny = false
+        let allSucceeded = true
         for (const id of localIds) {
           const serverRecord = serverById.get(id)
           if (serverRecord && serverRecord.last_accessed === null) {
@@ -92,11 +93,16 @@ export function useRecentProjects() {
               migratedAny = true
             } catch {
               // Best effort – continue with remaining entries
+              allSucceeded = false
             }
           }
         }
 
-        localStorage.removeItem(STORAGE_KEY)
+        // Only clear localStorage once all PATCH calls succeeded to prevent
+        // permanent data loss when some calls fail during migration
+        if (allSucceeded) {
+          localStorage.removeItem(STORAGE_KEY)
+        }
 
         // Refetch to get updated timestamps only if we migrated entries
         if (migratedAny) {
