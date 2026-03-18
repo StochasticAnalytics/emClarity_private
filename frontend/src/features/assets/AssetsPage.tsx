@@ -39,20 +39,6 @@ import { useApiQuery } from '@/hooks/useApi.ts'
 // Tab identifiers
 // ---------------------------------------------------------------------------
 
-type AssetTabId =
-  | 'tilt-series'
-  | 'ctf-data'
-  | 'tomograms'
-  | 'particle-positions'
-  | 'reference-volumes'
-  | 'fsc-curves'
-
-interface AssetTab {
-  id: AssetTabId
-  label: string
-  description: string
-}
-
 const ASSET_TAB_IDS = [
   'tilt-series',
   'ctf-data',
@@ -61,6 +47,14 @@ const ASSET_TAB_IDS = [
   'reference-volumes',
   'fsc-curves',
 ] as const
+
+type AssetTabId = (typeof ASSET_TAB_IDS)[number]
+
+interface AssetTab {
+  id: AssetTabId
+  label: string
+  description: string
+}
 
 const ASSET_TABS: AssetTab[] = [
   {

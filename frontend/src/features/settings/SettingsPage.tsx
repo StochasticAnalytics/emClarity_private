@@ -391,14 +391,14 @@ function ProfileDetail({ profile, onChange }: ProfileDetailProps) {
 // Settings tab definitions
 // ---------------------------------------------------------------------------
 
-type SettingsTabId = 'runProfiles' | 'environment'
+const SETTINGS_TAB_IDS = ['runProfiles', 'environment'] as const
+
+type SettingsTabId = (typeof SETTINGS_TAB_IDS)[number]
 
 interface SettingsTab {
   id: SettingsTabId
   label: string
 }
-
-const SETTINGS_TAB_IDS = ['runProfiles', 'environment'] as const
 
 const SETTINGS_TABS: SettingsTab[] = [
   { id: 'runProfiles', label: 'Run Profiles' },

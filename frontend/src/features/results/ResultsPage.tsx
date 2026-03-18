@@ -80,16 +80,16 @@ interface ParticleStats {
 // Tab definitions
 // ---------------------------------------------------------------------------
 
-type TabId = 'alignment' | 'ctf' | 'particles' | 'fsc' | 'averages' | 'stats'
+const RESULT_TAB_IDS = [
+  'alignment', 'ctf', 'particles', 'fsc', 'averages', 'stats',
+] as const
+
+type TabId = (typeof RESULT_TAB_IDS)[number]
 
 interface TabDef {
   id: TabId
   label: string
 }
-
-const RESULT_TAB_IDS = [
-  'alignment', 'ctf', 'particles', 'fsc', 'averages', 'stats',
-] as const
 
 const TABS: TabDef[] = [
   { id: 'alignment', label: 'Alignment Quality' },
