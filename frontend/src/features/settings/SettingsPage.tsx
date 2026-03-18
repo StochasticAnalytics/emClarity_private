@@ -6,8 +6,8 @@
  *   Left:   Profile list with Create/Delete buttons
  *   Right:  Profile detail form (name, GPU count, CPU cores, scratch disk, command template)
  *
- * Profiles are persisted in browser localStorage via useRunProfiles hook.
- * System params are also persisted in localStorage.
+ * Profiles and system params are persisted server-side via the project
+ * settings API, accessed through the useRunProfiles hook.
  *
  * Tutorial reference: Section 1.5, Table 1 (system parameters).
  */

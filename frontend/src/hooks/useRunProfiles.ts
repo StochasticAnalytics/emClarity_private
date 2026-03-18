@@ -2,8 +2,6 @@
  * useRunProfiles – server-backed hook for managing run profiles.
  *
  * Reads and writes profile/system-param settings via the project settings API.
- * On first load, performs a one-time migration from localStorage (if the server
- * has no profiles yet and localStorage contains data).
  *
  * Usage:
  *   const { profiles, selectedId, select, create, update, remove,
@@ -14,14 +12,6 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import type { RunProfile, SystemParams } from '@/types/runProfile'
 import { DEFAULT_SYSTEM_PARAMS } from '@/types/runProfile'
 import { apiClient, ApiError } from '@/api/client'
-
-// ---------------------------------------------------------------------------
-// localStorage keys (used only for one-time migration)
-// ---------------------------------------------------------------------------
-
-const PROFILES_KEY = 'emClarity_runProfiles'
-const SYSTEM_PARAMS_KEY = 'emClarity_systemParams'
-const SELECTED_ID_KEY = 'emClarity_selectedRunProfile'
 
 // ---------------------------------------------------------------------------
 // Backend API types
@@ -74,47 +64,6 @@ function frontendToBackend(fp: RunProfile): BackendRunProfile {
   }
 }
 
-function generateId(): string {
-  return `profile-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
-}
-
-// ---------------------------------------------------------------------------
-// localStorage migration helpers
-// ---------------------------------------------------------------------------
-
-function loadLocalStorageProfiles(): RunProfile[] | null {
-  try {
-    const raw = localStorage.getItem(PROFILES_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw) as unknown
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed as RunProfile[]
-    }
-  } catch {
-    // Corrupted localStorage — ignore
-  }
-  return null
-}
-
-function loadLocalStorageSystemParams(): SystemParams | null {
-  try {
-    const raw = localStorage.getItem(SYSTEM_PARAMS_KEY)
-    if (raw) return { ...DEFAULT_SYSTEM_PARAMS, ...(JSON.parse(raw) as Partial<SystemParams>) }
-  } catch {
-    // Corrupted localStorage — ignore
-  }
-  return null
-}
-
-function loadLocalStorageSelectedId(): string | null {
-  return localStorage.getItem(SELECTED_ID_KEY)
-}
-
-function clearLocalStorageKeys(): void {
-  localStorage.removeItem(PROFILES_KEY)
-  localStorage.removeItem(SYSTEM_PARAMS_KEY)
-  localStorage.removeItem(SELECTED_ID_KEY)
-}
-
 // ---------------------------------------------------------------------------
 // Public interface
 // ---------------------------------------------------------------------------
@@ -150,14 +99,11 @@ export function useRunProfiles(projectId: string | null = null): UseRunProfilesR
   const [loadError, setLoadError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  // Track whether initial fetch + migration has happened for this projectId
+  // Track whether initial fetch has happened for this projectId
   const fetchedProjectRef = useRef<string | null>(null)
 
-  // Track whether migration localStorage cleanup is pending (defect 7)
-  const migrationCleanupPendingRef = useRef<boolean>(false)
-
   // -----------------------------------------------------------------------
-  // Fetch settings from server (with optional migration from localStorage)
+  // Fetch settings from server
   // -----------------------------------------------------------------------
 
   useEffect(() => {
@@ -179,55 +125,18 @@ export function useRunProfiles(projectId: string | null = null): UseRunProfilesR
     let cancelled = false
     const controller = new AbortController()
 
-    async function fetchAndMigrate() {
+    async function fetchSettings() {
       setLoading(true)
       setLoadError(null)
       setSaveError(null)
 
       try {
-        let settings = await apiClient.get<ProjectSettings>(
+        const settings = await apiClient.get<ProjectSettings>(
           `/api/v1/projects/${projectId}/settings`,
           controller.signal,
         )
 
         if (cancelled) return
-
-        // One-time migration: if server has no profiles but localStorage does
-        const localProfiles = loadLocalStorageProfiles()
-        if (settings.run_profiles.length === 0 && localProfiles && localProfiles.length > 0) {
-          const localSystemParams = loadLocalStorageSystemParams()
-          const localSelectedId = loadLocalStorageSelectedId()
-
-          const migrationPayload: Record<string, unknown> = {
-            run_profiles: localProfiles.map(frontendToBackend),
-          }
-          if (localSystemParams) {
-            migrationPayload.system_params = localSystemParams
-          }
-          if (localSelectedId) {
-            const matchingProfile = localProfiles.find((p) => p.id === localSelectedId)
-            if (matchingProfile) {
-              migrationPayload.selected_run_profile = matchingProfile.name
-            }
-          }
-
-          // Mark cleanup pending before the PATCH so unmount can clean up (defect 7)
-          migrationCleanupPendingRef.current = true
-
-          settings = await apiClient.patch<ProjectSettings>(
-            `/api/v1/projects/${projectId}/settings`,
-            migrationPayload,
-          )
-
-          if (cancelled) {
-            // Component unmounted during migration — cleanup runs in the return
-            return
-          }
-
-          // Clear localStorage after successful migration
-          clearLocalStorageKeys()
-          migrationCleanupPendingRef.current = false
-        }
 
         // Apply server state to local React state
         const frontendProfiles = settings.run_profiles.map(backendToFrontend)
@@ -251,10 +160,6 @@ export function useRunProfiles(projectId: string | null = null): UseRunProfilesR
         fetchedProjectRef.current = projectId
       } catch (err: unknown) {
         if (cancelled) return
-        // If the migration PATCH failed, clear the pending flag so the unmount
-        // cleanup does not incorrectly wipe localStorage data that was never
-        // successfully migrated to the server.
-        migrationCleanupPendingRef.current = false
         const message = err instanceof Error ? err.message : 'Failed to load settings'
         setLoadError(message)
       } finally {
@@ -262,17 +167,11 @@ export function useRunProfiles(projectId: string | null = null): UseRunProfilesR
       }
     }
 
-    void fetchAndMigrate()
+    void fetchSettings()
 
     return () => {
       cancelled = true
       controller.abort()
-      // Defect 7: if migration PATCH completed but cleanup hasn't run yet,
-      // ensure localStorage is cleared on unmount so stale data doesn't persist
-      if (migrationCleanupPendingRef.current) {
-        clearLocalStorageKeys()
-        migrationCleanupPendingRef.current = false
-      }
     }
   }, [projectId])
 

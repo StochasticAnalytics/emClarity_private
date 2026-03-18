@@ -19,5 +19,20 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      'no-restricted-globals': [
+        'error',
+        {
+          name: 'localStorage',
+          message:
+            'localStorage is banned. All persistent state must be stored server-side via the project settings API.',
+        },
+        {
+          name: 'sessionStorage',
+          message:
+            'sessionStorage is banned. All persistent state must be stored server-side via the project settings API.',
+        },
+      ],
+    },
   },
 ])

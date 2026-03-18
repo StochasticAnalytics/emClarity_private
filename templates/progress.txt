@@ -1,3 +1,12 @@
+Developer: Completed TASK-040 [2026-03-18]
+  Task: TASK-040 - Remove all remaining localStorage usage + ESLint rule
+  - Removed localStorage migration code from useRecentProjects.ts, useRunProfiles.ts,
+    ActionsPage.tsx (ViewerLauncher), and EnvironmentPanel.tsx
+  - Updated comments in SettingsPage.tsx and runProfile.ts to reflect server-side storage
+  - Added no-restricted-globals ESLint rule banning localStorage and sessionStorage
+  - Zero localStorage/sessionStorage/getItem/setItem/removeItem references remain in frontend/src/
+  - TypeScript compiles clean; 35/35 backend tests pass
+
 Developer: Completed TASK-037 PATCH [2026-03-18]
   - Fixed 5 QA defects in parameter snapshot feature
   - Fixed error message suppression when saveError active in RunBar
@@ -738,3 +747,15 @@ Developer: TASK-037 PATCH Completed 2026-03-17
   - Added param_file field to RunCommandRequest/RunCommandResponse in v1_workflow.py
   - Updated ActionsPage handleRun to call workflow run endpoint after snapshot export, passing .m path
   - All 35 tests pass, TypeScript compiles cleanly
+
+Developer: Completed TASK-038 PATCH [2026-03-18]
+  - Fixed 11 QA defects in parameter snapshot history UI
+  - Fixed dropdown clipping with fixed positioning to escape overflow ancestors
+  - Replaced invalid ARIA listbox/option with menu/menuitem + arrow-key nav
+  - Added focus return to trigger on dropdown close
+  - Per-item error state instead of shared error hiding snapshot list
+  - Race condition guard on concurrent snapshot loads
+  - aria-live announcements for export messages and dropdown states
+  - Confirmation feedback after successful snapshot load
+  - Backend: logging for malformed snapshots, ambiguous-match guard in load_snapshot
+  - Documented ExportMButton side-effect of creating permanent snapshot

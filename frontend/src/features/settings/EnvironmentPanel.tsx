@@ -263,7 +263,7 @@ function ExecutablePathsSection({ projectId }: ExecutablePathsSectionProps) {
     setInitialLoading(!!projectId)
   }, [projectId])
 
-  // Fetch settings from server and migrate from localStorage if needed
+  // Fetch settings from server
   useEffect(() => {
     if (!projectId) {
       setInitialLoading(false)
@@ -272,7 +272,7 @@ function ExecutablePathsSection({ projectId }: ExecutablePathsSectionProps) {
 
     let cancelled = false
 
-    const fetchAndMigrate = async () => {
+    const fetchSettings = async () => {
       setInitialLoading(true)
       setFetchError(null)
       try {
@@ -282,42 +282,8 @@ function ExecutablePathsSection({ projectId }: ExecutablePathsSectionProps) {
 
         if (cancelled) return
 
-        // Fix defect 3: merge per-key — migrate any localStorage path that is
-        // absent from the server response, rather than skipping migration
-        // entirely when the server already has at least one path.
-        const localPaths: Record<string, string> = {}
-        for (const ep of EXECUTABLE_PATHS) {
-          const val = localStorage.getItem(`env-path-${ep.id}`)
-          if (val) localPaths[ep.id] = val
-        }
-
         const serverPaths = settings.executable_paths ?? {}
-
-        // Collect keys that exist in localStorage but are missing on the server.
-        const keysToMigrate = Object.keys(localPaths).filter(
-          (k) => !serverPaths[k],
-        )
-
-        if (keysToMigrate.length > 0) {
-          const migrationPatch: Record<string, string> = {}
-          for (const k of keysToMigrate) migrationPatch[k] = localPaths[k]
-          const merged = { ...serverPaths, ...migrationPatch }
-          await apiClient.patch(`/api/v1/projects/${projectId}/settings`, {
-            executable_paths: merged,
-          })
-          if (cancelled) return
-          // Clear all localStorage keys after successful migration
-          for (const ep of EXECUTABLE_PATHS) {
-            localStorage.removeItem(`env-path-${ep.id}`)
-          }
-          setRows(buildRows(merged))
-        } else {
-          // Use server paths; clear any stale localStorage keys
-          setRows(buildRows(serverPaths))
-          for (const ep of EXECUTABLE_PATHS) {
-            localStorage.removeItem(`env-path-${ep.id}`)
-          }
-        }
+        setRows(buildRows(serverPaths))
       } catch (err) {
         if (cancelled) return
         const message = err instanceof Error ? err.message : 'Failed to load settings'
@@ -327,7 +293,7 @@ function ExecutablePathsSection({ projectId }: ExecutablePathsSectionProps) {
       }
     }
 
-    void fetchAndMigrate()
+    void fetchSettings()
 
     return () => { cancelled = true }
   // fetchAttempt is included so the Retry button re-triggers this effect (defect 5).

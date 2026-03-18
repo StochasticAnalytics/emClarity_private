@@ -1,13 +1,10 @@
 /**
  * useRecentProjects – fetch recent projects from server API.
  *
- * Replaces the old localStorage-based hook. On first load performs
- * a one-time migration from localStorage to server-side timestamps.
+ * All project data is server-side; no browser storage is used.
  */
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { apiClient } from '@/api/client.ts'
-
-const STORAGE_KEY = 'emclarity_recent_projects'
 
 export interface RecentProject {
   id: string
@@ -40,80 +37,14 @@ export function useRecentProjects() {
   const [projects, setProjects] = useState<RecentProject[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const migrationDone = useRef(false)
 
-  const fetchProjects = useCallback(async (): Promise<ProjectResponse[]> => {
+  const fetchProjects = useCallback(async () => {
     const all = await apiClient.get<ProjectResponse[]>('/api/v1/projects')
     const recent = all
       .map(toRecentProject)
       .filter((p): p is RecentProject => p !== null)
     setProjects(recent)
-    return all
   }, [])
-
-  // One-time migration from localStorage
-  const migrateFromLocalStorage = useCallback(
-    async (serverProjects: ProjectResponse[]) => {
-      if (migrationDone.current) return
-      migrationDone.current = true
-
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY)
-        if (!raw) return
-
-        const localEntries: unknown = JSON.parse(raw)
-        if (!Array.isArray(localEntries) || localEntries.length === 0) return
-
-        // Build a map of server projects by ID for matching
-        const serverById = new Map(serverProjects.map((p) => [p.id, p]))
-
-        // Collect localStorage IDs that exist on the server
-        const localIds: string[] = []
-        for (const entry of localEntries) {
-          if (
-            entry !== null &&
-            typeof entry === 'object' &&
-            'id' in entry &&
-            typeof (entry as Record<string, unknown>).id === 'string'
-          ) {
-            localIds.push((entry as Record<string, unknown>).id as string)
-          }
-        }
-
-        // Only migrate entries whose server record has no timestamp yet
-        let migratedAny = false
-        let allSucceeded = true
-        for (const id of localIds) {
-          const serverRecord = serverById.get(id)
-          if (serverRecord && serverRecord.last_accessed === null) {
-            try {
-              await apiClient.patch<ProjectResponse>(
-                `/api/v1/projects/${id}/accessed`,
-              )
-              migratedAny = true
-            } catch {
-              // Best effort – continue with remaining entries
-              allSucceeded = false
-            }
-          }
-        }
-
-        // Only clear localStorage once all PATCH calls succeeded to prevent
-        // permanent data loss when some calls fail during migration
-        if (allSucceeded) {
-          localStorage.removeItem(STORAGE_KEY)
-        }
-
-        // Refetch to get updated timestamps only if we migrated entries
-        if (migratedAny) {
-          await fetchProjects()
-        }
-      } catch {
-        // Migration is best-effort; don't break the hook
-      }
-    },
-    [fetchProjects],
-  )
 
   useEffect(() => {
     let cancelled = false
@@ -122,10 +53,7 @@ export function useRecentProjects() {
       setIsLoading(true)
       setError(null)
       try {
-        const serverProjects = await fetchProjects()
-        if (!cancelled) {
-          await migrateFromLocalStorage(serverProjects)
-        }
+        await fetchProjects()
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Failed to load projects')
@@ -141,7 +69,7 @@ export function useRecentProjects() {
     return () => {
       cancelled = true
     }
-  }, [fetchProjects, migrateFromLocalStorage])
+  }, [fetchProjects])
 
   const addProject = useCallback(
     async (entry: { id: string; name: string; directory: string }) => {

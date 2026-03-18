@@ -1253,8 +1253,6 @@ function RunBar({ command, onRun, isRunning, runMessage }: RunBarProps) {
 // Viewer launcher
 // ---------------------------------------------------------------------------
 
-const VIEWER_PATH_KEY = 'emclarity_viewer_path'
-
 interface ViewerLauncherProps {
   projectId: string
   isDemo: boolean
@@ -1276,8 +1274,7 @@ function ViewerLauncher({ projectId, isDemo }: ViewerLauncherProps) {
   const [settingsError, setSettingsError] = useState<string | null>(null)
   const gearButtonRef = useRef<HTMLButtonElement>(null)
 
-  // Read viewer_path from project settings API on mount, with one-time
-  // migration from localStorage if the server value is empty.
+  // Read viewer_path from project settings API on mount.
   useEffect(() => {
     if (isDemo || !projectId) {
       setSettingsLoading(false)
@@ -1288,45 +1285,15 @@ function ViewerLauncher({ projectId, isDemo }: ViewerLauncherProps) {
     setSettingsError(null)
     apiClient
       .get<ProjectSettingsResponse>(`/api/v1/projects/${projectId}/settings`, controller.signal)
-      .then(async (data) => {
+      .then((data) => {
         const serverPath = data.viewer_path ?? ''
-        const localPath = localStorage.getItem(VIEWER_PATH_KEY)
-
-        // Migration: localStorage has a value, server does not → migrate
-        // Capture projectId now to avoid using a stale closure value if the
-        // component re-renders with a different project before the PATCH resolves.
-        const capturedProjectId = projectId
-        if (!serverPath && localPath) {
-          try {
-            const updated = await apiClient.patch<ProjectSettingsResponse>(
-              `/api/v1/projects/${capturedProjectId}/settings`,
-              { viewer_path: localPath },
-            )
-            localStorage.removeItem(VIEWER_PATH_KEY)
-            const migrated = updated.viewer_path ?? ''
-            setViewerPath(migrated)
-            setDraftPath(migrated)
-          } catch (migrationErr: unknown) {
-            // Migration failed — fall back to localStorage value for now
-            console.warn('[ViewerLauncher] Failed to migrate viewer path from localStorage to server:', migrationErr)
-            setViewerPath(localPath)
-            setDraftPath(localPath)
-          }
-        } else {
-          // Server has a value, or nothing to migrate — use server value
-          // Also clear localStorage if it still exists (migration already done or not needed)
-          if (localPath !== null) {
-            localStorage.removeItem(VIEWER_PATH_KEY)
-          }
-          setViewerPath(serverPath)
-          setDraftPath(serverPath)
-        }
+        setViewerPath(serverPath)
+        setDraftPath(serverPath)
       })
       .catch((err: unknown) => {
         if (err instanceof Error && err.name === 'AbortError') return
-        const fallback = localStorage.getItem(VIEWER_PATH_KEY) ?? ''
-        setViewerPath(fallback)
-        setDraftPath(fallback)
+        setViewerPath('')
+        setDraftPath('')
         setSettingsError('Failed to load viewer settings from server')
         console.warn('[ViewerLauncher] Failed to fetch project settings:', err)
       })

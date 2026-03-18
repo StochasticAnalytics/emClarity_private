@@ -2,8 +2,8 @@
  * Run Profile types for TASK-023.
  *
  * A RunProfile stores the hardware configuration and command template
- * used to launch emClarity processing steps. Profiles are stored in
- * browser localStorage and exposed via the useRunProfiles hook.
+ * used to launch emClarity processing steps. Profiles are stored
+ * server-side and exposed via the useRunProfiles hook.
  */
 
 export interface RunProfile {
