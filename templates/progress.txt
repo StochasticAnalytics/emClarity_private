@@ -1,3 +1,11 @@
+Developer: Completed TASK-037 PATCH [2026-03-18]
+  - Fixed 5 QA defects in parameter snapshot feature
+  - Fixed error message suppression when saveError active in RunBar
+  - Fixed _format_value for None/inf/nan MATLAB output
+  - Added exception guard for params_dir.iterdir() in export_snapshot_m
+  - Added definedness check for snapshotResult.snapshot_id URL usage
+  - Added aria-live announcement for success messages in RunBar
+
 Developer: Completed 2026-03-16 [TASK-030]
   Task: TASK-030 - Harden filesystem browser into robust reusable component
   - filesystem.ts: removed duplicate API_BASE_URL + raw fetch(); now uses apiClient.get() from client.ts
@@ -724,3 +732,9 @@ Developer: Completed TASK-035 patch [2026-03-17]
   - Added missing error handling code paths in handleSavePath matching handleLaunch
   - Fixed localStorage migration race condition by capturing projectId before async call
   - Replaced aria-hidden separator with role="separator" or removed it for screen reader boundary
+
+Developer: TASK-037 PATCH Completed 2026-03-17
+  - Fixed HIGH defect: .m file path never passed to job launch endpoint
+  - Added param_file field to RunCommandRequest/RunCommandResponse in v1_workflow.py
+  - Updated ActionsPage handleRun to call workflow run endpoint after snapshot export, passing .m path
+  - All 35 tests pass, TypeScript compiles cleanly

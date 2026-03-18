@@ -1143,14 +1143,15 @@ function RunBar({ command, onRun, isRunning, runMessage }: RunBarProps) {
         {saveError && (
           <p role="alert" className="text-xs text-red-600 dark:text-red-400 truncate">{saveError}</p>
         )}
-        {!saveError && runMessage && (
+        {runMessage && (
           <p
             className={`text-xs truncate ${
               runMessage.startsWith('\u2717')
                 ? 'text-red-600 dark:text-red-400'
                 : 'text-green-700 dark:text-green-400'
             }`}
-            role={runMessage.startsWith('\u2717') ? 'alert' : undefined}
+            role={runMessage.startsWith('\u2717') ? 'alert' : 'status'}
+            aria-live={runMessage.startsWith('\u2717') ? undefined : 'polite'}
           >
             {runMessage}
           </p>
@@ -1678,6 +1679,9 @@ export function ActionsPage() {
       )
 
       // Step 2: Export snapshot to .m format
+      if (!snapshotResult.snapshot_id) {
+        throw new Error('Snapshot response missing snapshot_id')
+      }
       const exportResult = await apiClient.post<ExportMResponse>(
         `/api/v1/projects/${projectId}/parameter-snapshots/${snapshotResult.snapshot_id}/export-m`,
       )

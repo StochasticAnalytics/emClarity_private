@@ -448,8 +448,16 @@ class ParameterService:
     @staticmethod
     def _format_value(value: Any) -> str:
         """Format a Python value for writing to a MATLAB parameter file."""
+        if value is None:
+            return "''"
         if isinstance(value, bool):
             return "1" if value else "0"
+        if isinstance(value, float):
+            import math
+            if math.isnan(value):
+                return "NaN"
+            if math.isinf(value):
+                return "Inf" if value > 0 else "-Inf"
         if isinstance(value, list):
             parts = ", ".join(str(v) for v in value)
             return f"[{parts}]"

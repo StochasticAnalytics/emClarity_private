@@ -118,10 +118,17 @@ def export_snapshot_m(
         )
 
     # Find the snapshot file by matching the UUID prefix in filenames
-    matching = [
-        f for f in params_dir.iterdir()
-        if f.name.startswith(f"snapshot_{snapshot_id}") and f.suffix == ".json"
-    ]
+    try:
+        matching = [
+            f for f in params_dir.iterdir()
+            if f.name.startswith(f"snapshot_{snapshot_id}") and f.suffix == ".json"
+        ]
+    except OSError as exc:
+        log.exception("Failed to list parameters directory for project %s", project_id)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to list snapshots directory: {exc}",
+        ) from exc
 
     if not matching:
         raise HTTPException(
