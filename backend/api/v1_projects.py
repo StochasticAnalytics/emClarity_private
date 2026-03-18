@@ -21,6 +21,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from backend.models.project import ProjectState, TiltSeries
+from backend.models.project_settings import ProjectSettings
 from backend.services.project_service import ProjectService
 from backend.utils.safe_json import locked_json_read, locked_json_read_write
 
@@ -117,6 +118,7 @@ class _ProjectRecord(BaseModel):
     parameters: dict[str, Any]
     current_cycle: int = 0
     last_accessed: str | None = None
+    settings: ProjectSettings = Field(default_factory=ProjectSettings)
 
 
 _projects: dict[str, _ProjectRecord] = {}
@@ -517,3 +519,52 @@ async def list_tilt_series(project_id: str) -> TiltSeriesListResponse:
     tilt_series = _project_service.list_tilt_series(record.directory)
 
     return TiltSeriesListResponse(tilt_series=tilt_series)
+
+
+@router.get("/{project_id}/settings")
+async def get_project_settings(project_id: str) -> ProjectSettings:
+    """Return the settings for a project."""
+    record = _get_project(project_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found")
+    return record.settings
+
+
+@router.patch("/{project_id}/settings")
+async def update_project_settings(project_id: str, patch: dict[str, Any]) -> ProjectSettings:
+    """Partial update of project settings.
+
+    Accepts a partial ProjectSettings dict, merges with existing settings.
+    Uses locked write pattern for concurrent safety.
+    """
+    record = _get_project(project_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found")
+
+    with _registry_lock:
+        record = _projects.get(project_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found")
+
+        # Merge: existing settings dict + patch
+        existing = record.settings.model_dump()
+
+        # Deep merge for specific fields
+        for key, value in patch.items():
+            if key == "run_profiles" and value is not None:
+                existing["run_profiles"] = value
+            elif key == "executable_paths" and value is not None and isinstance(value, dict):
+                existing.setdefault("executable_paths", {})
+                existing["executable_paths"].update(value)
+            elif key == "system_params" and value is not None and isinstance(value, dict):
+                if existing.get("system_params") is not None:
+                    existing["system_params"].update(value)
+                else:
+                    existing["system_params"] = value
+            else:
+                existing[key] = value
+
+        record.settings = ProjectSettings(**existing)
+
+    _save_registry()
+    return record.settings

@@ -1056,9 +1056,9 @@ interface RunBarProps {
 }
 
 function RunBar({ command, onRun, isRunning, runMessage }: RunBarProps) {
-  const { profiles, selectedId, select } = useRunProfiles()
   const navigate = useNavigate()
   const { projectId } = useParams<{ projectId: string }>()
+  const { profiles, selectedId, select } = useRunProfiles(projectId ?? null)
   const isDemo = projectId === DEMO_PROJECT_ID
 
   // Brief visible feedback when a keyboard user activates the button while in demo mode.

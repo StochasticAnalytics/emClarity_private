@@ -15,6 +15,7 @@
 import { useState, useCallback, useId } from 'react'
 import { Cpu, HardDrive, Plus, Trash2, Server, AlertCircle } from 'lucide-react'
 import { useRunProfiles } from '@/hooks/useRunProfiles'
+import { useProject } from '@/context/ProjectContext'
 import type { RunProfile } from '@/types/runProfile'
 import { EnvironmentPanel } from './EnvironmentPanel'
 
@@ -406,8 +407,9 @@ const SETTINGS_TABS: SettingsTab[] = [
 // ---------------------------------------------------------------------------
 
 export function SettingsPage() {
-  const { profiles, selectedId, selectedProfile, select, create, update, remove, systemParams, setSystemParams } =
-    useRunProfiles()
+  const { projectId } = useProject()
+  const { profiles, selectedId, selectedProfile, select, create, update, remove, systemParams, setSystemParams, loading, error } =
+    useRunProfiles(projectId)
 
   // Active settings tab — switching tabs must NOT reset profile edit state
   const [activeTab, setActiveTab] = useState<SettingsTabId>('runProfiles')
@@ -430,6 +432,35 @@ export function SettingsPage() {
     },
     [selectedProfile, update],
   )
+
+  if (!projectId) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full bg-white dark:bg-gray-900">
+        <p className="text-gray-500 dark:text-gray-400 text-sm">
+          Open a project first to configure settings.
+        </p>
+      </div>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full bg-white dark:bg-gray-900">
+        <p className="text-gray-500 dark:text-gray-400 text-sm">Loading settings...</p>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full bg-white dark:bg-gray-900">
+        <div role="alert" className="text-center">
+          <p className="text-red-600 dark:text-red-400 text-sm font-medium">Failed to load settings</p>
+          <p className="text-gray-500 dark:text-gray-400 text-xs mt-1">{error}</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col h-full bg-white dark:bg-gray-900 overflow-hidden">
