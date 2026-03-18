@@ -717,3 +717,10 @@ Developer: Completed TASK-035 2026-03-17
   - handleSavePath now writes via PATCH /api/v1/projects/{id}/settings
   - Added loading state (settingsLoading) and error state (settingsError) for async fetch
   - TypeScript compiles cleanly, all 35 backend tests pass
+
+Developer: Completed TASK-035 patch [2026-03-17]
+  - Fixed handleSavePath to clear message on success
+  - Added isSaving state to disable save button during async PATCH
+  - Added missing error handling code paths in handleSavePath matching handleLaunch
+  - Fixed localStorage migration race condition by capturing projectId before async call
+  - Replaced aria-hidden separator with role="separator" or removed it for screen reader boundary

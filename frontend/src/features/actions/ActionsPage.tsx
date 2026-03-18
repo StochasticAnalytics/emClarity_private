@@ -1220,6 +1220,7 @@ function ViewerLauncher({ projectId, isDemo }: ViewerLauncherProps) {
   const [configOpen, setConfigOpen] = useState<boolean>(false)
   const [draftPath, setDraftPath] = useState<string>('')
   const [launching, setLaunching] = useState<boolean>(false)
+  const [isSaving, setIsSaving] = useState<boolean>(false)
   const [message, setMessage] = useState<string | null>(null)
   const [projectDirectory, setProjectDirectory] = useState<string | null>(null)
   const [settingsLoading, setSettingsLoading] = useState<boolean>(true)
@@ -1243,10 +1244,13 @@ function ViewerLauncher({ projectId, isDemo }: ViewerLauncherProps) {
         const localPath = localStorage.getItem(VIEWER_PATH_KEY)
 
         // Migration: localStorage has a value, server does not → migrate
+        // Capture projectId now to avoid using a stale closure value if the
+        // component re-renders with a different project before the PATCH resolves.
+        const capturedProjectId = projectId
         if (!serverPath && localPath) {
           try {
             const updated = await apiClient.patch<ProjectSettingsResponse>(
-              `/api/v1/projects/${projectId}/settings`,
+              `/api/v1/projects/${capturedProjectId}/settings`,
               { viewer_path: localPath },
             )
             localStorage.removeItem(VIEWER_PATH_KEY)
@@ -1339,8 +1343,11 @@ function ViewerLauncher({ projectId, isDemo }: ViewerLauncherProps) {
   }, [viewerPath, projectDirectory])
 
   const handleSavePath = useCallback(async () => {
+    if (isSaving) return
     const trimmed = draftPath.trim()
     if (!isDemo && projectId) {
+      setIsSaving(true)
+      setMessage(null)
       try {
         await apiClient.patch<ProjectSettingsResponse>(
           `/api/v1/projects/${projectId}/settings`,
@@ -1357,17 +1364,25 @@ function ViewerLauncher({ projectId, isDemo }: ViewerLauncherProps) {
             typeof (body as Record<string, unknown>).detail === 'string'
           ) {
             detail = (body as { detail: string }).detail
+          } else {
+            detail = err.message
           }
+        } else if (err instanceof Error) {
+          detail = err.message
         }
         setMessage(`Error: ${detail}`)
+        setIsSaving(false)
         return
+      } finally {
+        setIsSaving(false)
       }
     }
+    setMessage(null)
     setViewerPath(trimmed)
     setSettingsError(null)
     setConfigOpen(false)
     gearButtonRef.current?.focus()
-  }, [draftPath, isDemo, projectId])
+  }, [isSaving, draftPath, isDemo, projectId])
 
   return (
     <div className="border-t border-gray-200 dark:border-gray-700 px-4 py-3 bg-gray-50 dark:bg-gray-800/30">
@@ -1403,7 +1418,7 @@ function ViewerLauncher({ projectId, isDemo }: ViewerLauncherProps) {
         className="mt-1.5 text-xs text-gray-600 dark:text-gray-400 min-h-[1rem]"
       >
         {settingsError && <span className="text-amber-600 dark:text-amber-400">{settingsError}</span>}
-        {settingsError && message && <span aria-hidden="true"> — </span>}
+        {settingsError && message && <span role="separator" aria-orientation="vertical" className="mx-1 select-none" aria-label=", "> </span>}
         {message}
       </div>
       {/* Always rendered so aria-controls="viewer-config-panel" references a valid DOM element.
@@ -1422,10 +1437,11 @@ function ViewerLauncher({ projectId, isDemo }: ViewerLauncherProps) {
         />
         <button
           type="button"
+          disabled={isSaving}
           onClick={() => { void handleSavePath() }}
-          className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-blue-500"
         >
-          Save
+          {isSaving ? 'Saving…' : 'Save'}
         </button>
         <button
           type="button"
