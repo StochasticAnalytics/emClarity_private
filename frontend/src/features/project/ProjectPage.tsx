@@ -705,8 +705,12 @@ export function ProjectPage() {
         </div>
 
         {/* Recent projects */}
+        {/* aria-live region announces loading state changes to assistive technology (WCAG 4.1.3) */}
+        <span aria-live="polite" className="sr-only">
+          {isRecentLoading ? 'Loading recent projects…' : ''}
+        </span>
         {isRecentLoading ? (
-          <p className="text-sm text-gray-500 dark:text-gray-400">
+          <p aria-hidden="true" className="text-sm text-gray-500 dark:text-gray-400">
             Loading recent projects…
           </p>
         ) : recentError ? (

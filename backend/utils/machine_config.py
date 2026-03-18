@@ -6,15 +6,21 @@ for additional machine-specific settings.
 
 from __future__ import annotations
 
+import functools
 import os
 from pathlib import Path
 
 
+@functools.cache
 def get_registry_dir() -> Path:
     """Return the registry directory path.
 
     Reads from ``EMCLARITY_REGISTRY_DIR`` environment variable, defaulting
     to ``~/.emclarity`` if not set or empty.
+
+    The result is cached so the path is resolved exactly once per process,
+    guaranteeing structural stability rather than relying on the environment
+    variable remaining unchanged between calls.
     """
     env_value = os.environ.get("EMCLARITY_REGISTRY_DIR", "").strip()
     if env_value:
