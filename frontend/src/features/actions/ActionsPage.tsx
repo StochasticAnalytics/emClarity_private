@@ -38,6 +38,18 @@ import { apiClient, ApiError } from '@/api/client'
  */
 type SchemaParam = ParameterDefinition
 
+/** Response from creating a parameter snapshot. */
+interface SnapshotResponse {
+  snapshot_id: string
+  filename: string
+  created_at: string
+}
+
+/** Response from exporting a snapshot to .m format. */
+interface ExportMResponse {
+  m_file_path: string
+}
+
 /** A parameter entry within a tab's accordion section. */
 interface TabParamDef {
   /** Parameter name – matches schema key (best-effort). */
@@ -1639,24 +1651,54 @@ export function ActionsPage() {
     }))
   }, [activeTabId])
 
-  const handleRun = useCallback(() => {
+  const handleRun = useCallback(async () => {
     if (runTimerRef.current !== null) clearTimeout(runTimerRef.current)
     setRunState((prev) => ({
       ...prev,
       [activeTabId]: { running: true, message: null },
     }))
-    // Stub: simulate brief delay then show stub message
-    runTimerRef.current = setTimeout(() => {
-      runTimerRef.current = null
+
+    try {
+      // Collect current parameter values for the active tab
+      const currentParams = tabValues[activeTabId] ?? {}
+
+      // Step 1: Save parameter snapshot
+      const snapshotResult = await apiClient.post<SnapshotResponse>(
+        `/api/v1/projects/${projectId}/parameter-snapshots`,
+        { parameters: currentParams },
+      )
+
+      // Step 2: Export snapshot to .m format
+      const exportResult = await apiClient.post<ExportMResponse>(
+        `/api/v1/projects/${projectId}/parameter-snapshots/${snapshotResult.snapshot_id}/export-m`,
+      )
+
+      // Show success with .m file path
       setRunState((prev) => ({
         ...prev,
         [activeTabId]: {
           running: false,
-          message: `✓ Command '${activeTab.command}' queued (stub — backend integration pending)`,
+          message: `\u2713 Command '${activeTab.command}' queued. Parameters saved to: ${exportResult.m_file_path}`,
         },
       }))
-    }, 800)
-  }, [activeTabId, activeTab.command])
+    } catch (err: unknown) {
+      let detail = 'Unknown error'
+      if (err instanceof ApiError) {
+        // Extract specific error detail from backend response if available
+        const body = err.body as Record<string, unknown> | null
+        detail = (body && typeof body.detail === 'string') ? body.detail : err.statusText
+      } else if (err instanceof Error) {
+        detail = err.message
+      }
+      setRunState((prev) => ({
+        ...prev,
+        [activeTabId]: {
+          running: false,
+          message: `\u2717 Failed to save parameters: ${detail}`,
+        },
+      }))
+    }
+  }, [activeTabId, activeTab.command, tabValues, projectId])
 
   if (!projectId) {
     return <Navigate to="/" replace />
