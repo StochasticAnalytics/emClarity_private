@@ -691,3 +691,22 @@ Developer: Completed TASK-030/PATCH [2026-03-16]
   - Fixed Binding Decision #2 violation: removed regex from TypeError guard
   - Fixed spurious focus restoration by splitting useEffect into two (focus-only + navigate)
   - Added aria-current="page" to terminal breadcrumb segment
+
+Developer: Completed TASK-034/DEV [2026-03-18]
+  - Added GET /api/v1/environment/resolve-env endpoint with ALLOWED_ENV_VARS whitelist
+  - Rewrote ExecutablePathsSection for server-side persistence via project settings API
+  - Added 'Get from environment' button with resolve-env integration + 'Use this path'
+  - Implemented localStorage migration to server, clearing keys after migration
+  - Full loading/error state coverage for fetch, save, and env resolution
+
+Developer: Completed TASK-034/PATCH [2026-03-17]
+  - [1] Fixed IMOD env var: IMOD_DIR→IMOD_BIN with /imodinfo suffix appended to resolved value
+  - [2] Moved savePaths call outside setRows updater to avoid side effects in pure updater
+  - [3] Added aria-live region for env resolve success and not-found outcomes
+  - [4] Added inputRefs + requestAnimationFrame focus restore after "Use this path" unmounts
+  - [5] Clear debounce timer on projectId change to prevent stale writes to wrong project
+  - [6] Clear saveError on projectId change to prevent banner bleed
+  - [7] Added cancellation guard (let cancelled) to fetchAndMigrate useEffect
+  - [8] Removed dead code: getCurrentPaths useCallback never called
+  - [9] Changed EXEC_PATH_ENV_VARS to Partial<Record<string, EnvVarMapping>> (typed mapping)
+  - [10] Removed | null from ProjectSettingsResponse.executable_paths to match backend guarantee

@@ -157,10 +157,17 @@ const EXECUTABLE_PATHS: ExecutablePath[] = [
   },
 ]
 
-/** Mapping from executable path IDs to server-side environment variable names. */
-const EXEC_PATH_ENV_VARS: Record<string, string> = {
-  'emclarity-binary': 'EMCLARITY_PATH',
-  'imod-imodinfo': 'IMOD_DIR',
+/** Mapping from executable path IDs to server-side environment variable names.
+ *  pathSuffix is appended to the resolved env var value when the env var points
+ *  to a directory rather than a binary (e.g. IMOD_BIN → /imodinfo). */
+interface EnvVarMapping {
+  envVar: string
+  pathSuffix?: string
+}
+
+const EXEC_PATH_ENV_VARS: Partial<Record<string, EnvVarMapping>> = {
+  'emclarity-binary': { envVar: 'EMCLARITY_PATH' },
+  'imod-imodinfo': { envVar: 'IMOD_BIN', pathSuffix: '/imodinfo' },
 }
 
 interface ResolveEnvResponse {
@@ -176,7 +183,7 @@ interface EnvResolveState {
 }
 
 interface ProjectSettingsResponse {
-  executable_paths: Record<string, string> | null
+  executable_paths: Record<string, string>
 }
 
 interface ExecutableRowState {
@@ -225,17 +232,6 @@ function ExecutablePathsSection({ projectId }: ExecutablePathsSectionProps) {
   const rowsRef = useRef(rows)
   rowsRef.current = rows
 
-  const getCurrentPaths = useCallback((): Record<string, string> => {
-    const paths: Record<string, string> = {}
-    for (const ep of EXECUTABLE_PATHS) {
-      const row = rowsRef.current[ep.id]
-      if (row && row.path) {
-        paths[ep.id] = row.path
-      }
-    }
-    return paths
-  }, [])
-
   // Debounce timer for saving paths to server
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -245,12 +241,23 @@ function ExecutablePathsSection({ projectId }: ExecutablePathsSectionProps) {
     }
   }, [])
 
+  // Clear stale debounce timer + saveError on projectId change (defects 5, 6)
+  useEffect(() => {
+    if (saveTimerRef.current !== null) {
+      clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = null
+    }
+    setSaveError(null)
+  }, [projectId])
+
   // Fetch settings from server and migrate from localStorage if needed
   useEffect(() => {
     if (!projectId) {
       setInitialLoading(false)
       return
     }
+
+    let cancelled = false
 
     const fetchAndMigrate = async () => {
       setInitialLoading(true)
@@ -259,6 +266,8 @@ function ExecutablePathsSection({ projectId }: ExecutablePathsSectionProps) {
         const settings = await apiClient.get<ProjectSettingsResponse>(
           `/api/v1/projects/${projectId}/settings`,
         )
+
+        if (cancelled) return
 
         // Check if migration from localStorage is needed
         const localPaths: Record<string, string> = {}
@@ -275,6 +284,7 @@ function ExecutablePathsSection({ projectId }: ExecutablePathsSectionProps) {
           await apiClient.patch(`/api/v1/projects/${projectId}/settings`, {
             executable_paths: localPaths,
           })
+          if (cancelled) return
           // Clear localStorage keys after successful migration
           for (const ep of EXECUTABLE_PATHS) {
             localStorage.removeItem(`env-path-${ep.id}`)
@@ -288,14 +298,17 @@ function ExecutablePathsSection({ projectId }: ExecutablePathsSectionProps) {
           }
         }
       } catch (err) {
+        if (cancelled) return
         const message = err instanceof Error ? err.message : 'Failed to load settings'
         setFetchError(message)
       } finally {
-        setInitialLoading(false)
+        if (!cancelled) setInitialLoading(false)
       }
     }
 
     void fetchAndMigrate()
+
+    return () => { cancelled = true }
   }, [projectId])
 
   const savePaths = useCallback(
@@ -323,28 +336,25 @@ function ExecutablePathsSection({ projectId }: ExecutablePathsSectionProps) {
 
   const handlePathChange = useCallback(
     (id: string, value: string) => {
-      setRows((prev) => {
-        const updated = {
-          ...prev,
-          [id]: {
-            ...prev[id],
-            path: value,
-            status: 'untested' as ValidationStatus,
-            version: null,
-            error: null,
-          },
+      setRows((prev) => ({
+        ...prev,
+        [id]: {
+          ...prev[id],
+          path: value,
+          status: 'untested' as ValidationStatus,
+          version: null,
+          error: null,
+        },
+      }))
+      // Build paths from current ref + override for the changed id (defect 2: no side effects in updater)
+      const paths: Record<string, string> = {}
+      for (const ep of EXECUTABLE_PATHS) {
+        const currentPath = ep.id === id ? value : rowsRef.current[ep.id]?.path
+        if (currentPath) {
+          paths[ep.id] = currentPath
         }
-        // Build paths from updated rows for saving
-        const paths: Record<string, string> = {}
-        for (const ep of EXECUTABLE_PATHS) {
-          const row = updated[ep.id]
-          if (row && row.path) {
-            paths[ep.id] = row.path
-          }
-        }
-        savePaths(paths)
-        return updated
-      })
+      }
+      savePaths(paths)
     },
     [savePaths],
   )
@@ -394,8 +404,8 @@ function ExecutablePathsSection({ projectId }: ExecutablePathsSectionProps) {
 
   const handleResolveEnv = useCallback(
     async (id: string) => {
-      const envVar = EXEC_PATH_ENV_VARS[id]
-      if (!envVar) return
+      const mapping = EXEC_PATH_ENV_VARS[id]
+      if (!mapping) return
 
       setRows((prev) => ({
         ...prev,
@@ -407,15 +417,20 @@ function ExecutablePathsSection({ projectId }: ExecutablePathsSectionProps) {
 
       try {
         const result = await apiClient.get<ResolveEnvResponse>(
-          `/api/v1/environment/resolve-env?var=${encodeURIComponent(envVar)}`,
+          `/api/v1/environment/resolve-env?var=${encodeURIComponent(mapping.envVar)}`,
         )
+        // Append pathSuffix if the env var points to a directory (defect 1)
+        const resolvedValue =
+          result.value !== null && mapping.pathSuffix
+            ? result.value + mapping.pathSuffix
+            : result.value
         setRows((prev) => ({
           ...prev,
           [id]: {
             ...prev[id],
             envResolve: {
               loading: false,
-              value: result.value,
+              value: resolvedValue,
               found: result.found,
               error: null,
             },
@@ -435,6 +450,9 @@ function ExecutablePathsSection({ projectId }: ExecutablePathsSectionProps) {
     [],
   )
 
+  // Refs for input fields so we can restore focus after "Use this path" (defect 4)
+  const inputRefs = useRef<Record<string, HTMLInputElement | null>>({})
+
   const handleUseEnvPath = useCallback(
     (id: string, value: string) => {
       handlePathChange(id, value)
@@ -446,6 +464,10 @@ function ExecutablePathsSection({ projectId }: ExecutablePathsSectionProps) {
           envResolve: { loading: false, value: null, found: null, error: null },
         },
       }))
+      // Restore focus to the path input (defect 4: button unmounts after click)
+      requestAnimationFrame(() => {
+        inputRefs.current[id]?.focus()
+      })
     },
     [handlePathChange],
   )
@@ -496,7 +518,7 @@ function ExecutablePathsSection({ projectId }: ExecutablePathsSectionProps) {
       <div className="space-y-3">
         {EXECUTABLE_PATHS.map((ep) => {
           const row = rows[ep.id]
-          const envVar = EXEC_PATH_ENV_VARS[ep.id]
+          const mapping = EXEC_PATH_ENV_VARS[ep.id]
           const envResolve = row.envResolve
           return (
             <div key={ep.id} className="space-y-1">
@@ -509,6 +531,7 @@ function ExecutablePathsSection({ projectId }: ExecutablePathsSectionProps) {
                 </label>
                 <input
                   id={`exec-path-${ep.id}`}
+                  ref={(el) => { inputRefs.current[ep.id] = el }}
                   type="text"
                   value={row.path}
                   onChange={(e) => handlePathChange(ep.id, e.target.value)}
@@ -549,12 +572,12 @@ function ExecutablePathsSection({ projectId }: ExecutablePathsSectionProps) {
                     'Validate'
                   )}
                 </button>
-                {envVar !== undefined && (
+                {mapping !== undefined && (
                   <button
                     type="button"
                     onClick={() => { void handleResolveEnv(ep.id) }}
                     disabled={envResolve.loading}
-                    aria-label={`Get ${ep.label} path from environment variable ${envVar}`}
+                    aria-label={`Get ${ep.label} path from environment variable ${mapping.envVar}`}
                     className="rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors flex-shrink-0 inline-flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {envResolve.loading ? (
@@ -605,6 +628,19 @@ function ExecutablePathsSection({ projectId }: ExecutablePathsSectionProps) {
                   Environment variable not set
                 </span>
               )}
+              {/* aria-live region for env resolve outcomes (defect 3) */}
+              <span
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+                className="sr-only"
+              >
+                {envResolve.found === true && envResolve.value !== null
+                  ? `Environment variable resolved: ${envResolve.value}`
+                  : envResolve.found === false
+                    ? `Environment variable not set for ${ep.label}`
+                    : ''}
+              </span>
             </div>
           )
         })}
