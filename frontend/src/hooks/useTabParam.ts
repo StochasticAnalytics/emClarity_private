@@ -10,7 +10,7 @@
  * Internal tab IDs (camelCase, snake_case, or already-kebab) are
  * converted to lowercase-dash-separated URL values automatically.
  */
-import { useMemo, useCallback } from 'react'
+import { useMemo, useCallback, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
 // ---------------------------------------------------------------------------
@@ -46,9 +46,9 @@ function toKebabCase(s: string): string {
  *          that updates the URL (using `replace` to avoid polluting history).
  */
 export function useTabParam<T extends string>(
-  validIds: readonly T[],
+  validIds: readonly [T, ...T[]],
 ): [T, (id: T) => void] {
-  const defaultId = validIds[0]
+  const defaultId: T = validIds[0]
 
   // Build bidirectional maps (kebab URL value ↔ internal ID).
   // Memoised on the identity of validIds so we don't rebuild every render.
@@ -63,8 +63,27 @@ export function useTabParam<T extends string>(
   const [searchParams, setSearchParams] = useSearchParams()
 
   const urlTab = searchParams.get('tab')
-  const activeId: T =
-    urlTab !== null && fromUrl.has(urlTab) ? fromUrl.get(urlTab)! : defaultId
+  const resolvedId: T =
+    urlTab !== null && fromUrl.has(urlTab) ? (fromUrl.get(urlTab) as T) : defaultId
+
+  const activeId = resolvedId
+
+  // Normalize an invalid/missing ?tab= value so the URL always reflects the
+  // active tab.  Runs after render to avoid setState-during-render warnings.
+  const needsNormalization =
+    urlTab === null || !fromUrl.has(urlTab)
+  useEffect(() => {
+    if (needsNormalization) {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          next.set('tab', toKebabCase(defaultId))
+          return next
+        },
+        { replace: true },
+      )
+    }
+  }, [needsNormalization, defaultId, setSearchParams])
 
   const setActiveId = useCallback(
     (id: T) => {
