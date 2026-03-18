@@ -17,11 +17,12 @@
 
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { useParams, Navigate, useNavigate } from 'react-router-dom'
+import { useTabParam } from '@/hooks/useTabParam'
 import { DEMO_PROJECT_ID } from '@/constants'
 import { ChevronDown, ChevronRight, Settings2, Play, BookOpen, Info, ExternalLink } from 'lucide-react'
 import rawSchema from '@/data/parameter-schema.json'
 import type { ParameterDefinition } from '@/types/parameters'
-import type { ActionTabId } from '@/data/parameterRegistry'
+import { ACTION_TAB_IDS, type ActionTabId } from '@/data/parameterRegistry'
 import { useRunProfiles } from '@/hooks/useRunProfiles'
 import { apiClient, ApiError } from '@/api/client'
 
@@ -1499,8 +1500,8 @@ function ActionTabContent({
 export function ActionsPage() {
   const { projectId } = useParams<{ projectId: string }>()
 
-  // Active tab
-  const [activeTabId, setActiveTabId] = useState<string>(ACTION_TABS[0].id)
+  // Active tab — persisted in URL ?tab= query parameter
+  const [activeTabId, setActiveTabId] = useTabParam(ACTION_TAB_IDS)
 
   // Per-tab parameter values: tabId → paramName → value string
   const [tabValues, setTabValues] = useState<Record<string, Record<string, string>>>({})

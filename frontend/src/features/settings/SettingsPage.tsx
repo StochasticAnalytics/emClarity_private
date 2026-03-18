@@ -13,6 +13,7 @@
  */
 
 import { useState, useCallback, useId } from 'react'
+import { useTabParam } from '@/hooks/useTabParam'
 import { Cpu, HardDrive, Plus, Trash2, Server, AlertCircle } from 'lucide-react'
 import { useRunProfiles } from '@/hooks/useRunProfiles'
 import { useProject } from '@/context/ProjectContext'
@@ -397,6 +398,8 @@ interface SettingsTab {
   label: string
 }
 
+const SETTINGS_TAB_IDS = ['runProfiles', 'environment'] as const
+
 const SETTINGS_TABS: SettingsTab[] = [
   { id: 'runProfiles', label: 'Run Profiles' },
   { id: 'environment', label: 'Environment' },
@@ -411,8 +414,9 @@ export function SettingsPage() {
   const { profiles, selectedId, selectedProfile, select, create, update, remove, systemParams, setSystemParams, loading, loadError, saveError } =
     useRunProfiles(projectId)
 
-  // Active settings tab — switching tabs must NOT reset profile edit state
-  const [activeTab, setActiveTab] = useState<SettingsTabId>('runProfiles')
+  // Active settings tab — persisted in URL ?tab= query parameter.
+  // Switching tabs must NOT reset profile edit state.
+  const [activeTab, setActiveTab] = useTabParam(SETTINGS_TAB_IDS)
 
   const handleSystemParamChange = useCallback(
     (field: 'nGPUs' | 'nCpuCores' | 'fastScratchDisk', value: string) => {

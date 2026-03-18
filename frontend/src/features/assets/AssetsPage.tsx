@@ -19,6 +19,7 @@
  */
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { useParams, Navigate } from 'react-router-dom'
+import { useTabParam } from '@/hooks/useTabParam'
 import { DEMO_PROJECT_ID } from '@/constants'
 import {
   useReactTable,
@@ -51,6 +52,15 @@ interface AssetTab {
   label: string
   description: string
 }
+
+const ASSET_TAB_IDS = [
+  'tilt-series',
+  'ctf-data',
+  'tomograms',
+  'particle-positions',
+  'reference-volumes',
+  'fsc-curves',
+] as const
 
 const ASSET_TABS: AssetTab[] = [
   {
@@ -1193,7 +1203,8 @@ function NotificationBanner({
 export function AssetsPage() {
   const { projectId } = useParams<{ projectId: string }>()
   const isDemo = projectId === DEMO_PROJECT_ID
-  const [activeTab, setActiveTab] = useState<AssetTabId>('tilt-series')
+  // Active tab — persisted in URL ?tab= query parameter
+  const [activeTab, setActiveTab] = useTabParam(ASSET_TAB_IDS)
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const notificationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 

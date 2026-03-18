@@ -10,6 +10,7 @@
  * to validate parameter values against the backend schema.
  */
 import { useState, useMemo, useCallback, useRef, type ChangeEvent } from 'react'
+import { useTabParam } from '@/hooks/useTabParam'
 import { ParameterCategoryTab } from './ParameterCategoryTab.tsx'
 import { useApiQuery } from '@/hooks/useApi.ts'
 import {
@@ -86,7 +87,8 @@ export function ParametersPage() {
     PARAMETER_SCHEMA_ENDPOINT,
   )
 
-  const [activeTab, setActiveTab] = useState<ParameterCategory>('microscope')
+  // Active tab — persisted in URL ?tab= query parameter
+  const [activeTab, setActiveTab] = useTabParam(CATEGORY_ORDER)
   const [values, setValues] = useState<Record<string, unknown>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isValidating, setIsValidating] = useState(false)

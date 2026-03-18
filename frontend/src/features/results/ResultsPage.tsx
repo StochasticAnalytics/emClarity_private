@@ -20,6 +20,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useTabParam } from '@/hooks/useTabParam'
 import {
   LineChart,
   Line,
@@ -85,6 +86,10 @@ interface TabDef {
   id: TabId
   label: string
 }
+
+const RESULT_TAB_IDS = [
+  'alignment', 'ctf', 'particles', 'fsc', 'averages', 'stats',
+] as const
 
 const TABS: TabDef[] = [
   { id: 'alignment', label: 'Alignment Quality' },
@@ -1011,7 +1016,8 @@ function StatCard({ label, value, sub }: StatCardProps) {
 // ---------------------------------------------------------------------------
 
 export function ResultsPage() {
-  const [activeTab, setActiveTab] = useState<TabId>('alignment')
+  // Active tab — persisted in URL ?tab= query parameter
+  const [activeTab, setActiveTab] = useTabParam(RESULT_TAB_IDS)
 
   return (
     <div className="flex flex-col h-full space-y-4">
