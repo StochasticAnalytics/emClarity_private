@@ -710,3 +710,10 @@ Developer: Completed TASK-034/PATCH [2026-03-17]
   - [8] Removed dead code: getCurrentPaths useCallback never called
   - [9] Changed EXEC_PATH_ENV_VARS to Partial<Record<string, EnvVarMapping>> (typed mapping)
   - [10] Removed | null from ProjectSettingsResponse.executable_paths to match backend guarantee
+
+Developer: Completed TASK-035 2026-03-17
+  - Migrated ViewerLauncher viewer_path from localStorage to per-project settings API
+  - Added one-time migration: localStorage → server on first load, then clears localStorage key
+  - handleSavePath now writes via PATCH /api/v1/projects/{id}/settings
+  - Added loading state (settingsLoading) and error state (settingsError) for async fetch
+  - TypeScript compiles cleanly, all 35 backend tests pass

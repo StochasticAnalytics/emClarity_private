@@ -1211,6 +1211,10 @@ interface ViewerLauncherProps {
   isDemo: boolean
 }
 
+interface ProjectSettingsResponse {
+  viewer_path: string | null
+}
+
 function ViewerLauncher({ projectId, isDemo }: ViewerLauncherProps) {
   const [viewerPath, setViewerPath] = useState<string>('')
   const [configOpen, setConfigOpen] = useState<boolean>(false)
@@ -1218,14 +1222,63 @@ function ViewerLauncher({ projectId, isDemo }: ViewerLauncherProps) {
   const [launching, setLaunching] = useState<boolean>(false)
   const [message, setMessage] = useState<string | null>(null)
   const [projectDirectory, setProjectDirectory] = useState<string | null>(null)
+  const [settingsLoading, setSettingsLoading] = useState<boolean>(true)
+  const [settingsError, setSettingsError] = useState<string | null>(null)
   const gearButtonRef = useRef<HTMLButtonElement>(null)
 
-  // Read stored viewer path on mount
+  // Read viewer_path from project settings API on mount, with one-time
+  // migration from localStorage if the server value is empty.
   useEffect(() => {
-    const stored = localStorage.getItem(VIEWER_PATH_KEY) ?? ''
-    setViewerPath(stored)
-    setDraftPath(stored)
-  }, [])
+    if (isDemo || !projectId) {
+      setSettingsLoading(false)
+      return
+    }
+    const controller = new AbortController()
+    setSettingsLoading(true)
+    setSettingsError(null)
+    apiClient
+      .get<ProjectSettingsResponse>(`/api/v1/projects/${projectId}/settings`, controller.signal)
+      .then(async (data) => {
+        const serverPath = data.viewer_path ?? ''
+        const localPath = localStorage.getItem(VIEWER_PATH_KEY)
+
+        // Migration: localStorage has a value, server does not → migrate
+        if (!serverPath && localPath) {
+          try {
+            const updated = await apiClient.patch<ProjectSettingsResponse>(
+              `/api/v1/projects/${projectId}/settings`,
+              { viewer_path: localPath },
+            )
+            localStorage.removeItem(VIEWER_PATH_KEY)
+            const migrated = updated.viewer_path ?? ''
+            setViewerPath(migrated)
+            setDraftPath(migrated)
+          } catch {
+            // Migration failed — fall back to localStorage value for now
+            setViewerPath(localPath)
+            setDraftPath(localPath)
+          }
+        } else {
+          // Server has a value, or nothing to migrate — use server value
+          // Also clear localStorage if it still exists (migration already done or not needed)
+          if (localPath !== null) {
+            localStorage.removeItem(VIEWER_PATH_KEY)
+          }
+          setViewerPath(serverPath)
+          setDraftPath(serverPath)
+        }
+      })
+      .catch((err: unknown) => {
+        if (err instanceof Error && err.name === 'AbortError') return
+        const fallback = localStorage.getItem(VIEWER_PATH_KEY) ?? ''
+        setViewerPath(fallback)
+        setDraftPath(fallback)
+        setSettingsError('Failed to load viewer settings from server')
+        console.warn('[ViewerLauncher] Failed to fetch project settings:', err)
+      })
+      .finally(() => setSettingsLoading(false))
+    return () => controller.abort()
+  }, [isDemo, projectId])
 
   // Fetch the project directory so it can be forwarded to the viewer as an argument.
   // AbortController ensures a stale response from a previous projectId is discarded
@@ -1284,25 +1337,48 @@ function ViewerLauncher({ projectId, isDemo }: ViewerLauncherProps) {
     }
   }, [viewerPath, projectDirectory])
 
-  const handleSavePath = useCallback(() => {
-    localStorage.setItem(VIEWER_PATH_KEY, draftPath.trim())
-    setViewerPath(draftPath.trim())
+  const handleSavePath = useCallback(async () => {
+    const trimmed = draftPath.trim()
+    if (!isDemo && projectId) {
+      try {
+        await apiClient.patch<ProjectSettingsResponse>(
+          `/api/v1/projects/${projectId}/settings`,
+          { viewer_path: trimmed || null },
+        )
+      } catch (err: unknown) {
+        let detail = 'Failed to save viewer path'
+        if (err instanceof ApiError) {
+          const body: unknown = err.body
+          if (
+            body !== null &&
+            typeof body === 'object' &&
+            'detail' in body &&
+            typeof (body as Record<string, unknown>).detail === 'string'
+          ) {
+            detail = (body as { detail: string }).detail
+          }
+        }
+        setMessage(`Error: ${detail}`)
+        return
+      }
+    }
+    setViewerPath(trimmed)
     setConfigOpen(false)
     gearButtonRef.current?.focus()
-  }, [draftPath])
+  }, [draftPath, isDemo, projectId])
 
   return (
     <div className="border-t border-gray-200 dark:border-gray-700 px-4 py-3 bg-gray-50 dark:bg-gray-800/30">
       <div className="flex items-center gap-2">
         <button
           type="button"
-          disabled={isDemo || launching}
+          disabled={isDemo || launching || settingsLoading}
           onClick={() => { void handleLaunch() }}
           className="flex items-center gap-1.5 rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
           aria-label="Open in Viewer — launches project in external viewer application"
         >
           <ExternalLink className="h-3.5 w-3.5" />
-          {launching ? 'Launching…' : 'Open in Viewer\u2026'}
+          {settingsLoading ? 'Loading…' : launching ? 'Launching…' : 'Open in Viewer\u2026'}
         </button>
         <button
           ref={gearButtonRef}
@@ -1323,6 +1399,7 @@ function ViewerLauncher({ projectId, isDemo }: ViewerLauncherProps) {
         aria-atomic="true"
         className="mt-1.5 text-xs text-gray-600 dark:text-gray-400 min-h-[1rem]"
       >
+        {settingsError && <span className="text-amber-600 dark:text-amber-400">{settingsError}</span>}
         {message}
       </div>
       {/* Always rendered so aria-controls="viewer-config-panel" references a valid DOM element.
@@ -1341,7 +1418,7 @@ function ViewerLauncher({ projectId, isDemo }: ViewerLauncherProps) {
         />
         <button
           type="button"
-          onClick={handleSavePath}
+          onClick={() => { void handleSavePath() }}
           className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
         >
           Save
