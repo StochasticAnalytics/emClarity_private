@@ -228,6 +228,11 @@ def get_snapshot(project_id: str, snapshot_id: str) -> SnapshotDetailResponse:
             status_code=404,
             detail=f"Snapshot {snapshot_id} not found in project {project_id}",
         ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=str(exc),
+        ) from exc
     except Exception as exc:
         log.exception("Failed to load snapshot %s for project %s", snapshot_id, project_id)
         raise HTTPException(

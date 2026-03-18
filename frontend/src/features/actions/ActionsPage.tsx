@@ -1536,42 +1536,78 @@ function SnapshotHistoryDropdown({
   const [isOpen, setIsOpen] = useState(false)
   const [snapshots, setSnapshots] = useState<SnapshotListItem[]>([])
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [listError, setListError] = useState<string | null>(null)
+  const [itemErrors, setItemErrors] = useState<Record<string, string>>({})
   const [loadingSnapshotId, setLoadingSnapshotId] = useState<string | null>(null)
+  const [loadedMessage, setLoadedMessage] = useState<string | null>(null)
+  const [activeIndex, setActiveIndex] = useState(-1)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const itemRefs = useRef<(HTMLDivElement | null)[]>([])
+
+  // Helper to close dropdown and return focus to trigger button
+  const closeDropdown = useCallback(() => {
+    setIsOpen(false)
+    // Return focus to trigger button (defect #3)
+    requestAnimationFrame(() => {
+      triggerRef.current?.focus()
+    })
+  }, [])
 
   // Close on click outside
   useEffect(() => {
     if (!isOpen) return
     function handleClickOutside(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setIsOpen(false)
+        closeDropdown()
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [isOpen])
+  }, [isOpen, closeDropdown])
 
-  // Close on Escape
+  // Keyboard navigation: Escape to close, arrow keys to navigate (defect #2, #3)
   useEffect(() => {
     if (!isOpen) return
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') {
-        setIsOpen(false)
+        closeDropdown()
+        return
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setActiveIndex((prev) => {
+          const next = prev < snapshots.length - 1 ? prev + 1 : 0
+          itemRefs.current[next]?.focus()
+          return next
+        })
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setActiveIndex((prev) => {
+          const next = prev > 0 ? prev - 1 : snapshots.length - 1
+          itemRefs.current[next]?.focus()
+          return next
+        })
+        return
       }
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen])
+  }, [isOpen, closeDropdown, snapshots.length])
 
   const handleToggle = useCallback(async () => {
     if (isOpen) {
-      setIsOpen(false)
+      closeDropdown()
       return
     }
     setIsOpen(true)
     setLoading(true)
-    setError(null)
+    setListError(null)
+    setItemErrors({})
+    setLoadedMessage(null)
+    setActiveIndex(-1)
     try {
       const result = await apiClient.get<SnapshotListResponse>(
         `/api/v1/projects/${projectId}/parameter-snapshots`,
@@ -1585,14 +1621,23 @@ function SnapshotHistoryDropdown({
       } else if (err instanceof Error) {
         detail = err.message
       }
-      setError(detail)
+      setListError(detail)
     } finally {
       setLoading(false)
     }
-  }, [isOpen, projectId])
+  }, [isOpen, projectId, closeDropdown])
 
   const handleSelectSnapshot = useCallback(async (snapshotId: string) => {
+    // Defect #5: Prevent race condition — ignore clicks while another snapshot is loading
+    if (loadingSnapshotId !== null) return
+
     setLoadingSnapshotId(snapshotId)
+    // Clear any previous per-item error for this snapshot
+    setItemErrors((prev) => {
+      const next = { ...prev }
+      delete next[snapshotId]
+      return next
+    })
     try {
       const result = await apiClient.get<SnapshotDetailResponse>(
         `/api/v1/projects/${projectId}/parameter-snapshots/${snapshotId}`,
@@ -1603,8 +1648,11 @@ function SnapshotHistoryDropdown({
         stringParams[key] = String(value ?? '')
       }
       onLoadSnapshot(stringParams)
-      setIsOpen(false)
+      // Defect #8: Confirmation feedback after successful load
+      setLoadedMessage(`Snapshot loaded successfully (${formatSnapshotDate(result.created_at)})`)
+      closeDropdown()
     } catch (err: unknown) {
+      // Defect #4: Per-item error instead of shared error that hides the list
       let detail = 'Failed to load snapshot'
       if (err instanceof ApiError) {
         const body = err.body as Record<string, unknown> | null
@@ -1612,59 +1660,82 @@ function SnapshotHistoryDropdown({
       } else if (err instanceof Error) {
         detail = err.message
       }
-      setError(detail)
+      setItemErrors((prev) => ({ ...prev, [snapshotId]: detail }))
     } finally {
       setLoadingSnapshotId(null)
     }
-  }, [projectId, onLoadSnapshot])
+  }, [projectId, onLoadSnapshot, loadingSnapshotId, closeDropdown])
 
   return (
     <div className="relative" ref={dropdownRef}>
       <button
+        ref={triggerRef}
         type="button"
         onClick={isDemo ? undefined : handleToggle}
         disabled={isDemo}
         aria-label="Load parameters from a previous run"
         aria-expanded={isOpen}
-        aria-haspopup="listbox"
+        aria-haspopup="menu"
         className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <History className="h-4 w-4" />
         Load from previous run
       </button>
 
+      {/* Defect #8: Confirmation message after snapshot loaded */}
+      {loadedMessage && !isOpen && (
+        <span
+          role="status"
+          aria-live="polite"
+          className="absolute left-0 top-full mt-1 text-xs text-green-600 dark:text-green-400 whitespace-nowrap"
+        >
+          {loadedMessage}
+        </span>
+      )}
+
       {isOpen && (
         <div
-          role="listbox"
+          role="menu"
           aria-label="Snapshot history"
-          className="absolute left-0 top-full mt-1 w-80 max-h-64 overflow-y-auto bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-md shadow-lg z-20"
+          aria-live="polite"
+          className="absolute left-0 top-full mt-1 w-80 max-h-64 overflow-y-auto bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-md shadow-lg z-[9999]"
+          style={{ position: 'fixed', left: triggerRef.current ? triggerRef.current.getBoundingClientRect().left + 'px' : undefined, top: triggerRef.current ? triggerRef.current.getBoundingClientRect().bottom + 4 + 'px' : undefined }}
         >
+          {/* Defect #7: Loading/error states announced to screen readers via aria-live on parent */}
           {loading && (
-            <div className="p-3 text-sm text-gray-500 dark:text-gray-400">Loading snapshots...</div>
+            <div className="p-3 text-sm text-gray-500 dark:text-gray-400" role="status">Loading snapshots...</div>
           )}
 
-          {error && (
-            <div className="p-3 text-sm text-red-600 dark:text-red-400">{error}</div>
+          {listError && (
+            <div className="p-3 text-sm text-red-600 dark:text-red-400" role="alert">{listError}</div>
           )}
 
-          {!loading && !error && snapshots.length === 0 && (
+          {!loading && !listError && snapshots.length === 0 && (
             <div className="p-3 text-sm text-gray-500 dark:text-gray-400">No previous snapshots found.</div>
           )}
 
-          {!loading && !error && snapshots.map((snap) => {
+          {!loading && !listError && snapshots.map((snap, idx) => {
             const truncatedFilename = snap.filename.length > 30
               ? snap.filename.slice(0, 27) + '...'
               : snap.filename
+            const isItemLoading = loadingSnapshotId === snap.snapshot_id
+            const itemError = itemErrors[snap.snapshot_id]
             return (
-              <button
+              <div
                 key={snap.snapshot_id}
-                type="button"
-                role="option"
-                aria-selected={false}
+                ref={(el) => { itemRefs.current[idx] = el }}
+                role="menuitem"
+                tabIndex={activeIndex === idx ? 0 : -1}
                 aria-label={`Load snapshot ${snap.filename} from ${formatSnapshotDate(snap.created_at)}`}
-                disabled={loadingSnapshotId === snap.snapshot_id}
+                aria-disabled={isItemLoading || loadingSnapshotId !== null}
                 onClick={() => handleSelectSnapshot(snap.snapshot_id)}
-                className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors border-b border-gray-100 dark:border-gray-700 last:border-b-0 disabled:opacity-50"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    handleSelectSnapshot(snap.snapshot_id)
+                  }
+                }}
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors border-b border-gray-100 dark:border-gray-700 last:border-b-0 cursor-pointer focus:outline-none focus:bg-gray-100 dark:focus:bg-gray-700 ${isItemLoading || (loadingSnapshotId !== null && !isItemLoading) ? 'opacity-50 pointer-events-none' : ''}`}
               >
                 <div className="font-medium text-gray-800 dark:text-gray-200">
                   {formatSnapshotDate(snap.created_at)}
@@ -1672,10 +1743,13 @@ function SnapshotHistoryDropdown({
                 <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
                   {truncatedFilename}
                 </div>
-                {loadingSnapshotId === snap.snapshot_id && (
-                  <div className="text-xs text-blue-500 mt-0.5">Loading...</div>
+                {isItemLoading && (
+                  <div className="text-xs text-blue-500 mt-0.5" role="status">Loading...</div>
                 )}
-              </button>
+                {itemError && (
+                  <div className="text-xs text-red-600 dark:text-red-400 mt-0.5" role="alert">{itemError}</div>
+                )}
+              </div>
             )
           })}
         </div>
@@ -1702,7 +1776,12 @@ function ExportMButton({ projectId, isDemo, currentParams }: ExportMButtonProps)
     setLoading(true)
     setMessage(null)
     try {
-      // Step 1: Save a snapshot of current parameters
+      // Step 1: Save a snapshot of current parameters.
+      // NOTE (defect #11): This creates a permanent snapshot as a side-effect
+      // of the export flow. The snapshot persists in the project's parameters/
+      // directory and will appear in the snapshot history list. This is
+      // intentional — the .m export needs a snapshot file to convert, and
+      // retaining it provides an audit trail of what was exported.
       const snapshotResult = await apiClient.post<SnapshotResponse>(
         `/api/v1/projects/${projectId}/parameter-snapshots`,
         { parameters: currentParams },
@@ -1745,7 +1824,11 @@ function ExportMButton({ projectId, isDemo, currentParams }: ExportMButtonProps)
         {loading ? 'Exporting...' : 'Export to .m file'}
       </button>
       {message && (
-        <span className={`text-xs ${message.startsWith('Error:') ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
+        <span
+          role="status"
+          aria-live="polite"
+          className={`text-xs ${message.startsWith('Error:') ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}
+        >
           {message}
         </span>
       )}

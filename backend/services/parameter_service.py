@@ -7,11 +7,14 @@ control every aspect of the cryo-EM processing pipeline.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 from backend.models.parameter import (
     ParameterCategory,
@@ -433,7 +436,10 @@ class ParameterService:
                     "filename": f.name,
                     "created_at": data["created_at"],
                 })
-            except (json.JSONDecodeError, KeyError, OSError):
+            except (json.JSONDecodeError, KeyError, OSError) as exc:
+                log.warning(
+                    "Skipping malformed snapshot file %s: %s", f.name, exc
+                )
                 continue
 
         results.sort(key=lambda r: r["created_at"], reverse=True)
@@ -459,6 +465,12 @@ class ParameterService:
         if not matching:
             raise FileNotFoundError(
                 f"Snapshot {snapshot_id} not found"
+            )
+
+        if len(matching) > 1:
+            raise ValueError(
+                f"Snapshot ID prefix '{snapshot_id}' is ambiguous: "
+                f"matches {len(matching)} files"
             )
 
         snapshot_path = matching[0]
