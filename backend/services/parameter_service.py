@@ -327,8 +327,12 @@ class ParameterService:
 
         atomic_write(filepath, snapshot_data)
 
-        # Enforce retention cap
-        self.cleanup_old_snapshots(project_dir)
+        # Enforce retention cap — errors are suppressed so they don't
+        # propagate as HTTP 500 after a successful save.
+        try:
+            self.cleanup_old_snapshots(project_dir)
+        except Exception:
+            pass
 
         return snapshot_id, filename, created_at
 
@@ -450,6 +454,17 @@ class ParameterService:
             parts = ", ".join(str(v) for v in value)
             return f"[{parts}]"
         if isinstance(value, str):
+            # Try to parse as a number before wrapping in quotes
+            try:
+                int_val = int(value)
+                return str(int_val)
+            except (ValueError, TypeError):
+                pass
+            try:
+                float_val = float(value)
+                return str(float_val)
+            except (ValueError, TypeError):
+                pass
             return f"'{value}'"
         return str(value)
 

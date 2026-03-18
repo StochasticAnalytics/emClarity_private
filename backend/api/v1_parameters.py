@@ -129,6 +129,12 @@ def export_snapshot_m(
             detail=f"Snapshot {snapshot_id} not found in project {project_id}",
         )
 
+    if len(matching) > 1:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Snapshot ID prefix '{snapshot_id}' is ambiguous: matches {len(matching)} files",
+        )
+
     snapshot_path = matching[0]
 
     try:

@@ -1144,7 +1144,16 @@ function RunBar({ command, onRun, isRunning, runMessage }: RunBarProps) {
           <p role="alert" className="text-xs text-red-600 dark:text-red-400 truncate">{saveError}</p>
         )}
         {!saveError && runMessage && (
-          <p className="text-xs text-green-700 dark:text-green-400 truncate">{runMessage}</p>
+          <p
+            className={`text-xs truncate ${
+              runMessage.startsWith('\u2717')
+                ? 'text-red-600 dark:text-red-400'
+                : 'text-green-700 dark:text-green-400'
+            }`}
+            role={runMessage.startsWith('\u2717') ? 'alert' : undefined}
+          >
+            {runMessage}
+          </p>
         )}
       </div>
 
@@ -1632,14 +1641,6 @@ export function ActionsPage() {
 
   const activeTab = ACTION_TABS.find((t) => t.id === activeTabId) ?? ACTION_TABS[0]
 
-  // Track stub run timer so it can be cleared on unmount
-  const runTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  useEffect(() => {
-    return () => {
-      if (runTimerRef.current !== null) clearTimeout(runTimerRef.current)
-    }
-  }, [])
-
   const handleValueChange = useCallback(
     (paramName: string, value: string) => {
       setTabValues((prev) => ({
@@ -1661,7 +1662,6 @@ export function ActionsPage() {
   }, [activeTabId])
 
   const handleRun = useCallback(async () => {
-    if (runTimerRef.current !== null) clearTimeout(runTimerRef.current)
     setRunState((prev) => ({
       ...prev,
       [activeTabId]: { running: true, message: null },
