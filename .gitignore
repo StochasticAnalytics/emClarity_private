@@ -164,3 +164,7 @@ cython_debug/
 **/logFile/
 logFile/
 testScripts/*.logy
+
+CLAUDE.md
+.claude
+dot-claude
