@@ -424,6 +424,76 @@ class TestEmptyStarFile:
         assert len(out_particles) == 0
 
 
+class TestZeroParticleTiltGroup:
+    """Negative control: tilt group with zero particles is skipped gracefully."""
+
+    def test_zero_particle_group_skipped(
+        self, star_5particles: Path, stack_5slices: Path, ref_volume: Path,
+        tmp_dir: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A tilt group with zero particles is skipped without error.
+
+        Injects an empty tilt group via monkeypatch to exercise the
+        zero-particle guard at the top of the per-tilt loop.  The pipeline
+        should skip that group and still process the real one.
+        """
+        from ...ctf.star_io.emc_star_parser import (
+            group_particles_by_tilt as _real_group,
+        )
+
+        def _patched_group(particles: list[dict]) -> dict[str, list[dict]]:
+            groups = _real_group(particles)
+            groups["empty_tilt.mrc"] = []  # inject zero-particle group
+            return groups
+
+        monkeypatch.setattr(
+            "python.refinement.emc_ctf_refine_pipeline.group_particles_by_tilt",
+            _patched_group,
+        )
+
+        output_path = tmp_dir / "zero_particle_out.star"
+        result = refine_ctf_from_star(
+            star_5particles, stack_5slices, ref_volume, output_path,
+        )
+
+        # The empty group should be skipped, only the real group processed
+        assert result.n_particles_processed == 5
+        assert result.n_tilt_groups == 1
+        # No TiltGroupResult entry for the empty group
+        assert all(
+            tgr.n_particles > 0 for tgr in result.tilt_group_results
+        )
+
+    def test_zero_particle_group_logged(
+        self, star_5particles: Path, stack_5slices: Path, ref_volume: Path,
+        tmp_dir: Path, monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Zero-particle tilt group emits a warning log message."""
+        from ...ctf.star_io.emc_star_parser import (
+            group_particles_by_tilt as _real_group,
+        )
+
+        def _patched_group(particles: list[dict]) -> dict[str, list[dict]]:
+            groups = _real_group(particles)
+            groups["empty_tilt.mrc"] = []
+            return groups
+
+        monkeypatch.setattr(
+            "python.refinement.emc_ctf_refine_pipeline.group_particles_by_tilt",
+            _patched_group,
+        )
+
+        output_path = tmp_dir / "zero_particle_log.star"
+        with caplog.at_level(logging.WARNING):
+            refine_ctf_from_star(
+                star_5particles, stack_5slices, ref_volume, output_path,
+            )
+
+        assert "empty_tilt.mrc" in caplog.text
+        assert "zero particles" in caplog.text.lower()
+
+
 # ---------------------------------------------------------------------------
 # Tests: Full pipeline (single tilt group, 5 particles)
 # ---------------------------------------------------------------------------

@@ -211,12 +211,9 @@ def _apply_refinement_to_particles(
         dz = float(results.delta_z[i])
         defocus_correction = results.delta_defocus_tilt + dz * cos_tilt
 
-        # Original defocus decomposition
+        # Apply tilt-global astigmatism change + common defocus correction
         orig_df1 = p["defocus_1"]
         orig_df2 = p["defocus_2"]
-        half_astig = (orig_df1 - orig_df2) / 2.0
-
-        # Apply tilt-global astigmatism change + common defocus correction
         p["defocus_1"] = (
             orig_df1 + results.delta_half_astigmatism + defocus_correction
         )
