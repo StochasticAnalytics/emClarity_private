@@ -18,7 +18,7 @@ Dispatch is performed via ``isinstance(x, cp.ndarray)``; the deprecated
 from __future__ import annotations
 
 import logging
-from typing import Union
+from typing import TYPE_CHECKING, Union
 
 import numpy as np
 
@@ -30,10 +30,17 @@ except ImportError:
     HAS_CUPY = False
     cp = None
 
+if TYPE_CHECKING:
+    import cupy
+
+    NDArray = Union[np.ndarray, cupy.ndarray]
+else:
+    NDArray = np.ndarray
+
 logger = logging.getLogger(__name__)
 
 
-def _xp_for(x: Union[np.ndarray, "cp.ndarray"]) -> type:  # type: ignore[name-defined]
+def _xp_for(x: NDArray) -> type:
     """Return the array module (numpy or cupy) that owns *x*."""
     if HAS_CUPY and isinstance(x, cp.ndarray):
         return cp
@@ -72,7 +79,7 @@ class FourierTransformer:
         self._inv_trim = 1
 
         # Lazily built helpers (created on first use, cached thereafter)
-        self._checkerboard: Union[np.ndarray, None] = None
+        self._checkerboard: Union[NDArray, None] = None
 
     # ------------------------------------------------------------------
     # Public properties
@@ -95,7 +102,7 @@ class FourierTransformer:
     # FFT methods
     # ------------------------------------------------------------------
 
-    def forward_fft(self, image: np.ndarray) -> np.ndarray:
+    def forward_fft(self, image: NDArray) -> NDArray:
         """2-D real-to-complex FFT producing half-grid layout.
 
         Args:
@@ -115,7 +122,7 @@ class FourierTransformer:
         # axes=(1, 0): full FFT along axis 1, rfft (halved) along axis 0
         return xp.fft.rfft2(image, axes=(1, 0))
 
-    def inverse_fft(self, spectrum: np.ndarray) -> np.ndarray:
+    def inverse_fft(self, spectrum: NDArray) -> NDArray:
         """2-D complex-to-real inverse FFT from half-grid layout.
 
         Args:
@@ -123,7 +130,14 @@ class FourierTransformer:
 
         Returns:
             Real array of shape ``(nx, ny)`` with correct normalization.
+
+        Raises:
+            ValueError: If *spectrum* is not 2-D.
         """
+        if spectrum.ndim != 2:
+            raise ValueError(
+                f"inverse_fft requires a 2-D array, got ndim={spectrum.ndim}"
+            )
         xp = _xp_for(spectrum)
         # s=(ny, nx) maps to axes=(1, 0): axis 1 gets ny, axis 0 gets nx
         return xp.fft.irfft2(spectrum, s=(self._ny, self._nx), axes=(1, 0))
@@ -132,7 +146,7 @@ class FourierTransformer:
     # Phase swap (fftshift by multiplication)
     # ------------------------------------------------------------------
 
-    def swap_phase(self, image: np.ndarray) -> np.ndarray:
+    def swap_phase(self, image: NDArray) -> NDArray:
         """Multiply by ``(-1)^(i+j)`` checkerboard to center DC.
 
         This is the spectral-domain equivalent of ``fftshift`` for
@@ -156,7 +170,7 @@ class FourierTransformer:
 
     def _get_checkerboard(
         self, xp: type, shape: tuple[int, ...]
-    ) -> np.ndarray:
+    ) -> NDArray:
         """Build or retrieve the cached ``(-1)^(i+j)`` checkerboard."""
         # Rebuild if shape or device changed
         if self._checkerboard is not None:
@@ -178,15 +192,15 @@ class FourierTransformer:
 
     def apply_bandpass(
         self,
-        spectrum: np.ndarray,
+        spectrum: NDArray,
         pixel_size: float,
         highpass_angstrom: float,
         lowpass_angstrom: float,
-    ) -> np.ndarray:
+    ) -> NDArray:
         """Zero frequencies outside the bandpass range with soft edges.
 
-        The filter is applied in-place as an element-wise multiplication.
-        Frequencies with resolution outside
+        The filter is applied as an element-wise multiplication and a new
+        array is returned.  Frequencies with resolution outside
         ``[lowpass_angstrom, highpass_angstrom]`` are zeroed.  A cosine
         rolloff of width **2 frequency bins** softens both edges.
 
@@ -214,6 +228,12 @@ class FourierTransformer:
                 f"than lowpass_angstrom ({lowpass_angstrom})"
             )
 
+        if spectrum.shape != (self._half_nx, self._ny):
+            raise ValueError(
+                f"spectrum shape {spectrum.shape} does not match transformer "
+                f"half-grid dimensions ({self._half_nx}, {self._ny})"
+            )
+
         xp = _xp_for(spectrum)
         mask = self._build_bandpass_mask(
             xp, spectrum.shape, pixel_size, highpass_angstrom, lowpass_angstrom
@@ -227,7 +247,7 @@ class FourierTransformer:
         pixel_size: float,
         highpass_angstrom: float,
         lowpass_angstrom: float,
-    ) -> np.ndarray:
+    ) -> NDArray:
         """Construct the bandpass mask with cosine-edge rolloff."""
         half_nx, ny = shape
 
@@ -277,7 +297,7 @@ class FourierTransformer:
     # Normalization
     # ------------------------------------------------------------------
 
-    def compute_ref_norm(self, ref_with_ctf: np.ndarray) -> float:
+    def compute_ref_norm(self, ref_with_ctf: NDArray) -> float:
         """Half-grid energy normalization factor.
 
         Computes ``sqrt(2 * sum(|ref_with_ctf[:-inv_trim, :]|^2))``.
@@ -293,9 +313,19 @@ class FourierTransformer:
 
         Returns:
             Normalization scalar (float).
+
+        Raises:
+            ValueError: If *ref_with_ctf* is not 2-D.
         """
+        if ref_with_ctf.ndim != 2:
+            raise ValueError(
+                f"compute_ref_norm requires a 2-D array, got ndim={ref_with_ctf.ndim}"
+            )
         xp = _xp_for(ref_with_ctf)
-        trimmed = ref_with_ctf[: -self._inv_trim, :]
+        if self._inv_trim == 0:
+            trimmed = ref_with_ctf
+        else:
+            trimmed = ref_with_ctf[: -self._inv_trim, :]
         energy = xp.sum(xp.abs(trimmed) ** 2)
         result = xp.sqrt(2.0 * energy)
         # Return a Python float regardless of backend
