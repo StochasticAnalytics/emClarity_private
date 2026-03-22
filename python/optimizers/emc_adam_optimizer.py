@@ -51,6 +51,10 @@ class AdamOptimizer(OptimizerBase):
         params = np.asarray(initial_params, dtype=np.float64).ravel()
         if params.size == 0:
             raise ValueError("Initial parameters must be a non-empty vector.")
+        if epsilon <= 0:
+            raise ValueError(
+                f"epsilon must be positive to prevent division by zero, got {epsilon}."
+            )
 
         self._alpha: float = 0.001
         self._beta1: float = beta1
@@ -90,6 +94,11 @@ class AdamOptimizer(OptimizerBase):
         """
         grad = np.asarray(gradient, dtype=np.float64).ravel()
 
+        if grad.size != self._current_parameters.size:
+            raise ValueError(
+                f"Gradient length ({grad.size}) must match parameter count "
+                f"({self._current_parameters.size})."
+            )
         if np.any(np.isnan(grad)):
             raise ValueError("Gradient contains NaN values.")
         if np.any(np.isinf(grad)):
@@ -157,6 +166,10 @@ class AdamOptimizer(OptimizerBase):
         Returns:
             True if converged, False otherwise.
         """
+        if n_lookback <= 0:
+            raise ValueError(
+                f"n_lookback must be a positive integer, got {n_lookback}."
+            )
         if len(self._score_history) < n_lookback + 1:
             return False
 
@@ -212,6 +225,11 @@ class AdamOptimizer(OptimizerBase):
         idx = np.asarray(indices).ravel()
         if lr_values is not None:
             values = np.asarray(lr_values, dtype=np.float64).ravel()
+            if values.size != idx.size:
+                raise ValueError(
+                    f"lr_values length ({values.size}) must match indices length "
+                    f"({idx.size})."
+                )
         else:
             values = np.full(idx.size, self._alpha, dtype=np.float64)
 
@@ -306,7 +324,12 @@ class AdamOptimizer(OptimizerBase):
                     f"expected_range vector must have {n} elements "
                     f"(one per parameter)."
                 )
-            self._learning_rates = safety_factor * expected_range_arr / step_sum
+            new_rates = safety_factor * expected_range_arr / step_sum
+            if self._learning_rates is not None:
+                # Preserve frozen (zero) entries from the existing rate vector
+                frozen = self._learning_rates == 0.0
+                new_rates[frozen] = 0.0
+            self._learning_rates = new_rates
 
     def set_amsgrad(self, enabled: bool) -> None:
         """Enable or disable AMSGrad variant.
