@@ -131,7 +131,7 @@ def parse_star_file(path: Path) -> tuple[list[dict], list[str]]:
 
     in_data_section = False
 
-    with open(path) as fh:
+    with open(path, encoding="utf-8") as fh:
         for line_num, raw_line in enumerate(fh, start=1):
             line = raw_line.rstrip("\n").rstrip("\r")
 
@@ -194,13 +194,20 @@ def write_star_file(
         lines.append(header + "\n")
 
     for particle in particles:
+        filename = particle["original_image_filename"]
+        if " " in str(filename):
+            raise ValueError(
+                f"original_image_filename {filename!r} contains spaces; "
+                "the whitespace-delimited star format does not support "
+                "filenames with spaces"
+            )
         tokens = [
             _format_value(particle[col_name], col_type)
             for col_name, col_type in COLUMN_SPEC
         ]
         lines.append(" ".join(tokens) + "\n")
 
-    with open(path, "w") as fh:
+    with open(path, "w", encoding="utf-8") as fh:
         fh.writelines(lines)
 
 
