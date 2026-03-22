@@ -530,7 +530,9 @@ class LBFGSBOptimizer(OptimizerBase):
 
             alpha *= self._linesearch_factor
 
-        return alpha
+        # Loop exhausted: undo the final halving so we return the last
+        # step size that was actually evaluated by the objective function.
+        return alpha / self._linesearch_factor
 
     # ------------------------------------------------------------------
     # Accessors
