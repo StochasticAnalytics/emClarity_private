@@ -16,15 +16,29 @@ from .emc_refine_tilt_ctf import (
     refine_tilt_ctf,
 )
 from .emc_scoring import create_peak_mask, evaluate_score_and_shifts
+from .emc_tile_prep import (
+    center_crop_or_pad,
+    compute_ctf_friendly_size,
+    create_2d_soft_mask,
+    create_ctf_mask,
+    prepare_data_tile,
+    prepare_reference_projection,
+)
 
 __all__ = [
     "CTFCalculatorWithDerivatives",
     "FourierTransformer",
     "RefinementOptions",
     "RefinementResults",
+    "center_crop_or_pad",
+    "compute_ctf_friendly_size",
     "compute_half_astig_lower_bound",
+    "create_2d_soft_mask",
+    "create_ctf_mask",
     "create_peak_mask",
     "evaluate_score_and_gradient",
     "evaluate_score_and_shifts",
+    "prepare_data_tile",
+    "prepare_reference_projection",
     "refine_tilt_ctf",
 ]
