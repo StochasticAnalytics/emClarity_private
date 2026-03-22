@@ -538,22 +538,28 @@ class TestPenaltyGradient:
 
         # The difference in dz gradient between dz=100 and dz=0 should
         # include the penalty contribution.
-        # Before negation: penalty_grad = -dz/sigma^2 = -100/10000 = -0.01
-        # After negation: +0.01
-        # So grad_dz[3] should be more positive than grad_zero[3]
-        # by approximately +0.01 (plus some CTF-related difference).
+        # The full penalty gradient (before negation) is:
+        #   -abs(peak_height) * combined_weight * dz / sigma_z^2
+        # penalty_contribution = dz / sigma_z^2 is the scale factor;
+        # the full term is abs(peak_height) * combined_weight * penalty_contribution.
+        # After negation: +abs(peak_height) * combined_weight * penalty_contribution.
         penalty_contribution = dz_val / (sigma_z ** 2)  # 0.01 (after negation)
 
         # The total gradient difference includes both CTF and penalty terms.
-        # We verify the penalty contribution is present by checking the
-        # difference has the expected sign direction.
+        # Check sign: positive dz should push gradient more positive after negation
+        # (the penalty gradient points the optimizer back toward dz=0).
         grad_diff = grad_dz[3] - grad_zero[3]
-        # After negation, positive dz should push gradient more positive
-        # (since the penalty gradient -dz/sigma^2 is negative before negation,
-        # it becomes positive after negation, pushing optimizer toward dz=0)
         assert grad_diff > 0, (
             f"Penalty gradient has wrong sign: grad_dz[3]={grad_dz[3]:.6e}, "
             f"grad_zero[3]={grad_zero[3]:.6e}, diff={grad_diff:.6e}"
+        )
+        # Check magnitude: grad_diff must be at least a meaningful fraction of
+        # penalty_contribution.  The factor abs(peak_height) * combined_weight
+        # is always > 0; using 0.1 as a conservative lower bound ensures the
+        # penalty term is genuinely present in the gradient, not just noise.
+        assert grad_diff >= penalty_contribution * 0.1, (
+            f"Penalty magnitude too small: expected >= {penalty_contribution * 0.1:.4e}, "
+            f"got grad_diff={grad_diff:.6e} (penalty_contribution={penalty_contribution:.4e})"
         )
 
     def test_penalty_gradient_fd_validation(

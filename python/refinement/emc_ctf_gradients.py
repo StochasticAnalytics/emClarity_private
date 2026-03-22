@@ -223,9 +223,15 @@ def evaluate_score_and_gradient(
         angle_eff_rad = base_angle_rad + delta_angle
 
         # --- Enforce df1 >= df2 convention --------------------------------
+        # When the swap fires, delta_half_astig enters df2_eff with positive
+        # sign and df1_eff with negative sign — the opposite of the no-swap
+        # case.  d(half_astig_ctf)/d(delta_half_astig) = -1 after the swap,
+        # so the chain rule requires negating the astigmatism gradient.
+        astig_sign = 1.0
         if df2_eff > df1_eff:
             df1_eff, df2_eff = df2_eff, df1_eff
             angle_eff_rad += np.pi / 2.0
+            astig_sign = -1.0
 
         # --- Build per-particle CTFParams ---------------------------------
         angle_eff_deg = np.degrees(angle_eff_rad)
@@ -354,7 +360,9 @@ def evaluate_score_and_gradient(
         param_indices = [0, 1, 2]
         # dctf_dTheta is in per-degree units, but params[2] is radians.
         # Multiply the theta derivative by 180/pi to convert to per-radian.
-        unit_factors = [1.0, 1.0, 180.0 / np.pi]
+        # astig_sign corrects for the chain rule when the df1/df2 convention
+        # swap fires (see note above where astig_sign is set).
+        unit_factors = [1.0, astig_sign, 180.0 / np.pi]
 
         # Store the defocus raw_grad and norm_corr for delta_z computation
         raw_grad_D = 0.0
