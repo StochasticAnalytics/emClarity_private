@@ -233,13 +233,18 @@ def _apply_refinement_to_particles(
         p["x_shift"] = float(results.shift_x[i]) * pixel_size
         p["y_shift"] = float(results.shift_y[i]) * pixel_size
 
-        # Score: per-particle cross-correlation peak height
-        p["score"] = float(results.per_particle_scores[i])
+        # Score: per-particle cross-correlation peak height.
+        # Only overwrite when the refinement computed a real score (non-zero);
+        # a zero value signals a degenerate run (e.g. maximum_iterations=0)
+        # and the original score should be preserved so that callers can
+        # distinguish a genuinely-run refinement from a no-op.
+        if results.per_particle_scores[i] != 0.0:
+            p["score"] = float(results.per_particle_scores[i])
 
 
 def _free_gpu_memory() -> None:
     """Release GPU memory pools to prevent OOM across tilt groups."""
-    if HAS_CUPY:
+    if cp is not None:
         cp.get_default_memory_pool().free_all_blocks()
 
 
@@ -333,8 +338,8 @@ def refine_ctf_from_star(
 
     # ── Stage 4: Group particles by tilt ─────────────────────────────────
     tilt_groups = group_particles_by_tilt(particles)
-    n_tilt_groups = len(tilt_groups)
-    logger.info("  %d tilt groups", n_tilt_groups)
+    n_tilt_groups_total = len(tilt_groups)
+    logger.info("  %d tilt groups", n_tilt_groups_total)
 
     # Extract microscope parameters from first particle (constant across stack)
     first_p = particles[0]
@@ -363,7 +368,7 @@ def refine_ctf_from_star(
         tilt_angle = tilt_particles[0]["tilt_angle"]
         logger.info(
             "  [%d/%d] Refining '%s' (angle=%.1f, %d particles)",
-            tilt_idx, n_tilt_groups, tilt_name, tilt_angle, n_in_tilt,
+            tilt_idx, n_tilt_groups_total, tilt_name, tilt_angle, n_in_tilt,
         )
 
         # ── 5a-c: Prepare data and reference Fourier transforms ──────
@@ -417,11 +422,7 @@ def refine_ctf_from_star(
 
         # ── Per-tilt summary logging ─────────────────────────────────
         n_iters = len(results.score_history)
-        mean_score = (
-            float(np.mean(results.per_particle_scores))
-            if n_in_tilt > 0
-            else 0.0
-        )
+        mean_score = float(np.mean(results.per_particle_scores))
         logger.info(
             "    %s | angle=%.1f | %d particles | %d iters | "
             "score=%.4f | converged=%s",
