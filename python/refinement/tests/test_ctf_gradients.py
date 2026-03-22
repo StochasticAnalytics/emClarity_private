@@ -24,7 +24,7 @@ import pytest
 
 from ...ctf.emc_ctf_cpu import CTFCalculatorCPU
 from ...ctf.emc_ctf_params import CTFParams
-from ..emc_ctf_gradients import evaluate_score_and_gradient
+from ..emc_ctf_gradients import compute_gradient_debug_info, evaluate_score_and_gradient
 from ..emc_fourier_utils import FourierTransformer
 from ..emc_scoring import create_peak_mask, evaluate_score_and_shifts
 
@@ -758,6 +758,60 @@ class TestNormCorrectionNonNegligible:
             f"FD comparison failed (norm correction likely wrong): "
             f"analytical={analytical_defocus:.6e}, fd={fd_defocus:.6e}, "
             f"rel_err={rel_err:.4f}"
+        )
+
+    def test_norm_correction_ratio(
+        self,
+        ft: FourierTransformer,
+        ctf_calc: CTFCalculatorCPU,
+        base_ctf: CTFParams,
+        peak_mask: np.ndarray,
+    ) -> None:
+        """Directly assert |norm_corr| > 0.01 * |raw_grad| for at least one
+        particle/parameter combination.
+
+        This is the acceptance criterion stated in the task specification:
+        the normalization correction must be measurably non-negligible
+        (greater than 1% of the raw gradient) for some particle and
+        CTF parameter.
+        """
+        n_particles = 3
+        data_fts, ref_fts = _make_multi_particle(
+            ft, ctf_calc, base_ctf, n_particles,
+        )
+
+        params = np.zeros(3 + n_particles)
+        params[0] = 100.0
+
+        raw_grads, norm_corrs = compute_gradient_debug_info(
+            params=params,
+            data_fts=data_fts,
+            ref_fts=ref_fts,
+            base_ctf_params=base_ctf,
+            ctf_calculator=ctf_calc,
+            fourier_handler=ft,
+            tilt_angle_degrees=0.0,
+            peak_mask=peak_mask,
+            z_offset_sigma=1e6,
+        )
+
+        # Verify the acceptance criterion: for at least one (particle, param)
+        # pair, |norm_corr| > 0.01 * |raw_grad|
+        found_non_negligible = False
+        for i in range(n_particles):
+            for k in range(3):
+                raw_g = abs(raw_grads[i, k])
+                norm_c = abs(norm_corrs[i, k])
+                if raw_g > 1e-10 and norm_c > 0.01 * raw_g:
+                    found_non_negligible = True
+                    break
+            if found_non_negligible:
+                break
+
+        assert found_non_negligible, (
+            f"Acceptance criterion failed: |norm_corr| > 0.01 * |raw_grad| "
+            f"was not satisfied for any particle/parameter combination.\n"
+            f"raw_grads={raw_grads}\nnorm_corrs={norm_corrs}"
         )
 
 

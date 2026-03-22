@@ -394,3 +394,170 @@ def evaluate_score_and_gradient(
     gradient = -gradient
 
     return total_score, per_particle_scores, shifts, gradient
+
+
+def compute_gradient_debug_info(
+    params: np.ndarray,
+    data_fts: list[NDArray],
+    ref_fts: list[NDArray],
+    base_ctf_params: CTFParams,
+    ctf_calculator: CTFCalculatorWithDerivatives,
+    fourier_handler: FourierTransformer,
+    tilt_angle_degrees: float,
+    peak_mask: np.ndarray,
+    shift_sigma: float = 5.0,
+    z_offset_sigma: float = 100.0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return raw_grad and norm_corr arrays for diagnostic use.
+
+    Computes the same intermediate quantities used inside
+    :func:`evaluate_score_and_gradient` but returns them without combining
+    or negating, so callers can directly verify acceptance criteria such as
+    ``|norm_corr| > 0.01 * |raw_grad|``.
+
+    Args:
+        params: Parameter vector of length ``3 + N`` (same layout as
+            :func:`evaluate_score_and_gradient`).
+        data_fts: Pre-processed data Fourier transforms, length N.
+        ref_fts: Pre-conjugated reference Fourier transforms, length N.
+        base_ctf_params: Base CTF parameters for this tilt.
+        ctf_calculator: CTF calculator supporting ``compute_with_derivatives``.
+        fourier_handler: :class:`FourierTransformer` matching tile dimensions.
+        tilt_angle_degrees: Tilt angle of the current view (degrees).
+        peak_mask: Binary circular mask restricting peak search.
+        shift_sigma: Gaussian penalty sigma for X/Y shifts (pixels).
+        z_offset_sigma: Gaussian penalty sigma for z-offsets (Angstroms).
+
+    Returns:
+        Tuple ``(raw_grads, norm_corrs)`` each of shape ``(N, 3)``, where
+        axis-1 indexes ``[dD, dA, dTheta]`` (defocus, half-astigmatism,
+        angle).  Entries for skipped (degenerate) particles are zero.
+    """
+    n_particles = len(data_fts)
+    raw_grads = np.zeros((n_particles, 3), dtype=np.float64)
+    norm_corrs = np.zeros((n_particles, 3), dtype=np.float64)
+
+    if n_particles == 0:
+        return raw_grads, norm_corrs
+
+    expected_len = 3 + n_particles
+    if len(params) != expected_len:
+        raise ValueError(
+            f"params has length {len(params)} but expected {expected_len}"
+        )
+
+    nx = fourier_handler.nx
+    ny = fourier_handler.ny
+    inv_trim = fourier_handler.inv_trim
+
+    delta_df = float(params[0])
+    delta_half_astig = float(params[1])
+    delta_angle = float(params[2])
+
+    base_mean = float(base_ctf_params.mean_defocus)
+    base_half = float(base_ctf_params.half_astigmatism)
+    base_angle_rad = float(base_ctf_params.astigmatism_angle_rad)
+    pixel_size = float(base_ctf_params.pixel_size)
+    wavelength = float(base_ctf_params.wavelength)
+    cs_mm = float(base_ctf_params.cs_mm)
+    amplitude_contrast = float(base_ctf_params.amplitude_contrast)
+
+    cos_tilt = np.cos(np.radians(tilt_angle_degrees))
+    origin_x = nx // 2
+    origin_y = ny // 2
+
+    xp = _xp_for(data_fts[0])
+    if xp is not np and isinstance(peak_mask, np.ndarray):
+        peak_mask_dev = xp.asarray(peak_mask)
+    else:
+        peak_mask_dev = peak_mask
+
+    for i in range(n_particles):
+        dz = float(params[3 + i])
+        dz_contribution = dz * cos_tilt
+
+        df1_eff = (base_mean + base_half) + delta_half_astig + delta_df + dz_contribution
+        df2_eff = (base_mean - base_half) - delta_half_astig + delta_df + dz_contribution
+        angle_eff_rad = base_angle_rad + delta_angle
+
+        if df2_eff > df1_eff:
+            df1_eff, df2_eff = df2_eff, df1_eff
+            angle_eff_rad += np.pi / 2.0
+
+        angle_eff_deg = np.degrees(angle_eff_rad)
+        particle_ctf = CTFParams.from_defocus_pair(
+            df1=df1_eff,
+            df2=df2_eff,
+            angle_degrees=angle_eff_deg,
+            pixel_size=pixel_size,
+            wavelength=wavelength,
+            cs_mm=cs_mm,
+            amplitude_contrast=amplitude_contrast,
+            do_half_grid=True,
+            do_sq_ctf=False,
+        )
+
+        ctf_image, dctf_dD, dctf_dA, dctf_dTheta = (
+            ctf_calculator.compute_with_derivatives(particle_ctf, (nx, ny))
+        )
+        ctf_image = ctf_image.T
+        dctf_dD = dctf_dD.T
+        dctf_dA = dctf_dA.T
+        dctf_dTheta = dctf_dTheta.T
+
+        if xp is not np:
+            if isinstance(ctf_image, np.ndarray):
+                ctf_image = xp.asarray(ctf_image)
+                dctf_dD = xp.asarray(dctf_dD)
+                dctf_dA = xp.asarray(dctf_dA)
+                dctf_dTheta = xp.asarray(dctf_dTheta)
+        elif HAS_CUPY:
+            if isinstance(ctf_image, cp.ndarray):
+                ctf_image = ctf_image.get()
+                dctf_dD = dctf_dD.get()
+                dctf_dA = dctf_dA.get()
+                dctf_dTheta = dctf_dTheta.get()
+
+        ref_ft_i = ref_fts[i]
+        if xp is not np and isinstance(ref_ft_i, np.ndarray):
+            ref_ft_i = xp.asarray(ref_ft_i)
+
+        data_ft_i = data_fts[i]
+        ref_with_ctf = ref_ft_i * ctf_image
+        ref_norm = fourier_handler.compute_ref_norm(ref_with_ctf)
+        if not (ref_norm >= 1e-30):
+            continue
+        ref_with_ctf_normed = ref_with_ctf / ref_norm
+
+        xcf_masked = peak_mask_dev * fourier_handler.inverse_fft(
+            data_ft_i * ref_with_ctf_normed
+        ) * (nx * ny)
+        if xp is not np:
+            max_idx = int(xp.argmax(xcf_masked))
+            peak_height = float(xcf_masked.ravel()[max_idx])
+        else:
+            max_idx = int(np.argmax(xcf_masked))
+            peak_height = float(xcf_masked.ravel()[max_idx])
+
+        px, py = np.unravel_index(max_idx, (nx, ny))
+
+        for k, dctf_dX in enumerate([dctf_dD, dctf_dA, dctf_dTheta]):
+            grad_spectrum = data_ft_i * ref_ft_i * dctf_dX / ref_norm
+            grad_real = fourier_handler.inverse_fft(grad_spectrum) * (nx * ny)
+            raw_grad = float(grad_real[px, py])
+
+            ref_dctf = ref_ft_i * dctf_dX / ref_norm
+            if inv_trim > 0:
+                trimmed_normed = ref_with_ctf_normed[:-inv_trim, :]
+                trimmed_dctf = ref_dctf[:-inv_trim, :]
+            else:
+                trimmed_normed = ref_with_ctf_normed
+                trimmed_dctf = ref_dctf
+
+            inner = xp.sum(xp.conj(trimmed_normed) * trimmed_dctf)
+            norm_corr = peak_height * 2.0 * float(xp.real(inner))
+
+            raw_grads[i, k] = raw_grad
+            norm_corrs[i, k] = norm_corr
+
+    return raw_grads, norm_corrs
