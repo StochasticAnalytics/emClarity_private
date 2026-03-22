@@ -114,7 +114,7 @@ reportMissingTypeStubs = false
 pythonVersion = "3.10"
 pythonPlatform = "Linux"
 executionEnvironments = [
-  { root = "python" }
+  { root = "." }
 ]
 
 # Bandit security linting configuration

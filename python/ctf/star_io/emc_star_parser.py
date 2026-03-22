@@ -18,7 +18,6 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from pathlib import Path
-from typing import Union
 
 logger = logging.getLogger(__name__)
 
@@ -72,12 +71,10 @@ def _is_header_line(line: str) -> bool:
     first_char = stripped[0]
     if first_char in ("#", "_"):
         return True
-    if stripped.startswith("data_") or stripped.startswith("loop_"):
-        return True
-    return False
+    return stripped.startswith(("data_", "loop_"))
 
 
-def _parse_token(token: str, col_type: type) -> Union[int, float, str]:
+def _parse_token(token: str, col_type: type) -> int | float | str:
     """Convert a whitespace-delimited token to the appropriate Python type.
 
     For int columns, handles both '1' and '1.0' representations (the MATLAB
@@ -92,7 +89,7 @@ def _parse_token(token: str, col_type: type) -> Union[int, float, str]:
     return token
 
 
-def _format_value(value: Union[int, float, str], col_type: type) -> str:
+def _format_value(value: int | float | str, col_type: type) -> str:
     """Format a particle field value for writing to a star file.
 
     Uses representations that roundtrip through parsing:
@@ -132,14 +129,18 @@ def parse_star_file(path: Path) -> tuple[list[dict], list[str]]:
     header_lines: list[str] = []
     particles: list[dict] = []
 
-    with open(path, "r") as fh:
+    in_data_section = False
+
+    with open(path) as fh:
         for line_num, raw_line in enumerate(fh, start=1):
             line = raw_line.rstrip("\n").rstrip("\r")
 
             if _is_header_line(line):
-                header_lines.append(line)
+                if not in_data_section:
+                    header_lines.append(line)
                 continue
 
+            in_data_section = True
             tokens = line.split()
             if len(tokens) != NUM_COLUMNS:
                 raise ValueError(
@@ -148,8 +149,14 @@ def parse_star_file(path: Path) -> tuple[list[dict], list[str]]:
                 )
 
             particle: dict = {}
-            for (col_name, col_type), token in zip(COLUMN_SPEC, tokens):
-                particle[col_name] = _parse_token(token, col_type)
+            for (col_name, col_type), token in zip(COLUMN_SPEC, tokens, strict=True):
+                try:
+                    particle[col_name] = _parse_token(token, col_type)
+                except (ValueError, TypeError) as exc:
+                    raise ValueError(
+                        f"{path}:{line_num}: column '{col_name}': "
+                        f"cannot convert {token!r} to {col_type.__name__}"
+                    ) from exc
 
             particles.append(particle)
 
@@ -180,16 +187,21 @@ def write_star_file(
     """
     path = Path(path)
 
-    with open(path, "w") as fh:
-        for header in header_lines:
-            fh.write(header + "\n")
+    # Build output in memory first so a KeyError during formatting
+    # does not leave a truncated (or empty) file on disk.
+    lines: list[str] = []
+    for header in header_lines:
+        lines.append(header + "\n")
 
-        for particle in particles:
-            tokens = [
-                _format_value(particle[col_name], col_type)
-                for col_name, col_type in COLUMN_SPEC
-            ]
-            fh.write(" ".join(tokens) + "\n")
+    for particle in particles:
+        tokens = [
+            _format_value(particle[col_name], col_type)
+            for col_name, col_type in COLUMN_SPEC
+        ]
+        lines.append(" ".join(tokens) + "\n")
+
+    with open(path, "w") as fh:
+        fh.writelines(lines)
 
 
 def group_particles_by_tilt(
