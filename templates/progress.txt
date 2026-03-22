@@ -893,3 +893,21 @@ Developer: Completed 2026-03-22
     integration test using mock optimizer to exercise post-optimisation
     df1/df2 canonicalisation through refine_tilt_ctf.
   - 101 refinement tests pass (6 GPU skipped), 22 refine_tilt_ctf tests pass
+
+Developer: Completed 2026-03-22
+  - [TASK-011/PATCH] Fix 5 QA defects from review (round 2)
+  - Defect 1 (MEDIUM): Exported CTFCalculatorWithDerivatives from
+    refinement/__init__.py public API and __all__
+  - Defect 2 (MEDIUM): Captured final evaluation score and appended to
+    score_history, resolving temporal lag with per_particle_scores
+  - Defect 3 (MEDIUM): Added nan_break flag; sanitise per_particle_scores
+    and shifts_xy on non-finite score, skip final evaluation to prevent
+    NaN propagation into returned RefinementResults
+  - Defect 4 (MEDIUM): Restored intent-revealing form of
+    compute_half_astig_lower_bound using margin variable and added
+    ValueError for negative inputs; resolves self-referential test issue
+  - Defect 5 (MEDIUM): Added shape validation in fourier_handler=None path:
+    2-D check, minimum half-grid size, convention warning when first axis
+    exceeds second axis
+  - All 446 relevant tests pass (22 refine_tilt_ctf, 101 refinement,
+    131 optimizer, 214 ctf)
