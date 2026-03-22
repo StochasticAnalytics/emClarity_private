@@ -53,7 +53,7 @@ ruff check python/ --diff
 pyright python/
 
 # Type check specific files
-pyright python/gui/main.py
+pyright python/metaData/emc_parameter_converter.py
 
 # Watch mode for development
 pyright --watch python/

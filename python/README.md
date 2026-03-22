@@ -1,21 +1,17 @@
 # emClarity Python Package
 
-Complete Python implementation of emClarity cryo-EM processing tools with modern architecture, GPU acceleration, and integrated GUI.
+Complete Python implementation of emClarity cryo-EM processing tools with modern architecture and GPU acceleration.
 
 ## Package Structure
-
-The Python package has been reorganized into a unified structure where the GUI is a subcomponent of the main Python package:
 
 ```
 python/
 ├── __init__.py                    # Main package entry point
 ├── parameters.py                  # Unified parameter management system
-├── setup.py                      # Package installation
-├── test_runner.py                # Unified test runner
 ├── requirements*.txt              # Dependency management
 │
 ├── alignment/                     # Tilt-series alignment
-├── coordinates/                   # Coordinate transformations  
+├── coordinates/                   # Coordinate transformations
 ├── ctf/                          # CTF estimation and correction
 ├── cuda_ops/                     # GPU-accelerated operations
 ├── image_io/                     # Image file I/O
@@ -27,11 +23,6 @@ python/
 ├── testScripts/                  # Test and validation scripts
 ├── transformations/              # Image transformations
 ├── utils/                        # Common utilities
-│
-├── gui/                          # Graphical user interface
-│   ├── main.py                   # GUI entry point
-│   ├── parameter_bridge.py       # GUI-parameter integration
-│   └── ...                       # GUI components
 │
 └── docs/                         # Documentation
 ```
@@ -51,12 +42,6 @@ python/
 - **Memory-efficient** operations
 - **Custom CUDA kernels** for specialized operations
 
-### 🖥️ Integrated GUI
-- **Qt-based interface** using PySide6
-- **Unified parameter editing** with validation
-- **Real-time parameter conversion**
-- **Project management** capabilities
-
 ### 🧪 Comprehensive Testing
 - **Unified test runner** for all modules
 - **95%+ test coverage** for core functionality
@@ -69,11 +54,6 @@ python/
 ```bash
 cd python/
 pip install -e .
-```
-
-### With GUI Support
-```bash
-pip install -e ".[gui]"
 ```
 
 ### With GPU Support
@@ -124,16 +104,6 @@ padded_volume = emc_pad_zeros_3d(
 )
 ```
 
-### GUI Usage
-```python
-# From command line
-emclarity-gui
-
-# Or programmatically
-from emclarity.gui.main import main
-main()
-```
-
 ## Module Organization
 
 ### Core Modules
@@ -167,14 +137,6 @@ main()
 - Project metadata management
 - Backward compatibility with old parameter converter
 
-### GUI Module
-
-**`gui/`** - Graphical interface
-- Qt-based parameter editing
-- Real-time validation and unit conversion
-- Project management
-- Integrated with unified parameter system
-
 ## Dependency Management
 
 ### Core Dependencies (`requirements.txt`)
@@ -182,9 +144,6 @@ main()
 - `scipy>=1.6.0` - Scientific computing
 - `mrcfile>=1.5.0` - MRC file I/O
 - `jsonschema>=4.0.0` - Parameter validation
-
-### GUI Dependencies (`requirements-gui.txt`)
-- `PySide6>=6.0.0` - Qt interface
 
 ### GPU Dependencies (`requirements-gpu.txt`)
 - `cupy-cuda12x>=12.0.0` - CUDA acceleration
@@ -220,17 +179,12 @@ python test_runner.py --coverage
 - **Benefit**: Single source of truth for parameter definitions
 - **Backward compatibility**: Old systems still work with deprecation warnings
 
-### 2. GUI as Subpackage
-- **Why**: GUI is specific functionality, not separate project
-- **Benefit**: Unified dependency management and testing
-- **Flexibility**: Can still be imported/used independently
-
-### 3. CuPy for GPU Operations
+### 2. CuPy for GPU Operations
 - **Why**: Mature ecosystem, good NumPy compatibility
 - **Benefit**: Easier development than pure CUDA
 - **Performance**: Custom kernels when needed, built-ins when sufficient
 
-### 4. Shared Utilities
+### 3. Shared Utilities
 - **Why**: Reduce code duplication across modules
 - **Benefit**: Consistent error handling and validation
 - **Maintainability**: Centralized GPU detection and memory management
@@ -248,24 +202,6 @@ from emclarity import get_parameter_manager
 manager = get_parameter_manager()
 ```
 
-### From Separate GUI Dependencies
-```python
-# Old way - separate requirements.txt in gui/
-pip install -r gui/requirements.txt
-
-# New way - unified dependency management
-pip install -e ".[gui]"
-```
-
-### Import Path Changes
-```python
-# Old way
-from gui.parameter_loader import ParameterConfigLoader
-
-# New way
-from emclarity.gui.parameter_bridge import get_gui_parameter_manager
-```
-
 ## Development Guidelines
 
 1. **All new modules** should use utilities from `utils.common`
@@ -277,7 +213,7 @@ from emclarity.gui.parameter_bridge import get_gui_parameter_manager
 ## Future Roadmap
 
 - [ ] Complete MATLAB function conversion
-- [ ] Advanced GUI features (project templates, batch processing)
+
 - [ ] Performance optimization for large datasets
 - [ ] Integration with other cryo-EM packages
 - [ ] Web-based interface option

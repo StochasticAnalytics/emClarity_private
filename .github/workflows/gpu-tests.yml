@@ -50,7 +50,7 @@ jobs:
         cd python
         
         echo "=== Installing core dependencies ==="
-        pip install numpy scipy mrcfile jsonschema matplotlib pillow PySide6
+        pip install numpy scipy mrcfile jsonschema matplotlib pillow
         pip install pytest pytest-cov
         
         echo "=== Installing CuPy for GPU support ==="

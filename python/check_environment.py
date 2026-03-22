@@ -24,7 +24,6 @@ def check_dependencies(verbose: bool = False) -> Dict[str, bool]:
         ("mrcfile", "mrcfile"),
         ("jsonschema", "jsonschema"),
         ("cupy", "cupy"),
-        ("PySide6", "PySide6"),
         ("matplotlib", "matplotlib"),
         ("PIL", "pillow"),  # Pillow imports as PIL
     ]

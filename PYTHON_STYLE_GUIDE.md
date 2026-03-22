@@ -51,8 +51,6 @@ from typing import Any, Dict, List, Optional
 # Third-party imports
 import numpy as np
 import pandas as pd
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QWidget
 
 # Local imports
 from .utils import helper_function
@@ -61,10 +59,10 @@ from .models import DataModel
 
 **❌ Incorrect:**
 ```python
-from PySide6.QtCore import Qt, Signal
+import numpy as np
 import os
 from .utils import helper_function
-import numpy as np
+import pandas as pd
 ```
 
 ### 2. Code Formatting (Black)

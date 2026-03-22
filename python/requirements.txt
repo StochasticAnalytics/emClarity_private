@@ -2,7 +2,6 @@
 # These are required for basic functionality
 #
 # For GPU support: pip install -r requirements-gpu.txt
-# For GUI support: pip install -r requirements-gui.txt
 
 # Core scientific computing
 numpy>=1.16.0

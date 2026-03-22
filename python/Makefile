@@ -1,6 +1,6 @@
 # emClarity Python Development Makefile
 
-.PHONY: help test test-all test-fast test-gpu test-gui coverage lint format clean install install-dev docs
+.PHONY: help test test-all test-fast test-gpu coverage lint format clean install install-dev docs
 
 # Default target
 help:
@@ -10,7 +10,7 @@ help:
 	@echo "  test          - Run all tests"
 	@echo "  test-fast     - Run fast tests only (skip slow/gpu)"
 	@echo "  test-gpu      - Run GPU tests only"
-	@echo "  test-gui      - Run GUI tests only"
+
 	@echo "  coverage      - Run tests with coverage report"
 	@echo "  ci-test       - Simulate CI testing locally"
 	@echo ""
@@ -45,9 +45,6 @@ test-fast:
 
 test-gpu:
 	python -m pytest -v -m "gpu or cuda"
-
-test-gui:
-	QT_QPA_PLATFORM=offscreen python -m pytest -v -m "gui"
 
 test-all:
 	python -m pytest -v --tb=short

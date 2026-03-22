@@ -34,7 +34,6 @@ These packages are **required** for emClarity Python functionality:
 - **mrcfile**: MRC file I/O (cryo-EM standard format)
 - **jsonschema**: Parameter validation
 - **cupy-cuda12x**: GPU acceleration (essential for performance)
-- **PySide6**: GUI framework (required for emClarity GUI)
 - **matplotlib**: Plotting and visualization
 - **pillow**: Image processing (imports as `PIL`)
 
@@ -68,11 +67,7 @@ nvcc --version
    - Ensure CUDA toolkit is properly installed
    - Consider using conda: `conda install cupy`
 
-2. **PySide6 issues on Linux**:
-   - May need system Qt libraries: `sudo apt-get install qt6-base-dev`
-   - Set environment variable: `export QT_QPA_PLATFORM=xcb`
-
-3. **Import errors**:
+2. **Import errors**:
    - Verify virtual environment is activated
    - Run `python check_environment.py -v` for detailed status
 
@@ -86,19 +81,6 @@ python check_environment.py --quiet
 Detailed status:
 ```bash
 python check_environment.py --verbose
-```
-
-## Integration with GUI
-
-The GUI is now integrated as a submodule of the Python package:
-
-```python
-# Access unified parameter system
-from emclarity.parameters import UnifiedParameterManager
-from emclarity.gui.main import launch_gui
-
-# Use shared utilities
-from emclarity.utils import gpu_context, validate_array_dimensions
 ```
 
 ## Performance Notes

@@ -31,11 +31,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-gui = ["PySide6>=6.0.0"]
 gpu = ["cupy>=12.0.0", "fastrlock>=0.8.0"]
 dev = [
     "pytest>=6.0.0",
-    "pytest-qt>=4.0.0",
     "ruff>=0.1.0",
     "pyright>=1.1.330",
     "bandit[toml]>=1.7.0",
@@ -44,12 +42,8 @@ dev = [
 ]
 test = [
     "pytest>=6.0.0",
-    "pytest-qt>=4.0.0",
     "pytest-cov>=3.0.0",
 ]
-
-[project.scripts]
-emclarity-gui = "gui.main:main"
 
 [project.urls]
 "Homepage" = "https://github.com/StochasticAnalytics/emClarity"
@@ -100,7 +94,7 @@ skip-magic-trailing-comma = false
 line-ending = "auto"
 
 [tool.ruff.lint.isort]
-known-first-party = ["emclarity", "gui", "metaData", "coordinates", "ctf", "alignment", "masking", "transformations", "statistics", "synthetic", "logicals", "optimizers", "refinement"]
+known-first-party = ["emclarity", "metaData", "coordinates", "ctf", "alignment", "masking", "transformations", "statistics", "synthetic", "logicals", "optimizers", "refinement"]
 section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
 
 [tool.ruff.lint.pydocstyle]
