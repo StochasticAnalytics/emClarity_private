@@ -518,7 +518,14 @@ class LBFGSBOptimizer(OptimizerBase):
             # near active constraints, causing excessive backtracking.
             effective_step = trial - self._current_parameters
             effective_dd = float(np.dot(grad, effective_step))
-            if trial_value <= current_value + self._c1 * effective_dd:
+            # Guard: bound-clamping can flip effective_dd positive when a
+            # negative-contributing dimension hits its bound while a
+            # positive-contributing dimension moves freely.  A positive
+            # effective_dd would make the RHS exceed current_value, allowing
+            # objective increases through the Armijo check.  Clamp to 0 so
+            # that, in the degenerate case, we require strict non-increase.
+            armijo_slope = min(effective_dd, 0.0)
+            if trial_value <= current_value + self._c1 * armijo_slope:
                 return alpha
 
             alpha *= self._linesearch_factor
