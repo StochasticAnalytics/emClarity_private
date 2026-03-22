@@ -417,6 +417,7 @@ def refine_tilt_ctf(
                 z_offset_sigma=options.z_offset_sigma,
             )
         )
+        score_history.append(final_score)
     # --- Post-optimisation df1/df2 canonicalisation -----------------------
     delta_df = float(final_params[0])
     delta_half_astig = float(final_params[1])
