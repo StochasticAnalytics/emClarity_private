@@ -366,30 +366,38 @@ class TestSNRVerification:
     ) -> None:
         """Generated tiles have empirical SNR consistent with SNR=5.0.
 
-        The empirical SNR (measured as std(mean_tile)/std(residuals)) will
-        be lower than the per-tile SNR because averaging reduces noise.
-        We verify the per-tile SNR by measuring signal and noise components
-        directly.
+        Estimates SNR as ``std(mean_tile) / std(residuals)`` where the mean
+        tile approximates the common signal and residuals approximate per-tile
+        noise.  Because tiles carry different CTF modulations (varying tilt
+        angles), the mean-tile signal is partially attenuated, biasing the
+        measured SNR below the per-tile injection SNR of 5.0.  We therefore
+        use generous bounds [0.5, 10.0] that catch gross generation errors
+        (e.g. zero noise or pure noise) while accommodating CTF-induced
+        signal averaging.
         """
         with mrcfile.open(str(synthetic_data.stack_path), mode="r") as mrc:
             data = mrc.data.copy()
 
-        # For each tile, we know signal = CTF-modulated projection,
-        # noise = Gaussian with std = signal_std / SNR.
-        # Measure the variance ratio across tiles.
         n_tiles = data.shape[0]
         assert n_tiles == _TOTAL_PARTICLES
 
-        # Compute per-tile standard deviations
-        tile_stds = np.array([float(np.std(data[i])) for i in range(n_tiles)])
-
-        # All tiles should have non-trivial signal
-        assert np.all(tile_stds > 0), "Some tiles have zero variance"
-
-        # The mean tile (averaging reduces noise by sqrt(N))
+        # Signal estimate: mean tile (noise averages out over N tiles)
         mean_tile = np.mean(data, axis=0)
-        signal_power = float(np.var(mean_tile))
-        assert signal_power > 0, "Mean tile has zero variance"
+        signal_std = float(np.std(mean_tile))
+        assert signal_std > 0, "Mean tile has zero variance — no signal"
+
+        # Noise estimate: per-tile residuals from the mean
+        residuals = data - mean_tile[np.newaxis, :, :]
+        noise_std = float(np.std(residuals))
+        assert noise_std > 0, "Residuals have zero variance — no noise"
+
+        # Compute empirical SNR
+        snr_empirical = signal_std / noise_std
+
+        assert 0.5 < snr_empirical < 10.0, (
+            f"Empirical SNR {snr_empirical:.2f} outside expected range "
+            f"[0.5, 10.0] for injection SNR=5.0 with {n_tiles} tiles"
+        )
 
 
 # ---------------------------------------------------------------------------
