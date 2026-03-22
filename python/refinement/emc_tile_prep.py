@@ -8,7 +8,7 @@ scoring in the CTF refinement pipeline.  Mirrors the tile-preparation loop in
 Pipeline (data tile)::
 
     raw tile → soft mask → mean-subtract → RMS-normalize → pad to CTFSIZE
-    → swap_phase → forward FFT → bandpass → pre-normalize
+    → forward FFT → swap_phase → bandpass → pre-normalize
 
 Pipeline (reference projection)::
 
@@ -254,7 +254,7 @@ def center_crop_or_pad(
 # ---------------------------------------------------------------------------
 
 
-def _spider_zyz_inverse_matrix(
+def spider_zyz_inverse_matrix(
     phi: float, theta: float, psi: float,
 ) -> np.ndarray:
     """Build 3x3 inverse rotation matrix for SPIDER ZYZ Euler angles.
@@ -304,7 +304,7 @@ def _spider_zyz_inverse_matrix(
     return rz_phi @ ry_theta @ rz_psi
 
 
-def _rotate_volume_trilinear(
+def rotate_volume_trilinear(
     volume: np.ndarray,
     rotation_matrix: np.ndarray,
 ) -> np.ndarray:
@@ -379,7 +379,7 @@ def prepare_data_tile(
     """Prepare a data tile for cross-correlation scoring.
 
     Applies the full pipeline: soft mask → mean-subtract → RMS-normalize
-    → pad to *pad_size* → swap_phase → forward FFT → bandpass →
+    → pad to *pad_size* → forward FFT → swap_phase → bandpass →
     pre-normalize.
 
     Mirrors ``ctf/EMC_ctf_refine_from_star.m`` lines 305-308.
@@ -468,7 +468,7 @@ def prepare_reference_projection(
 
     .. note:: **Phase-centering asymmetry with data tiles.**
        Data tiles receive :meth:`FourierTransformer.swap_phase` (checkerboard
-       multiply) before the FFT, while reference projections do **not**.
+       multiply) after the forward FFT, while reference projections do **not**.
        This intentional asymmetry shifts the cross-correlation peak from the
        array corner to the image centre, allowing sub-pixel peak extraction
        without an ``fftshift``.  See :func:`emc_scoring.score_ctf_candidates`
@@ -494,10 +494,10 @@ def prepare_reference_projection(
     phi, theta, psi = euler_angles
 
     # Build inverse rotation matrix
-    rot_matrix = _spider_zyz_inverse_matrix(phi, theta, psi)
+    rot_matrix = spider_zyz_inverse_matrix(phi, theta, psi)
 
     # Rotate volume with trilinear interpolation
-    rotated = _rotate_volume_trilinear(vol_np, rot_matrix)
+    rotated = rotate_volume_trilinear(vol_np, rot_matrix)
 
     # Project along Z (axis 0) for [Z,Y,X] volumes → 2D [Y,X]
     projection = np.sum(rotated, axis=0)

@@ -35,8 +35,8 @@ from ....ctf.star_io.emc_star_parser import write_star_file
 from ...emc_ctf_refine_pipeline import compute_electron_wavelength
 from ...emc_fourier_utils import FourierTransformer
 from ...emc_tile_prep import (
-    _spider_zyz_inverse_matrix,
-    _rotate_volume_trilinear,
+    spider_zyz_inverse_matrix,
+    rotate_volume_trilinear,
     center_crop_or_pad,
     compute_ctf_friendly_size,
     create_2d_soft_mask,
@@ -188,8 +188,8 @@ def _project_volume(
         2D projection of shape ``(ny, nx)``.
     """
     phi, theta, psi = euler_angles
-    rot_matrix = _spider_zyz_inverse_matrix(phi, theta, psi)
-    rotated = _rotate_volume_trilinear(volume, rot_matrix)
+    rot_matrix = spider_zyz_inverse_matrix(phi, theta, psi)
+    rotated = rotate_volume_trilinear(volume, rot_matrix)
     return np.sum(rotated, axis=0).astype(np.float32)
 
 

@@ -37,6 +37,7 @@ from ...ctf.emc_ctf_params import CTFParams
 from ...ctf.star_io.emc_star_parser import parse_star_file
 from ..emc_ctf_refine_pipeline import (
     PipelineOptions,
+    PipelineResults,
     compute_electron_wavelength,
     refine_ctf_from_star,
 )
@@ -158,8 +159,8 @@ def positive_control_data(
 def lbfgsb_result(
     synthetic_data: SyntheticDataset,
     tmp_path_factory: pytest.TempPathFactory,
-) -> tuple[Path, SyntheticDataset]:
-    """Run the pipeline with L-BFGS-B and return the output star path."""
+) -> tuple[Path, SyntheticDataset, PipelineResults]:
+    """Run the pipeline with L-BFGS-B and return output star, dataset, and results."""
     output_dir = tmp_path_factory.mktemp("e2e_lbfgsb")
     output_star = output_dir / "refined_lbfgsb.star"
     opts = PipelineOptions(
@@ -169,22 +170,22 @@ def lbfgsb_result(
         lowpass_cutoff=3.5,
         highpass_cutoff=400.0,
     )
-    refine_ctf_from_star(
+    result = refine_ctf_from_star(
         synthetic_data.offset_star_path,
         synthetic_data.stack_path,
         synthetic_data.reference_path,
         output_star,
         options=opts,
     )
-    return output_star, synthetic_data
+    return output_star, synthetic_data, result
 
 
 @pytest.fixture(scope="module")
 def adam_result(
     synthetic_data: SyntheticDataset,
     tmp_path_factory: pytest.TempPathFactory,
-) -> tuple[Path, SyntheticDataset]:
-    """Run the pipeline with ADAM and return the output star path."""
+) -> tuple[Path, SyntheticDataset, PipelineResults]:
+    """Run the pipeline with ADAM and return output star, dataset, and results."""
     output_dir = tmp_path_factory.mktemp("e2e_adam")
     output_star = output_dir / "refined_adam.star"
     opts = PipelineOptions(
@@ -194,14 +195,14 @@ def adam_result(
         lowpass_cutoff=3.5,
         highpass_cutoff=400.0,
     )
-    refine_ctf_from_star(
+    result = refine_ctf_from_star(
         synthetic_data.offset_star_path,
         synthetic_data.stack_path,
         synthetic_data.reference_path,
         output_star,
         options=opts,
     )
-    return output_star, synthetic_data
+    return output_star, synthetic_data, result
 
 
 # ---------------------------------------------------------------------------
@@ -221,8 +222,6 @@ def _compute_recovery_stats(
     refined_particles, _ = parse_star_file(refined_star)
     truth_particles, _ = parse_star_file(dataset.truth_star_path)
 
-    gt_mean_df = (dataset.ground_truth_ctf.defocus_1
-                  + dataset.ground_truth_ctf.defocus_2) / 2.0
     gt_half_astig = (dataset.ground_truth_ctf.defocus_1
                      - dataset.ground_truth_ctf.defocus_2) / 2.0
     gt_angle = dataset.ground_truth_ctf.defocus_angle
@@ -232,7 +231,7 @@ def _compute_recovery_stats(
     half_astig_errors = []
     angle_errors = []
 
-    for rp, tp in zip(refined_particles, truth_particles):
+    for rp, tp in zip(refined_particles, truth_particles, strict=True):
         r_mean = (rp["defocus_1"] + rp["defocus_2"]) / 2.0
         t_mean = (tp["defocus_1"] + tp["defocus_2"]) / 2.0
         defocus_errors.append(r_mean - t_mean)
@@ -399,6 +398,43 @@ class TestSNRVerification:
             f"[0.5, 10.0] for injection SNR=5.0 with {n_tiles} tiles"
         )
 
+    def test_snr_matches_specified_value(
+        self, synthetic_data: SyntheticDataset,
+    ) -> None:
+        """compute_snr_of_tiles estimate is consistent with specified SNR.
+
+        Exercises the ``compute_snr_of_tiles`` utility and checks that the
+        returned estimate is positive, finite, and within an order of
+        magnitude of the specified injection SNR.  The ensemble estimator
+        underestimates per-tile SNR due to CTF variation across tilt angles,
+        so bounds are generous while still catching gross generation errors.
+        """
+        from .fixtures.generate_synthetic_data import compute_snr_of_tiles
+
+        # Verify dataset records the expected SNR
+        assert synthetic_data.snr == 5.0, (
+            f"Dataset SNR is {synthetic_data.snr}, expected 5.0"
+        )
+
+        measured_snr = compute_snr_of_tiles(
+            synthetic_data.stack_path,
+            synthetic_data.reference_path,
+            synthetic_data.truth_star_path,
+        )
+
+        assert np.isfinite(measured_snr), (
+            f"compute_snr_of_tiles returned non-finite value: {measured_snr}"
+        )
+        assert measured_snr > 0, (
+            f"compute_snr_of_tiles returned non-positive value: {measured_snr}"
+        )
+        # Ensemble SNR is biased low by CTF diversity but should be
+        # within one order of magnitude of the injection SNR
+        assert 0.5 < measured_snr < 50.0, (
+            f"compute_snr_of_tiles returned {measured_snr:.2f}, outside "
+            f"expected range [0.5, 50.0] for injection SNR={synthetic_data.snr}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Tests: Gradient sanity check
@@ -539,10 +575,10 @@ class TestCTFRecoveryLBFGSB:
     """Verify L-BFGS-B recovers CTF parameters from +300A/+100A/+5deg offset."""
 
     def test_defocus_recovery(
-        self, lbfgsb_result: tuple[Path, SyntheticDataset],
+        self, lbfgsb_result: tuple[Path, SyntheticDataset, PipelineResults],
     ) -> None:
         """Pipeline recovers defocus offset to within 100A of ground truth."""
-        output_star, dataset = lbfgsb_result
+        output_star, dataset, _ = lbfgsb_result
         stats = _compute_recovery_stats(output_star, dataset)
         assert stats["mean_defocus_error"] < 100.0, (
             f"Mean defocus error {stats['mean_defocus_error']:.1f}A "
@@ -550,10 +586,10 @@ class TestCTFRecoveryLBFGSB:
         )
 
     def test_half_astigmatism_recovery(
-        self, lbfgsb_result: tuple[Path, SyntheticDataset],
+        self, lbfgsb_result: tuple[Path, SyntheticDataset, PipelineResults],
     ) -> None:
         """Pipeline recovers half-astigmatism to within 50A of ground truth."""
-        output_star, dataset = lbfgsb_result
+        output_star, dataset, _ = lbfgsb_result
         stats = _compute_recovery_stats(output_star, dataset)
         assert stats["mean_half_astig_error"] < 50.0, (
             f"Mean half-astigmatism error {stats['mean_half_astig_error']:.1f}A "
@@ -561,10 +597,10 @@ class TestCTFRecoveryLBFGSB:
         )
 
     def test_astigmatism_angle_recovery(
-        self, lbfgsb_result: tuple[Path, SyntheticDataset],
+        self, lbfgsb_result: tuple[Path, SyntheticDataset, PipelineResults],
     ) -> None:
         """Pipeline recovers astigmatism angle to within 2 degrees."""
-        output_star, dataset = lbfgsb_result
+        output_star, dataset, _ = lbfgsb_result
         stats = _compute_recovery_stats(output_star, dataset)
         assert stats["mean_angle_error"] < 2.0, (
             f"Mean angle error {stats['mean_angle_error']:.2f} degrees "
@@ -572,32 +608,10 @@ class TestCTFRecoveryLBFGSB:
         )
 
     def test_score_increases(
-        self, lbfgsb_result: tuple[Path, SyntheticDataset],
+        self, lbfgsb_result: tuple[Path, SyntheticDataset, PipelineResults],
     ) -> None:
-        """Scores increase from initial to final iteration.
-
-        Re-runs the pipeline to capture the PipelineResults and check
-        score history.
-        """
-        output_star, dataset = lbfgsb_result
-        # Re-run to get results (the fixture only saved the star path)
-        import tempfile
-        with tempfile.TemporaryDirectory() as td:
-            out = Path(td) / "check.star"
-            opts = PipelineOptions(
-                optimizer_type="lbfgsb",
-                maximum_iterations=_MAX_ITERATIONS,
-                minimum_global_iterations=3,
-                lowpass_cutoff=3.5,
-                highpass_cutoff=400.0,
-            )
-            result = refine_ctf_from_star(
-                dataset.offset_star_path,
-                dataset.stack_path,
-                dataset.reference_path,
-                out,
-                options=opts,
-            )
+        """Scores increase from initial to final iteration."""
+        _, _, result = lbfgsb_result
 
         # Check that at least one tilt group has increasing scores
         for tgr in result.tilt_group_results:
@@ -620,10 +634,10 @@ class TestCTFRecoveryADAM:
     """Verify ADAM recovers CTF parameters from +300A/+100A/+5deg offset."""
 
     def test_defocus_recovery(
-        self, adam_result: tuple[Path, SyntheticDataset],
+        self, adam_result: tuple[Path, SyntheticDataset, PipelineResults],
     ) -> None:
         """Pipeline recovers defocus offset to within 100A of ground truth."""
-        output_star, dataset = adam_result
+        output_star, dataset, _ = adam_result
         stats = _compute_recovery_stats(output_star, dataset)
         assert stats["mean_defocus_error"] < 100.0, (
             f"Mean defocus error {stats['mean_defocus_error']:.1f}A "
@@ -631,10 +645,10 @@ class TestCTFRecoveryADAM:
         )
 
     def test_half_astigmatism_recovery(
-        self, adam_result: tuple[Path, SyntheticDataset],
+        self, adam_result: tuple[Path, SyntheticDataset, PipelineResults],
     ) -> None:
         """Pipeline recovers half-astigmatism to within 50A of ground truth."""
-        output_star, dataset = adam_result
+        output_star, dataset, _ = adam_result
         stats = _compute_recovery_stats(output_star, dataset)
         assert stats["mean_half_astig_error"] < 50.0, (
             f"Mean half-astigmatism error {stats['mean_half_astig_error']:.1f}A "
@@ -642,10 +656,10 @@ class TestCTFRecoveryADAM:
         )
 
     def test_astigmatism_angle_recovery(
-        self, adam_result: tuple[Path, SyntheticDataset],
+        self, adam_result: tuple[Path, SyntheticDataset, PipelineResults],
     ) -> None:
         """Pipeline recovers astigmatism angle to within 2 degrees."""
-        output_star, dataset = adam_result
+        output_star, dataset, _ = adam_result
         stats = _compute_recovery_stats(output_star, dataset)
         assert stats["mean_angle_error"] < 2.0, (
             f"Mean angle error {stats['mean_angle_error']:.2f} degrees "
@@ -653,27 +667,10 @@ class TestCTFRecoveryADAM:
         )
 
     def test_score_increases(
-        self, adam_result: tuple[Path, SyntheticDataset],
+        self, adam_result: tuple[Path, SyntheticDataset, PipelineResults],
     ) -> None:
         """Scores increase from initial to final iteration."""
-        output_star, dataset = adam_result
-        import tempfile
-        with tempfile.TemporaryDirectory() as td:
-            out = Path(td) / "check.star"
-            opts = PipelineOptions(
-                optimizer_type="adam",
-                maximum_iterations=_MAX_ITERATIONS,
-                minimum_global_iterations=3,
-                lowpass_cutoff=3.5,
-                highpass_cutoff=400.0,
-            )
-            result = refine_ctf_from_star(
-                dataset.offset_star_path,
-                dataset.stack_path,
-                dataset.reference_path,
-                out,
-                options=opts,
-            )
+        _, _, result = adam_result
 
         for tgr in result.tilt_group_results:
             history = tgr.refinement_results.score_history
@@ -766,27 +763,10 @@ class TestPerParticleDeltaZ:
     """Verify per-particle z-offset refinement on well-posed synthetic data."""
 
     def test_delta_z_mean_magnitude(
-        self, lbfgsb_result: tuple[Path, SyntheticDataset],
+        self, lbfgsb_result: tuple[Path, SyntheticDataset, PipelineResults],
     ) -> None:
         """Mean magnitude of per-particle delta_z offsets < 50A."""
-        output_star, dataset = lbfgsb_result
-        import tempfile
-        with tempfile.TemporaryDirectory() as td:
-            out = Path(td) / "check.star"
-            opts = PipelineOptions(
-                optimizer_type="lbfgsb",
-                maximum_iterations=_MAX_ITERATIONS,
-                minimum_global_iterations=3,
-                lowpass_cutoff=3.5,
-                highpass_cutoff=400.0,
-            )
-            result = refine_ctf_from_star(
-                dataset.offset_star_path,
-                dataset.stack_path,
-                dataset.reference_path,
-                out,
-                options=opts,
-            )
+        _, _, result = lbfgsb_result
 
         all_dz = np.concatenate([
             tgr.refinement_results.delta_z
@@ -798,27 +778,10 @@ class TestPerParticleDeltaZ:
         )
 
     def test_delta_z_std(
-        self, lbfgsb_result: tuple[Path, SyntheticDataset],
+        self, lbfgsb_result: tuple[Path, SyntheticDataset, PipelineResults],
     ) -> None:
         """Standard deviation of per-particle delta_z < 200A."""
-        output_star, dataset = lbfgsb_result
-        import tempfile
-        with tempfile.TemporaryDirectory() as td:
-            out = Path(td) / "check.star"
-            opts = PipelineOptions(
-                optimizer_type="lbfgsb",
-                maximum_iterations=_MAX_ITERATIONS,
-                minimum_global_iterations=3,
-                lowpass_cutoff=3.5,
-                highpass_cutoff=400.0,
-            )
-            result = refine_ctf_from_star(
-                dataset.offset_star_path,
-                dataset.stack_path,
-                dataset.reference_path,
-                out,
-                options=opts,
-            )
+        _, _, result = lbfgsb_result
 
         all_dz = np.concatenate([
             tgr.refinement_results.delta_z
@@ -1007,9 +970,9 @@ class TestDatasetIntegrity:
         truth_mean = (tp["defocus_1"] + tp["defocus_2"]) / 2.0
 
         # Verify the offset is approximately +300A
-        assert abs((offset_mean - truth_mean) - 300.0) < 1.0, (
+        assert abs((offset_mean - truth_mean) - _STANDARD_OFFSET.defocus_offset) < 1.0, (
             f"Defocus offset is {offset_mean - truth_mean:.1f}A, "
-            f"expected ~300A"
+            f"expected ~{_STANDARD_OFFSET.defocus_offset}A"
         )
 
         # Verify angle offset matches _STANDARD_OFFSET

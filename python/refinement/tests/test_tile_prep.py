@@ -13,8 +13,8 @@ import pytest
 from ..emc_fourier_utils import FourierTransformer
 from ..emc_tile_prep import (
     _is_7smooth,
-    _rotate_volume_trilinear,
-    _spider_zyz_inverse_matrix,
+    rotate_volume_trilinear,
+    spider_zyz_inverse_matrix,
     center_crop_or_pad,
     compute_ctf_friendly_size,
     create_2d_soft_mask,
@@ -267,7 +267,7 @@ class TestSpiderZyzInverseMatrix:
 
     def test_identity_at_zero_angles(self) -> None:
         """(0, 0, 0) produces the identity matrix."""
-        rot = _spider_zyz_inverse_matrix(0.0, 0.0, 0.0)
+        rot = spider_zyz_inverse_matrix(0.0, 0.0, 0.0)
         np.testing.assert_allclose(rot, np.eye(3), atol=1e-15)
 
     def test_known_euler_angles(self) -> None:
@@ -279,7 +279,7 @@ class TestSpiderZyzInverseMatrix:
           Ry(-90) = [[0, 0, -1], [0, 1, 0], [1, 0, 0]]
           Product = [[0, 1, 0], [0, 0, 1], [1, 0, 0]]
         """
-        rot = _spider_zyz_inverse_matrix(90.0, 90.0, 0.0)
+        rot = spider_zyz_inverse_matrix(90.0, 90.0, 0.0)
         expected = np.array([
             [0.0, 1.0, 0.0],
             [0.0, 0.0, 1.0],
@@ -292,7 +292,7 @@ class TestSpiderZyzInverseMatrix:
 
         Rz(-90) = [[0, 1, 0], [-1, 0, 0], [0, 0, 1]]
         """
-        rot = _spider_zyz_inverse_matrix(0.0, 0.0, 90.0)
+        rot = spider_zyz_inverse_matrix(0.0, 0.0, 90.0)
         expected = np.array([
             [0.0, 1.0, 0.0],
             [-1.0, 0.0, 0.0],
@@ -305,7 +305,7 @@ class TestSpiderZyzInverseMatrix:
         rng = np.random.default_rng(42)
         for _ in range(10):
             phi, theta, psi = rng.uniform(-180, 180, size=3)
-            rot = _spider_zyz_inverse_matrix(phi, theta, psi)
+            rot = spider_zyz_inverse_matrix(phi, theta, psi)
             np.testing.assert_allclose(
                 rot.T @ rot, np.eye(3), atol=1e-12,
             )
@@ -315,7 +315,7 @@ class TestSpiderZyzInverseMatrix:
         rng = np.random.default_rng(7)
         for _ in range(10):
             phi, theta, psi = rng.uniform(-180, 180, size=3)
-            rot = _spider_zyz_inverse_matrix(phi, theta, psi)
+            rot = spider_zyz_inverse_matrix(phi, theta, psi)
             assert np.linalg.det(rot) == pytest.approx(
                 1.0, abs=1e-12,
             )
@@ -379,8 +379,8 @@ class TestTrilinearInterpolation:
         ).astype(np.float32)
 
         # Small rotation: 5 degrees about each axis
-        rot = _spider_zyz_inverse_matrix(5.0, 5.0, 5.0)
-        rotated = _rotate_volume_trilinear(vol, rot)
+        rot = spider_zyz_inverse_matrix(5.0, 5.0, 5.0)
+        rotated = rotate_volume_trilinear(vol, rot)
 
         original_sum = float(np.sum(vol))
         rotated_sum = float(np.sum(rotated))
@@ -395,7 +395,7 @@ class TestTrilinearInterpolation:
         rng = np.random.default_rng(42)
         vol = rng.standard_normal((16, 16, 16)).astype(np.float32)
         rot = np.eye(3)
-        rotated = _rotate_volume_trilinear(vol, rot)
+        rotated = rotate_volume_trilinear(vol, rot)
         np.testing.assert_allclose(rotated, vol, atol=1e-5)
 
 
@@ -530,8 +530,8 @@ class TestPrepareReferenceProjection:
         )
 
         # Manual pipeline (no conjugation)
-        rot = _spider_zyz_inverse_matrix(*euler)
-        rotated = _rotate_volume_trilinear(vol, rot)
+        rot = spider_zyz_inverse_matrix(*euler)
+        rotated = rotate_volume_trilinear(vol, rot)
         projection = np.sum(rotated, axis=0)
         projection = center_crop_or_pad(projection, soft_mask.shape)
         masked = soft_mask * projection
