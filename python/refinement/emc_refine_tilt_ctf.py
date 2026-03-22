@@ -123,8 +123,13 @@ def compute_half_astig_lower_bound(base_half_astigmatism: float) -> float:
 
     Prevents the effective half-astigmatism (``base + delta``) from crossing
     zero during optimisation, which would violate the ``df1 >= df2``
-    convention.  A 1A margin guards against degenerate ``df1 == df2``
+    convention.  A 1 Angstrom margin guards against degenerate ``df1 == df2``
     configurations.
+
+    The constraint is::
+
+        base_half + delta >= margin
+        delta >= -(base_half - margin)
 
     Reference: PRD §Asymmetric Bounds, ``EMC_refine_tilt_ctf.m`` lines 122-124.
 
@@ -134,8 +139,17 @@ def compute_half_astig_lower_bound(base_half_astigmatism: float) -> float:
 
     Returns:
         Lower bound for delta half-astigmatism (Angstroms).
+
+    Raises:
+        ValueError: If *base_half_astigmatism* is negative.
     """
-    return -base_half_astigmatism + 1.0
+    if base_half_astigmatism < 0:
+        raise ValueError(
+            f"base_half_astigmatism must be non-negative, "
+            f"got {base_half_astigmatism}"
+        )
+    margin_angstroms = 1.0
+    return -(base_half_astigmatism - margin_angstroms)
 
 
 # ---------------------------------------------------------------------------
@@ -239,8 +253,29 @@ def refine_tilt_ctf(
     if fourier_handler is None:
         # Infer dimensions from the first data FT.
         # Half-grid layout: shape is (nx//2+1, ny).
-        half_nx, ny = data_fts[0].shape
+        ft_shape = data_fts[0].shape
+        if len(ft_shape) != 2:
+            raise ValueError(
+                f"data_fts elements must be 2-D arrays, "
+                f"got {len(ft_shape)}-D with shape {ft_shape}"
+            )
+        half_nx, ny = ft_shape
+        if half_nx < 2:
+            raise ValueError(
+                f"data_fts first axis ({half_nx}) too small for half-grid "
+                f"convention (nx//2+1, ny); minimum is 2"
+            )
         nx = (half_nx - 1) * 2
+        # Validate half-grid convention: first axis should be the halved
+        # axis.  For square or landscape images (nx <= ny), half_nx < ny.
+        # For tall images this may not hold, so we only warn — not error.
+        if half_nx > ny:
+            logger.warning(
+                "data_fts shape %s has first axis > second axis; verify "
+                "half-grid convention (expected (nx//2+1, ny) where the "
+                "first axis is halved).",
+                ft_shape,
+            )
         fourier_handler = FourierTransformer(nx, ny, use_gpu=False)
     else:
         nx = fourier_handler.nx
@@ -303,6 +338,7 @@ def refine_tilt_ctf(
     shifts_xy = np.zeros((n_particles, 2), dtype=np.float64)
     converged = False
     unfrozen = False
+    nan_break = False
 
     for iteration in range(1, options.maximum_iterations + 1):
         params = optimizer.get_current_parameters()
@@ -333,13 +369,20 @@ def refine_tilt_ctf(
             )
         )
 
-        # Guard against non-finite scores
+        # Guard against non-finite scores — sanitise outputs and abort.
         if not np.isfinite(total_score):
             logger.warning(
                 "Non-finite total_score (%.4g) at iteration %d — "
                 "aborting optimisation.",
                 total_score,
                 iteration,
+            )
+            nan_break = True
+            per_particle_scores = np.where(
+                np.isfinite(per_particle_scores), per_particle_scores, 0.0,
+            )
+            shifts_xy = np.where(
+                np.isfinite(shifts_xy), shifts_xy, 0.0,
             )
             break
 
@@ -359,18 +402,22 @@ def refine_tilt_ctf(
 
     # --- Final evaluation at converged parameters -------------------------
     final_params = optimizer.get_current_parameters()
-    _, per_particle_scores, shifts_xy, _ = evaluate_score_and_gradient(
-        final_params,
-        data_fts,
-        ref_fts,
-        base_ctf_params,
-        ctf_calculator,
-        fourier_handler,
-        tilt_angle_degrees,
-        peak_mask,
-        shift_sigma=options.shift_sigma,
-        z_offset_sigma=options.z_offset_sigma,
-    )
+    if not nan_break:
+        final_score, per_particle_scores, shifts_xy, _ = (
+            evaluate_score_and_gradient(
+                final_params,
+                data_fts,
+                ref_fts,
+                base_ctf_params,
+                ctf_calculator,
+                fourier_handler,
+                tilt_angle_degrees,
+                peak_mask,
+                shift_sigma=options.shift_sigma,
+                z_offset_sigma=options.z_offset_sigma,
+            )
+        )
+        score_history.append(final_score)
 
     # --- Post-optimisation df1/df2 canonicalisation -----------------------
     delta_df = float(final_params[0])

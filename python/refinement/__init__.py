@@ -7,7 +7,7 @@ normalization routines that replicate the MATLAB fourierTransformer class,
 and the per-tilt CTF refinement loop.
 """
 
-from .emc_ctf_gradients import evaluate_score_and_gradient
+from .emc_ctf_gradients import CTFCalculatorWithDerivatives, evaluate_score_and_gradient
 from .emc_fourier_utils import FourierTransformer
 from .emc_refine_tilt_ctf import (
     RefinementOptions,
@@ -18,6 +18,7 @@ from .emc_refine_tilt_ctf import (
 from .emc_scoring import create_peak_mask, evaluate_score_and_shifts
 
 __all__ = [
+    "CTFCalculatorWithDerivatives",
     "FourierTransformer",
     "RefinementOptions",
     "RefinementResults",
