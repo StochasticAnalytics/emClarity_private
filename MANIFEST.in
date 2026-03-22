@@ -1,2 +1,3 @@
 recursive-include python *.cu *.cuh
-recursive-include python *.npy *.json
+recursive-include python *.npy
+recursive-include python/ctf/tests/fixtures *.json

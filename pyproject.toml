@@ -58,7 +58,6 @@ emclarity-gui = "gui.main:main"
 
 [tool.setuptools.package-data]
 "cuda_ops" = ["*.cu", "*.cuh"]
-"ctf.cuda" = ["*.cu", "*.cuh"]
 
 [tool.setuptools.packages.find]
 where = ["python"]
