@@ -7,5 +7,6 @@ and normalization routines that replicate the MATLAB fourierTransformer class.
 """
 
 from .emc_fourier_utils import FourierTransformer
+from .emc_scoring import create_peak_mask, evaluate_score_and_shifts
 
-__all__ = ["FourierTransformer"]
+__all__ = ["FourierTransformer", "create_peak_mask", "evaluate_score_and_shifts"]

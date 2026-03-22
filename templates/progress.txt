@@ -1,3 +1,14 @@
+Developer: Completed TASK-008/PATCH [2026-03-22]
+  Task: TASK-008 PATCH - Fix QA defects in CTF derivative tests
+  - Defect 1: Added GPU_VS_GPU_ATOL=1e-7 constant; used atol=GPU_VS_GPU_ATOL, rtol=0
+    in test_gpu_ctf_matches_compute per Locked Decision [1] (same-device kernel
+    parity needs ~1 ULP tolerance, not the looser cross-device GPU_VS_CPU_* budget)
+  - Defect 2: Extended test_cpu_ctf_matches_compute parametrization to cover
+    do_sq_ctf=True variants, adding 11 new bit-identity checks for the squared-CTF branch
+  - Defect 3: Lifted CTFCalculatorCPU() from per-call local to class-level attribute
+    in TestGPUvsCPUDerivatives and TestFiniteDifferenceGPU (4 instantiation sites fixed)
+  - 98 CPU tests pass, 54 GPU tests skipped (no CuPy in this environment)
+
 Developer: Completed TASK-000a [2026-03-21]
   Task: TASK-000a - Fix python/__init__.py duplicate __all__ and broken BasicArrayOps import; reconcile version
   - Merged duplicate __all__ definitions into single list (second was silently overwriting first)
@@ -817,3 +828,21 @@ Developer: Completed TASK-008 [2026-03-22]
   - DC pixel (s=0): all derivatives explicitly set to zero
   - 87 tests covering: FD validation (11 param sets x 3 derivatives), hand-computed identities, DC zeros, output shapes, no NaN/Inf, Thon ring derivative magnitude, squared CTF derivatives, GPU-vs-CPU agreement
   - Key sign correction: neg_df_s2 already carries minus sign, so theta coefficient is +2 (not -2) in factored form
+
+Developer: Completed 2026-03-22 (TASK-008/PATCH)
+  - Fixed unused `import math` (ruff F401) in test_ctf_derivatives.py
+  - Corrected docstring math error: phi=theta+pi/2 (not pi/4) gives cos(2*(phi-theta))=-1
+  - Added do_sq_ctf=True parametrization to test_gpu_ctf_matches_compute
+  - Added test_gpu_dA_vs_fd to TestFiniteDifferenceGPU
+  - All 98 CPU tests pass; 68 GPU tests skipped (no CuPy in this env)
+
+Developer: Completed 2026-03-22 (TASK-009/DEV)
+  - Implemented cross-correlation scoring function in python/refinement/emc_scoring.py
+  - Ported evaluate_score_and_shifts() from synthetic/EMC_refine_tilt_ctf.m lines 256-325
+  - Created create_peak_mask() helper for circular peak search masks
+  - Key decisions:
+    - IFFT output scaled by nx*ny to match MATLAB mexFFT (cuFFT) convention (no 1/N normalization)
+    - CTF calculator output transposed from (ny, nx//2+1) to (nx//2+1, ny) for FourierTransformer compatibility
+    - Gaussian penalties implemented as multiplicative weights (Python-only enhancement)
+    - Data FTs carry spectral swap_phase; refs do not — single checkerboard shifts peak to image centre
+  - 21 scoring tests pass; 62 refinement tests pass (6 GPU skipped); 214 CTF tests pass
