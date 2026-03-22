@@ -202,11 +202,7 @@ class LBFGSBOptimizer(OptimizerBase):
 
         # Backtracking line search with Armijo condition
         if self._objective_fn is not None:
-            current_value = (
-                score
-                if score is not None
-                else self._objective_fn(self._current_parameters)
-            )
+            current_value = self._objective_fn(self._current_parameters)
             # When no curvature info, start with a smaller initial step
             # (standard heuristic: 1/||grad|| for the first L-BFGS step)
             if len(self._s_history) == 0:

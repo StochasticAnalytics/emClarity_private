@@ -417,8 +417,6 @@ def refine_tilt_ctf(
                 z_offset_sigma=options.z_offset_sigma,
             )
         )
-        score_history.append(final_score)
-
     # --- Post-optimisation df1/df2 canonicalisation -----------------------
     delta_df = float(final_params[0])
     delta_half_astig = float(final_params[1])
@@ -442,11 +440,17 @@ def refine_tilt_ctf(
 
     # --- Log non-convergence warning --------------------------------------
     if not converged:
-        warnings.warn(
-            f"CTF refinement did not converge within "
-            f"{options.maximum_iterations} iterations.",
-            stacklevel=2,
-        )
+        if nan_break:
+            warnings.warn(
+                "CTF refinement aborted: non-finite score encountered.",
+                stacklevel=2,
+            )
+        else:
+            warnings.warn(
+                f"CTF refinement did not converge within "
+                f"{options.maximum_iterations} iterations.",
+                stacklevel=2,
+            )
 
     return RefinementResults(
         delta_defocus_tilt=delta_df,
