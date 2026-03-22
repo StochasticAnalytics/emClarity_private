@@ -233,15 +233,8 @@ def refine_tilt_ctf(
     z_bound = options.z_offset_sigma * 3.0
     astig_angle_range = np.pi / 4.0  # [-45, +45] degrees
 
-    # Asymmetric half-astigmatism lower bound: prevent base_half + delta
-    # from crossing zero (which would swap df1/df2 meaning).
-    # The 1A margin is intentional — prevents the physically meaningless
-    # case where half_astigmatism reaches exactly zero.
-    base_half = float(base_ctf_params.half_astigmatism)
-    half_astig_lower_bound = -(base_half - 1.0)
-
     lower_bounds = np.concatenate([
-        np.array([-dsr, half_astig_lower_bound, -astig_angle_range]),
+        np.array([-dsr, -dsr, -astig_angle_range]),
         np.full(n_particles, -z_bound),
     ])
     upper_bounds = np.concatenate([
@@ -352,9 +345,7 @@ def refine_tilt_ctf(
     delta_half_astig = float(final_params[1])
     delta_angle = float(final_params[2])  # radians
 
-    base_mean = float(base_ctf_params.mean_defocus)
     base_half_val = float(base_ctf_params.half_astigmatism)
-    base_angle_rad = float(base_ctf_params.astigmatism_angle_rad)
 
     # Check if the final effective defocus yields df2 > df1.
     # Use the "worst case" particle (largest dz contribution) is not needed;
