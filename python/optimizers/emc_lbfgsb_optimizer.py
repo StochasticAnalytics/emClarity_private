@@ -126,11 +126,21 @@ class LBFGSBOptimizer(OptimizerBase):
         backtracking line search with Armijo condition (when an objective
         function is available).
 
+        **Ordering invariant when ``set_objective`` is active:** ``score``
+        must equal ``objective_fn(get_current_parameters())`` — that is,
+        the objective evaluated at the current parameter values *before*
+        this call mutates them. The Armijo line search uses ``score`` as
+        the baseline ``f(x_k)``; a stale or mismatched value will cause
+        the sufficient-decrease check to accept or reject step sizes
+        against the wrong reference.
+
         Args:
             gradient: Gradient vector with same length as parameters.
             score: Optional objective score to record for convergence
-                tracking. Also used as the current function value for
-                line search when an objective function is set.
+                tracking. When ``set_objective`` is active, also serves
+                as the baseline ``f(x_k)`` for the Armijo line search
+                and must therefore be evaluated at the current parameters
+                before calling ``step()``.
 
         Raises:
             ValueError: If gradient contains NaN or Inf values, or has
@@ -272,7 +282,11 @@ class LBFGSBOptimizer(OptimizerBase):
         idx = np.asarray(indices).ravel()
         self._frozen_mask[idx] = True
 
-    def unfreeze_parameters(self, indices: np.ndarray) -> None:
+    def unfreeze_parameters(
+        self,
+        indices: np.ndarray,
+        lr_values: np.ndarray | None = None,
+    ) -> None:
         """Unfreeze parameters and clear L-BFGS history.
 
         Re-enables updates for the specified dimensions AND clears the
@@ -285,6 +299,9 @@ class LBFGSBOptimizer(OptimizerBase):
 
         Args:
             indices: Array of parameter indices to unfreeze.
+            lr_values: Accepted for interface compatibility with
+                AdamOptimizer but ignored. L-BFGS-B does not use
+                per-parameter learning rates.
         """
         idx = np.asarray(indices).ravel()
         self._frozen_mask[idx] = False
@@ -495,8 +512,13 @@ class LBFGSBOptimizer(OptimizerBase):
 
             trial_value = self._objective_fn(trial)
 
-            # Armijo sufficient decrease condition
-            if trial_value <= current_value + self._c1 * alpha * dd:
+            # Armijo sufficient decrease condition using the *effective*
+            # step after bounds clamping.  The unclamped directional
+            # derivative ``alpha * dd`` overestimates the step length
+            # near active constraints, causing excessive backtracking.
+            effective_step = trial - self._current_parameters
+            effective_dd = float(np.dot(grad, effective_step))
+            if trial_value <= current_value + self._c1 * effective_dd:
                 return alpha
 
             alpha *= self._linesearch_factor
