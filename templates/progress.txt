@@ -948,3 +948,18 @@ Developer: Completed TASK-013 PATCH [2026-03-22]
     emc_scoring.py's canonical pattern. No revert needed; reviewed in this cycle.
   - Defect 2 (SNR test incomplete): Replaced non-zero variance checks with
     actual SNR computation (std(signal)/std(noise)) and bounds assertion [0.5, 10.0]
+
+Developer: Completed TASK-013 PATCH round 2 [2026-03-22]
+  Task: TASK-013 - Fix 7 QA defects from review
+  - [HIGH] Fixed stale docstrings in emc_tile_prep.py: corrected swap_phase→FFT
+    ordering to FFT→swap_phase in 3 locations (module docstring, prepare_data_tile
+    docstring, prepare_reference_projection note)
+  - [HIGH] Fixtures now capture PipelineResults, eliminating 4 redundant full
+    pipeline re-runs in test_score_increases and test_delta_z tests
+  - [MEDIUM] Added test_snr_matches_specified_value exercising compute_snr_of_tiles
+    utility and verifying against specified injection SNR
+  - [MEDIUM] Added strict=True to zip in _compute_recovery_stats
+  - [MEDIUM] Made spider_zyz_inverse_matrix and rotate_volume_trilinear public
+  - [MEDIUM] Removed dead variable gt_mean_df in _compute_recovery_stats
+  - [MEDIUM] Replaced hardcoded 300.0 with _STANDARD_OFFSET.defocus_offset
+  - All 515 non-slow Python tests pass; 165 refinement module tests pass
