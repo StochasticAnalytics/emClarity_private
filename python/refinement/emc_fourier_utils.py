@@ -18,6 +18,7 @@ Dispatch is performed via ``isinstance(x, cp.ndarray)``; the deprecated
 from __future__ import annotations
 
 import logging
+import types
 from typing import TYPE_CHECKING, Union
 
 import numpy as np
@@ -40,7 +41,7 @@ else:
 logger = logging.getLogger(__name__)
 
 
-def _xp_for(x: NDArray) -> type:
+def _xp_for(x: NDArray) -> types.ModuleType:
     """Return the array module (numpy or cupy) that owns *x*."""
     if HAS_CUPY and isinstance(x, cp.ndarray):
         return cp
@@ -118,6 +119,11 @@ class FourierTransformer:
             raise ValueError(
                 f"forward_fft requires a 2-D array, got ndim={image.ndim}"
             )
+        if image.shape != (self._nx, self._ny):
+            raise ValueError(
+                f"image shape {image.shape} does not match transformer "
+                f"real-space dimensions ({self._nx}, {self._ny})"
+            )
         xp = _xp_for(image)
         # axes=(1, 0): full FFT along axis 1, rfft (halved) along axis 0
         return xp.fft.rfft2(image, axes=(1, 0))
@@ -173,12 +179,19 @@ class FourierTransformer:
             raise ValueError(
                 f"swap_phase requires a 2-D array, got ndim={image.ndim}"
             )
+        valid_shapes = {(self._nx, self._ny), (self._half_nx, self._ny)}
+        if image.shape not in valid_shapes:
+            raise ValueError(
+                f"swap_phase image shape {image.shape} does not match "
+                f"real-space ({self._nx}, {self._ny}) or "
+                f"half-grid ({self._half_nx}, {self._ny})"
+            )
         xp = _xp_for(image)
         cb = self._get_checkerboard(xp, image.shape, image.real.dtype)
         return image * cb
 
     def _get_checkerboard(
-        self, xp: type, shape: tuple[int, ...], dtype: np.dtype
+        self, xp: types.ModuleType, shape: tuple[int, ...], dtype: np.dtype
     ) -> NDArray:
         """Build or retrieve the cached ``(-1)^(i+j)`` checkerboard.
 
@@ -239,9 +252,24 @@ class FourierTransformer:
                 (invalid range — highpass resolution must be larger than
                 lowpass resolution in Angstroms).
         """
+        if spectrum.ndim != 2:
+            raise ValueError(
+                f"apply_bandpass requires a 2-D array, got ndim={spectrum.ndim}"
+            )
+
         if pixel_size <= 0:
             raise ValueError(
                 f"pixel_size must be positive, got {pixel_size}"
+            )
+
+        if highpass_angstrom <= 0:
+            raise ValueError(
+                f"highpass_angstrom must be positive, got {highpass_angstrom}"
+            )
+
+        if lowpass_angstrom <= 0:
+            raise ValueError(
+                f"lowpass_angstrom must be positive, got {lowpass_angstrom}"
             )
 
         if highpass_angstrom <= lowpass_angstrom:
@@ -265,12 +293,12 @@ class FourierTransformer:
 
     def _build_bandpass_mask(
         self,
-        xp: type,
+        xp: types.ModuleType,
         shape: tuple[int, ...],
         pixel_size: float,
         highpass_angstrom: float,
         lowpass_angstrom: float,
-        dtype: np.dtype = np.float64,
+        dtype: np.dtype,
     ) -> NDArray:
         """Construct the bandpass mask with cosine-edge rolloff.
 
