@@ -156,13 +156,19 @@ def create_2d_soft_mask(
 
 
 def create_ctf_mask(ctf_size: int) -> np.ndarray:
-    """Create a spherical CTF mask at the given CTFSIZE.
+    """Create a real-space spherical CTF mask at the given CTFSIZE.
 
     The mask is a 2D binary circle of radius ``origin - 7`` where
-    ``origin = ctf_size // 2`` (0-indexed Fourier origin).  This matches
-    the MATLAB convention ``BH_mask3d('sphere', CTFSIZE, ctfOrigin - 7,
-    [0,0], '2d')`` with ``ctfOrigin = floor(CTFSIZE/2) + 1`` (1-indexed)
-    translated to 0-based indexing.
+    ``origin = ctf_size // 2`` (image centre, 0-indexed).  It is applied
+    in **real space** after padding and before the forward FFT, matching
+    the MATLAB convention at ``EMC_ctf_refine_from_star.m`` lines 308
+    and 317::
+
+        local_ctf_mask .* BH_padZeros3d(data_tile, 'fwd', padCTF, ...)
+
+    The underlying MATLAB call is ``BH_mask3d('sphere', CTFSIZE,
+    ctfOrigin - 7, [0,0], '2d')`` with ``ctfOrigin = floor(CTFSIZE/2)
+    + 1`` (1-indexed), translated here to 0-based indexing.
 
     Args:
         ctf_size: Side length of the square CTF-padded image.
@@ -330,13 +336,16 @@ def _rotate_volume_trilinear(
     yy = yy.astype(np.float64) - oy
     xx = xx.astype(np.float64) - ox
 
-    # Stack into (3, N) for matrix multiply
-    coords = np.stack([zz.ravel(), yy.ravel(), xx.ravel()], axis=0)
+    # Stack as [x, y, z] to match the rotation matrix convention
+    # (Rz/Ry are built for standard [x, y, z] basis).
+    coords_xyz = np.stack([xx.ravel(), yy.ravel(), zz.ravel()], axis=0)
 
-    # Apply inverse rotation (output→input mapping)
-    input_coords = rotation_matrix @ coords
+    # Apply inverse rotation (output→input mapping) in [x, y, z] space
+    rotated_xyz = rotation_matrix @ coords_xyz
 
-    # Shift back to grid coordinates
+    # Reorder [x', y', z'] → [z', y', x'] for map_coordinates (array
+    # index order) and shift back to grid coordinates.
+    input_coords = rotated_xyz[[2, 1, 0], :]
     input_coords[0] += oz
     input_coords[1] += oy
     input_coords[2] += ox
@@ -394,6 +403,8 @@ def prepare_data_tile(
     # Ensure mask is on the same device as tile
     if xp is not np:
         mask = cp.asarray(mask)
+    elif HAS_CUPY and isinstance(mask, cp.ndarray):
+        mask = mask.get()
 
     # Apply soft mask
     masked = mask * tile
