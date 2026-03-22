@@ -1,0 +1,12 @@
+"""
+emClarity optimizers package.
+
+Parameter optimization algorithms for iterative refinement in cryo-EM
+data processing. Includes ADAM (Adaptive Moment Estimation) with optional
+AMSGrad variant and learning rate decay.
+"""
+
+from .emc_adam_optimizer import AdamOptimizer
+from .emc_optimizer_base import OptimizerBase
+
+__all__ = ["AdamOptimizer", "OptimizerBase"]

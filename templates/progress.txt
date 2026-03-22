@@ -786,3 +786,18 @@ Developer: Completed TASK-000d [2026-03-21]
 Developer: Completed TASK-000d PATCH [2026-03-21]
   - Removed dead "ctf.cuda" package-data entry (no such package exists)
   - Narrowed MANIFEST.in *.json glob to python/ctf/tests/fixtures/ only
+
+Developer: Completed TASK-002 [2026-03-21]
+  - Created python/ctf/emc_ctf_params.py with frozen CTFParams dataclass
+  - Mirrors C++ ctfParams struct (core_headers.cuh:44-85) with identical unit conversions
+  - All arithmetic in np.float32 for CUDA single-precision compatibility
+  - Provides from_defocus_pair() classmethod, to_kernel_args(), fourier_voxel_size()
+  - 61 unit tests covering 11 parameter sets, angle normalization, amplitude phase conversion
+
+Developer: Completed TASK-003 [2026-03-21]
+  - Created python/optimizers/ package with OptimizerBase ABC and AdamOptimizer
+  - OptimizerBase defines abstract interface: step, has_converged, get_current_parameters, freeze/unfreeze_parameters
+  - AdamOptimizer is a 1:1 port of testScripts/adamOptimizer.m (271 lines)
+  - Implements bias-corrected moment estimation, AMSGrad variant, per-parameter LR, bounds clamping
+  - auto_scale_learning_rate uses exact sum formula (corrected from MATLAB approximation)
+  - 59 unit tests covering convergence, bounds, freeze/unfreeze, AMSGrad monotonicity, NaN rejection
