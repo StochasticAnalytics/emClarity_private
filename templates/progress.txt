@@ -963,3 +963,17 @@ Developer: Completed TASK-013 PATCH round 2 [2026-03-22]
   - [MEDIUM] Removed dead variable gt_mean_df in _compute_recovery_stats
   - [MEDIUM] Replaced hardcoded 300.0 with _STANDARD_OFFSET.defocus_offset
   - All 515 non-slow Python tests pass; 165 refinement module tests pass
+
+Developer: Completed 2026-03-22 (TASK-013 PATCH round 3)
+  - [HIGH] Removed @pytest.mark.gpu from TestDatasetIntegrity and TestSNRVerification
+    (pure-numpy code, no GPU dependency)
+  - [MEDIUM] Wrapped angle difference modulo 180° in _compute_recovery_stats
+    for correct astigmatism angle periodicity handling
+  - [MEDIUM] Fixed misleading "at least one" comment to match "all" assertion
+    in test_score_increases
+  - [MEDIUM] Replaced 8 hardcoded bandpass cutoff instances with shared module
+    constants _LOWPASS_CUTOFF and _HIGHPASS_CUTOFF
+  - [MEDIUM] Removed unused reference_path and truth_star_path parameters from
+    compute_snr_of_tiles and updated call site
+  - [LOW] Added fixed-peak approximation caveat to gradient FD test docstring
+  - All 165 refinement module tests pass
