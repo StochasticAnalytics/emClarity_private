@@ -162,6 +162,10 @@ def compute_electron_wavelength(voltage_kv: float) -> float:
     Returns:
         Electron wavelength in Angstroms.
     """
+    if voltage_kv <= 0.0:
+        raise ValueError(
+            f"Accelerating voltage must be positive, got {voltage_kv} kV"
+        )
     voltage_v = voltage_kv * 1e3
     return 12.2643 / np.sqrt(voltage_v * (1.0 + voltage_v * 0.978466e-6))
 
@@ -206,6 +210,15 @@ def _apply_refinement_to_particles(
     """
     cos_tilt = np.cos(np.radians(tilt_angle))
 
+    n_particles = len(tilt_particles)
+    for arr_name in ("delta_z", "shift_x", "shift_y", "per_particle_scores"):
+        arr = getattr(results, arr_name)
+        if len(arr) != n_particles:
+            raise ValueError(
+                f"Result array '{arr_name}' has length {len(arr)}, "
+                f"expected {n_particles} (one per particle)"
+            )
+
     for i, p in enumerate(tilt_particles):
         # Per-particle defocus correction: tilt-global + z-offset projected
         dz = float(results.delta_z[i])
@@ -234,12 +247,13 @@ def _apply_refinement_to_particles(
         p["y_shift"] = float(results.shift_y[i]) * pixel_size
 
         # Score: per-particle cross-correlation peak height.
-        # Only overwrite when the refinement computed a real score (non-zero);
-        # a zero value signals a degenerate run (e.g. maximum_iterations=0)
-        # and the original score should be preserved so that callers can
+        # Only overwrite when the refinement computed a real score; NaN
+        # signals a degenerate run (e.g. maximum_iterations=0) and the
+        # original score should be preserved so that callers can
         # distinguish a genuinely-run refinement from a no-op.
-        if results.per_particle_scores[i] != 0.0:
-            p["score"] = float(results.per_particle_scores[i])
+        score = results.per_particle_scores[i]
+        if not np.isnan(score):
+            p["score"] = float(score)
 
 
 def _free_gpu_memory() -> None:
@@ -309,6 +323,10 @@ def refine_ctf_from_star(
     stack_mrc = MRCImage(str(stack_path), flg_load=True)
     stack_header = stack_mrc.get_header()
     stack_data = stack_mrc.get_data()
+    if stack_data is None:
+        raise RuntimeError(
+            f"Failed to load image data from MRC stack: {stack_path}"
+        )
     tile_ny, tile_nx = stack_data.shape[1], stack_data.shape[2]
     logger.info(
         "  Stack tile size: [%d, %d], %d slices",
@@ -317,7 +335,13 @@ def refine_ctf_from_star(
 
     # ── Stage 2b: Read reference volume ──────────────────────────────────
     ref_mrc = MRCImage(str(reference_volume_path), flg_load=True)
-    ref_volume = ref_mrc.get_data().astype(np.float32)
+    ref_data = ref_mrc.get_data()
+    if ref_data is None:
+        raise RuntimeError(
+            f"Failed to load image data from reference volume: "
+            f"{reference_volume_path}"
+        )
+    ref_volume = ref_data.astype(np.float32)
     logger.info("  Reference volume size: %s", ref_volume.shape)
 
     # ── Stage 3: Compute CTF-friendly pad size ───────────────────────────
@@ -377,7 +401,13 @@ def refine_ctf_from_star(
 
         for p in tilt_particles:
             # position_in_stack is 1-indexed (MATLAB convention)
-            slice_idx = p["position_in_stack"] - 1
+            pos = p["position_in_stack"]
+            if pos < 1:
+                raise ValueError(
+                    f"position_in_stack must be >= 1 (1-indexed), "
+                    f"got {pos} in tilt group '{tilt_name}'"
+                )
+            slice_idx = pos - 1
             tile = stack_data[slice_idx].astype(np.float32)
 
             # Euler angles for reference projection (SPIDER ZYZ convention)
