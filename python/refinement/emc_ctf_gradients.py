@@ -66,7 +66,23 @@ class CTFCalculatorWithDerivatives(Protocol):
         params: CTFParams,
         dims: tuple[int, int],
         centered: bool = ...,
-    ) -> tuple[NDArray, NDArray, NDArray, NDArray]: ...
+    ) -> tuple[NDArray, NDArray, NDArray, NDArray]:
+        """Compute CTF image and its partial derivatives.
+
+        Returns:
+            Tuple ``(ctf, dctf_dD, dctf_dA, dctf_dTheta)`` each of shape
+            ``(ny, nx//2+1)``:
+
+            - ``ctf``: CTF image.
+            - ``dctf_dD``: Partial derivative with respect to mean defocus
+              (Angstroms\ :sup:`-1`).
+            - ``dctf_dA``: Partial derivative with respect to half-astigmatism
+              (Angstroms\ :sup:`-1`).
+            - ``dctf_dTheta``: Partial derivative with respect to astigmatism
+              angle **in degrees** (per degree).  Callers converting to
+              per-radian units must multiply by ``180 / pi``.
+        """
+        ...
 
 
 def _xp_for(x: NDArray) -> _types.ModuleType:
@@ -415,6 +431,12 @@ def compute_gradient_debug_info(
     or negating, so callers can directly verify acceptance criteria such as
     ``|norm_corr| > 0.01 * |raw_grad|``.
 
+    Note:
+        ``shift_sigma`` and ``z_offset_sigma`` are accepted for API symmetry
+        with :func:`evaluate_score_and_gradient` but are not applied in this
+        diagnostic function.  Only the raw gradient and normalisation
+        correction are returned; no penalty weighting is performed.
+
     Args:
         params: Parameter vector of length ``3 + N`` (same layout as
             :func:`evaluate_score_and_gradient`).
@@ -425,8 +447,8 @@ def compute_gradient_debug_info(
         fourier_handler: :class:`FourierTransformer` matching tile dimensions.
         tilt_angle_degrees: Tilt angle of the current view (degrees).
         peak_mask: Binary circular mask restricting peak search.
-        shift_sigma: Gaussian penalty sigma for X/Y shifts (pixels).
-        z_offset_sigma: Gaussian penalty sigma for z-offsets (Angstroms).
+        shift_sigma: Accepted but unused (see Note above).
+        z_offset_sigma: Accepted but unused (see Note above).
 
     Returns:
         Tuple ``(raw_grads, norm_corrs)`` each of shape ``(N, 3)``, where
@@ -463,8 +485,6 @@ def compute_gradient_debug_info(
     amplitude_contrast = float(base_ctf_params.amplitude_contrast)
 
     cos_tilt = np.cos(np.radians(tilt_angle_degrees))
-    origin_x = nx // 2
-    origin_y = ny // 2
 
     xp = _xp_for(data_fts[0])
     if xp is not np and isinstance(peak_mask, np.ndarray):
