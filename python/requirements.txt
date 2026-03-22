@@ -1,5 +1,8 @@
 # emClarity Python Core Dependencies
 # These are required for basic functionality
+#
+# For GPU support: pip install -r requirements-gpu.txt
+# For GUI support: pip install -r requirements-gui.txt
 
 # Core scientific computing
 numpy>=1.16.0
@@ -11,12 +14,6 @@ pillow>=8.0.0               # Note: imports as PIL
 
 # Parameter validation and configuration
 jsonschema>=4.0.0
-
-# GPU acceleration (required for emClarity performance)
-cupy-cuda12x>=12.0.0        # Note: adjust CUDA version as needed
-
-# GUI framework (required for emClarity GUI)
-PySide6>=6.0.0
 
 # Additional scientific computing
 matplotlib>=3.0.0

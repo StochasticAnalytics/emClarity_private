@@ -25,13 +25,13 @@ classifiers = [
 dependencies = [
     "numpy>=1.19.0",
     "scipy>=1.5.0",
-    "PySide6>=6.0.0",
     "matplotlib>=3.0.0",
     "psutil>=7.0.0",
     "joblib>=1.4.0",
 ]
 
 [project.optional-dependencies]
+gui = ["PySide6>=6.0.0"]
 gpu = ["cupy>=12.0.0", "fastrlock>=0.8.0"]
 dev = [
     "pytest>=6.0.0",
