@@ -92,6 +92,8 @@ class AdamOptimizer(OptimizerBase):
 
         if np.any(np.isnan(grad)):
             raise ValueError("Gradient contains NaN values.")
+        if np.any(np.isinf(grad)):
+            raise ValueError("Gradient contains Inf values.")
 
         if score is not None:
             self._score_history.append(float(score))
@@ -278,6 +280,11 @@ class AdamOptimizer(OptimizerBase):
             n_iterations: Planned number of update steps.
             safety_factor: Multiplier on range for step budget.
         """
+        if n_iterations <= 0:
+            raise ValueError(
+                f"n_iterations must be a positive integer, got {n_iterations}."
+            )
+
         expected_range_arr = np.asarray(expected_range, dtype=np.float64).ravel()
 
         # Compute exact step sum for the current decay schedule
@@ -285,8 +292,12 @@ class AdamOptimizer(OptimizerBase):
         step_sum = sum(1.0 / (t ** p) for t in range(1, n_iterations + 1))
 
         if expected_range_arr.size == 1:
-            # Scalar range: set scalar alpha
+            # Scalar range: set scalar alpha and propagate to any existing
+            # per-parameter rates so the new value takes effect immediately.
             self._alpha = float(safety_factor * expected_range_arr[0] / step_sum)
+            if self._learning_rates is not None:
+                non_frozen = self._learning_rates != 0.0
+                self._learning_rates[non_frozen] = self._alpha
         else:
             # Per-parameter ranges: set per-parameter learning rates
             n = self._current_parameters.size
@@ -330,10 +341,17 @@ class AdamOptimizer(OptimizerBase):
         gradient magnitude, so alpha should be tuned to the expected
         parameter scale, not the gradient scale.
 
+        If per-parameter learning rates are already initialized, non-frozen
+        (non-zero) entries are updated to the new alpha so the change takes
+        effect immediately.
+
         Args:
             alpha: Base learning rate (default 0.001).
         """
         self._alpha = alpha
+        if self._learning_rates is not None:
+            non_frozen = self._learning_rates != 0.0
+            self._learning_rates[non_frozen] = alpha
 
     # ------------------------------------------------------------------
     # Accessors
