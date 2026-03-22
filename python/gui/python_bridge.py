@@ -20,12 +20,12 @@ if str(python_dir) not in sys.path:
 
 # Optional CUDA support
 try:
-    from cuda_ops import CudaBasicOps
+    from cuda_ops import BasicArrayOps
 
     HAS_CUDA = True
 except ImportError:
     HAS_CUDA = False
-    CudaBasicOps = None
+    BasicArrayOps = None
 
 
 class EmClarityPythonBridge:
@@ -38,7 +38,7 @@ class EmClarityPythonBridge:
 
     def __init__(self):
         self.parameter_converter = ParameterConverter()
-        self.cuda_ops = CudaBasicOps() if HAS_CUDA else None
+        self.cuda_ops = BasicArrayOps() if HAS_CUDA else None
 
     # Parameter management
     def convert_matlab_to_json(
