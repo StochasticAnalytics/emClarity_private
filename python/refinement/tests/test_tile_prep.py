@@ -428,11 +428,12 @@ class TestPrepareDataTile:
     def test_roundtrip_recovers_structure(
         self, soft_mask: np.ndarray, ft_pad: FourierTransformer,
     ) -> None:
-        """Inverse FFT of prepared tile has non-trivial structure.
+        """Inverse FFT of prepared tile correlates with original image.
 
         Exact recovery isn't expected because bandpass filtering
-        and normalization modify the content, but the result should
-        be real-valued and non-zero.
+        and normalization modify the content, but the recovered
+        real-space image should positively correlate with the
+        original tile.
         """
         rng = np.random.default_rng(42)
         tile = rng.standard_normal(
@@ -446,8 +447,17 @@ class TestPrepareDataTile:
 
         recovered = ft_pad.inverse_fft(result)
 
-        # irfft2 returns real arrays, so just check non-trivial
-        assert np.std(recovered) > 0
+        # Undo phase swap (checkerboard is self-inverse)
+        unswapped = ft_pad.swap_phase(recovered)
+
+        # Crop back to original tile size for comparison
+        cropped = center_crop_or_pad(unswapped, (TILE_SIZE, TILE_SIZE))
+
+        # Recovered image should positively correlate with original.
+        # Correlation is modest (~0.2) because the soft mask zeros tile
+        # corners, but well above chance level (~0.016 for 4096 elements).
+        corr = np.corrcoef(cropped.ravel(), tile.ravel())[0, 1]
+        assert corr > 0.1, f"Round-trip correlation {corr:.3f} too low"
 
     def test_mask_applied(
         self, soft_mask: np.ndarray, ft_pad: FourierTransformer,
