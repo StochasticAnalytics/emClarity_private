@@ -82,11 +82,11 @@ _GT_CTF = GroundTruthCTF(
     defocus_angle=45.0,
 )
 
-# Standard offset (+300A defocus, +50A half-astigmatism, +3 deg angle)
+# Standard offset (+300A defocus, +100A half-astigmatism, +5 deg angle)
 _STANDARD_OFFSET = CTFOffset(
     defocus_offset=300.0,
-    astigmatism_offset=50.0,
-    angle_offset=3.0,
+    astigmatism_offset=100.0,
+    angle_offset=5.0,
 )
 
 # Pipeline options tuned for synthetic data
