@@ -940,3 +940,11 @@ Developer: Completed 2026-03-22 [d1906ce3/TASK-013/DEV]
     - Separate low-defocus dataset (700A, no astigmatism) for positive control
       where mask-CTF bias is < 10A (acceptance criterion)
   - All 22 E2E tests pass; all 165 existing module tests pass
+
+Developer: Completed TASK-013 PATCH [2026-03-22]
+  Task: TASK-013 - Fix QA defects (SNR test, test modification review)
+  - Defect 1 (test_tile_prep.py modified): Verified modification was correct —
+    aligns round-trip test with spectral-domain swap_phase fix matching
+    emc_scoring.py's canonical pattern. No revert needed; reviewed in this cycle.
+  - Defect 2 (SNR test incomplete): Replaced non-zero variance checks with
+    actual SNR computation (std(signal)/std(noise)) and bounds assertion [0.5, 10.0]
