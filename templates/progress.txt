@@ -801,3 +801,19 @@ Developer: Completed TASK-003 [2026-03-21]
   - Implements bias-corrected moment estimation, AMSGrad variant, per-parameter LR, bounds clamping
   - auto_scale_learning_rate uses exact sum formula (corrected from MATLAB approximation)
   - 59 unit tests covering convergence, bounds, freeze/unfreeze, AMSGrad monotonicity, NaN rejection
+
+Developer: Completed TASK-007 PATCH (intervention) [2026-03-22]
+  Task: TASK-007 - CuPy CTF kernel + CPU fallback (QA Leader intervention)
+  - Broke circular fix pattern between conftest.py (blocking) and test_ctf_calculator.py (silent degradation)
+  - Changed conftest.py from raising FileNotFoundError to emitting warnings.warn()
+  - Result: non-baseline tests (CTFParams, star_io) run when fixtures absent, CI warning visible
+  - Verified: 116 passed / 33 skipped with fixtures; 102 passed / 8 skipped without (+ visible warning)
+
+Developer: Completed TASK-008 [2026-03-22]
+  Task: TASK-008 - CTF-with-derivatives CUDA kernel
+  - Added ctf_with_derivatives CUDA kernel computing CTF + analytical dCTF/dD, dCTF/dA, dCTF/dTheta in single pass
+  - Added compute_with_derivatives() to both CTFCalculator (GPU) and CTFCalculatorCPU (CPU)
+  - Theta derivative in per-degree units (multiplied by pi/180)
+  - DC pixel (s=0): all derivatives explicitly set to zero
+  - 87 tests covering: FD validation (11 param sets x 3 derivatives), hand-computed identities, DC zeros, output shapes, no NaN/Inf, Thon ring derivative magnitude, squared CTF derivatives, GPU-vs-CPU agreement
+  - Key sign correction: neg_df_s2 already carries minus sign, so theta coefficient is +2 (not -2) in factored form

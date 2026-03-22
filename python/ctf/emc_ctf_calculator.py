@@ -69,6 +69,9 @@ class CTFCalculator:
 
             self._cuda_kernels = {
                 "ctf_basic": self._cuda_module.get_function("ctf_basic"),
+                "ctf_with_derivatives": self._cuda_module.get_function(
+                    "ctf_with_derivatives"
+                ),
             }
             self._kernels_loaded = True
 
@@ -187,6 +190,94 @@ class CTFCalculator:
         )
 
         return output
+
+    def compute_with_derivatives(
+        self,
+        params: CTFParams,
+        dims: Tuple[int, int],
+        centered: bool = False,
+    ) -> Tuple[cp.ndarray, cp.ndarray, cp.ndarray, cp.ndarray]:
+        """Compute CTF and analytical derivatives on the GPU.
+
+        Returns the CTF image and its partial derivatives with respect to
+        mean_defocus (D), half_astigmatism (A), and astigmatism_angle (theta).
+        The theta derivative is in per-degree units.
+
+        Args:
+            params: Pre-computed CTF parameters.
+            dims: Real-space image dimensions ``(nx, ny)``.
+            centered: If True, produce a centered CTF.
+
+        Returns:
+            Tuple of four CuPy float32 arrays
+            ``(ctf, dctf_dD, dctf_dA, dctf_dTheta)``, each with shape
+            ``(ny, out_nx)`` in C-contiguous layout.
+
+        Raises:
+            RuntimeError: If CUDA kernels are not loaded.
+            ValueError: If *pixel_size* or *wavelength* is zero.
+        """
+        if not self._kernels_loaded:
+            raise RuntimeError("CUDA kernels not loaded")
+
+        nx, ny = dims
+
+        if float(params.pixel_size) == 0.0:
+            raise ValueError("pixel_size must be non-zero")
+        if float(params.wavelength) == 0.0:
+            raise ValueError("wavelength must be non-zero")
+
+        out_nx = nx // 2 + 1 if params.do_half_grid else nx
+        out_ny = ny
+        ox = nx // 2
+        oy = ny // 2
+
+        # Recover raw values for the kernel constructor
+        cs_mm = np.float32(float(params.cs_internal) / 1e7)
+        df1 = np.float32(
+            float(params.mean_defocus) + float(params.half_astigmatism)
+        )
+        df2 = np.float32(
+            float(params.mean_defocus) - float(params.half_astigmatism)
+        )
+        angle_deg = np.float32(
+            float(params.astigmatism_angle_rad) * 180.0 / math.pi
+        )
+
+        # Allocate C-contiguous output arrays
+        ctf_out = cp.empty((out_ny, out_nx), dtype=cp.float32)
+        dctf_dD = cp.empty((out_ny, out_nx), dtype=cp.float32)
+        dctf_dA = cp.empty((out_ny, out_nx), dtype=cp.float32)
+        dctf_dTheta = cp.empty((out_ny, out_nx), dtype=cp.float32)
+
+        grid, block = self._calculate_grid_block_2d(out_ny, out_nx)
+
+        self._cuda_kernels["ctf_with_derivatives"](
+            grid,
+            block,
+            (
+                ctf_out,                                    # float*
+                dctf_dD,                                    # float*
+                dctf_dA,                                    # float*
+                dctf_dTheta,                                # float*
+                np.int32(nx),                               # int nx
+                np.int32(ny),                               # int ny
+                np.int32(ox),                               # int ox
+                np.int32(oy),                               # int oy
+                params.do_half_grid,                        # bool
+                params.do_sq_ctf,                           # bool
+                np.float32(params.pixel_size),              # float
+                np.float32(params.wavelength),              # float
+                cs_mm,                                      # float
+                np.float32(params.amplitude_contrast),      # float
+                df1,                                        # float
+                df2,                                        # float
+                angle_deg,                                  # float
+                centered,                                   # bool
+            ),
+        )
+
+        return ctf_out, dctf_dD, dctf_dA, dctf_dTheta
 
     def is_ready(self) -> bool:
         """Check if CUDA kernels are loaded and ready."""
