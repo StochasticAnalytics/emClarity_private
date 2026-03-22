@@ -409,17 +409,24 @@ class TestEffectiveDefocus:
         )
 
         dz_val = 500.0
-        params_with_dz = np.array([0.0, 0.0, 0.0, dz_val])
-        params_zero = np.zeros(4)
 
-        # At tilt=0: dz_contribution = 500 * cos(0) = 500
+        # At tilt=0: dz_contribution = dz * cos(0) = dz * 1 = dz.
+        # So dz=500 at tilt=0 must match delta_df=500 at tilt=0.
+        params_dz_tilt0 = np.array([0.0, 0.0, 0.0, dz_val])
+        params_equiv_tilt0 = np.array([dz_val, 0.0, 0.0, 0.0])
         score_tilt0_dz, _, _ = _score_one(
             ft, ctf_calc, base_ctf, peak_mask, data_ft, ref_ft,
-            params=params_with_dz, tilt_angle=0.0,
+            params=params_dz_tilt0, tilt_angle=0.0,
+            z_offset_sigma=1e10,  # disable z penalty to isolate CTF effect
         )
-        score_tilt0_zero, _, _ = _score_one(
+        score_tilt0_equiv, _, _ = _score_one(
             ft, ctf_calc, base_ctf, peak_mask, data_ft, ref_ft,
-            params=params_zero, tilt_angle=0.0,
+            params=params_equiv_tilt0, tilt_angle=0.0,
+            z_offset_sigma=1e10,
+        )
+        np.testing.assert_allclose(
+            score_tilt0_dz, score_tilt0_equiv, rtol=1e-4,
+            err_msg="dz=500 at tilt=0 must equal delta_df=500 at tilt=0 (cos(0)=1)",
         )
 
         # At tilt=60: dz_contribution = 500 * cos(60) = 250
@@ -700,12 +707,23 @@ class TestGaussianPenalty:
             z_offset_sigma=1e6,
         )
 
-        # With dz=100A, the CTF changes enough to reduce the score,
-        # but the penalties themselves should be ~1.0.
-        # We just verify that the penalty contribution is negligible.
-        # (i.e., exp(-100^2/(2*1e12^2)) ≈ 1.0)
-        penalty_factor = np.exp(-(100.0 ** 2) / (2.0 * 1e6 ** 2))
-        assert penalty_factor > 0.999, "Penalty should be ~1.0 for huge sigma"
+        # With huge sigmas the penalty weight ≈ 1.0, so the ratio of
+        # scores should reflect only the CTF mismatch from dz=100A.
+        # The key assertion: ratio must be close to 1 compared to what a
+        # tight sigma (z_offset_sigma=50) would produce.
+        score_tight_sigma, _, _ = _score_one(
+            ft, ctf_calc, base_ctf, peak_mask, data_ft, ref_ft,
+            params=np.array([0.0, 0.0, 0.0, 100.0]),
+            shift_sigma=1e6,
+            z_offset_sigma=50.0,  # tight z penalty
+        )
+        # With huge sigma, penalty ≈ 1. With tight sigma (50A), dz=100A
+        # gives weight = exp(-100^2/(2*50^2)) ≈ 0.135.
+        # So score_large_sigma must be substantially higher than score_tight_sigma.
+        assert score_large_sigma > score_tight_sigma, (
+            f"Large sigma ({score_large_sigma:.4f}) should exceed tight sigma "
+            f"({score_tight_sigma:.4f}) — penalty not applied when sigma is huge"
+        )
 
 
 # =========================================================================

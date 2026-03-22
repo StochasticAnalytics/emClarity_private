@@ -27,6 +27,7 @@ class CTFParams:
         do_sq_ctf: Square the CTF (default False).
         pixel_size: Pixel size in Angstroms.
         wavelength: Electron wavelength in Angstroms.
+        cs_mm: Spherical aberration in millimetres (original input units).
         cs_internal: Spherical aberration converted from mm to
             Angstrom-compatible units (CS_mm * 1e7).
         amplitude_contrast: Input amplitude-contrast ratio (stored as
@@ -46,6 +47,7 @@ class CTFParams:
     do_sq_ctf: bool
     pixel_size: np.float32
     wavelength: np.float32
+    cs_mm: np.float32
     cs_internal: np.float32
     amplitude_contrast: np.float32
     amplitude_phase: np.float32
@@ -137,6 +139,7 @@ class CTFParams:
             do_sq_ctf=do_sq_ctf,
             pixel_size=px,
             wavelength=wl,
+            cs_mm=cs_mm_f32,
             cs_internal=cs_internal,
             amplitude_contrast=ac,
             amplitude_phase=amplitude_phase,

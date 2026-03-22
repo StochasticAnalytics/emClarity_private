@@ -25,6 +25,7 @@ descent-direction tests (no MATLAB ground truth exists).
 from __future__ import annotations
 
 import logging
+import types as _types
 from typing import TYPE_CHECKING, Union
 
 import numpy as np
@@ -45,7 +46,14 @@ else:
     NDArray = np.ndarray
 
 from ..ctf.emc_ctf_params import CTFParams
-from .emc_fourier_utils import FourierTransformer, _xp_for
+from .emc_fourier_utils import FourierTransformer
+
+
+def _xp_for(x: NDArray) -> _types.ModuleType:
+    """Return the array module (numpy or cupy) that owns *x*."""
+    if HAS_CUPY and isinstance(x, cp.ndarray):
+        return cp
+    return np
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +151,19 @@ def evaluate_score_and_shifts(
           in pixels for each particle.
     """
     n_particles = len(data_fts)
+
+    # --- Validate params length ------------------------------------------
+    expected_len = 3 + n_particles
+    if len(params) != expected_len:
+        raise ValueError(
+            f"params has length {len(params)} but expected {expected_len} "
+            f"(3 global deltas + {n_particles} per-particle delta-z values)"
+        )
+
+    # --- Early return for zero-particle input ----------------------------
+    if n_particles == 0:
+        return 0.0, np.zeros(0, dtype=np.float64), np.zeros((0, 2), dtype=np.float64)
+
     nx = fourier_handler.nx
     ny = fourier_handler.ny
 
@@ -157,9 +178,7 @@ def evaluate_score_and_shifts(
     base_angle_rad = float(base_ctf_params.astigmatism_angle_rad)
     pixel_size = float(base_ctf_params.pixel_size)
     wavelength = float(base_ctf_params.wavelength)
-    # Convert cs_internal (Angstrom-compatible) back to millimetres for
-    # the from_defocus_pair constructor.
-    cs_mm = float(base_ctf_params.cs_internal) / 1e7
+    cs_mm = float(base_ctf_params.cs_mm)
     amplitude_contrast = float(base_ctf_params.amplitude_contrast)
 
     cos_tilt = np.cos(np.radians(tilt_angle_degrees))
@@ -240,7 +259,11 @@ def evaluate_score_and_shifts(
         # --- Normalise reference ------------------------------------------
         ref_norm = fourier_handler.compute_ref_norm(ref_with_ctf)
         if ref_norm < 1e-30:
-            # Degenerate CTF (all zeros at these frequencies) — skip particle
+            logger.warning(
+                "Particle %d skipped: degenerate CTF (ref_norm=%g < 1e-30)",
+                i,
+                ref_norm,
+            )
             per_particle_scores[i] = 0.0
             continue
         ref_with_ctf = ref_with_ctf / ref_norm
