@@ -874,3 +874,22 @@ Developer: Completed 2026-03-22
     to prevent effective half-astigmatism from crossing zero
   - Moved base_half_val computation earlier to eliminate duplication
   - All 21 refinement tests pass
+
+Developer: Completed 2026-03-22
+  - [TASK-011/PATCH] Fixed dead code: df1/df2 swap unreachable due to
+    asymmetric bound with 1A margin guaranteeing eff_half >= 1.0
+  - Replaced asymmetric bound with symmetric -dsr, making post-optimisation
+    canonicalisation swap the active mechanism for df1>=df2 enforcement
+  - All 445 relevant tests pass (refinement, optimizer, ctf)
+
+Developer: Completed 2026-03-22
+  - [TASK-011/PATCH] Fix 3 QA defects from review
+  - Defect 1 (HIGH): Implemented asymmetric half-astigmatism lower bound per
+    PRD spec: -base_half + 1.0 (prevents eff_half from crossing zero).
+    Extracted compute_half_astig_lower_bound() for testability.
+  - Defect 2 (MEDIUM): test_bound_value_correct now calls the implementation
+    function instead of testing arithmetic identity.
+  - Defect 3 (MEDIUM): Added test_swap_fires_through_refine_tilt_ctf
+    integration test using mock optimizer to exercise post-optimisation
+    df1/df2 canonicalisation through refine_tilt_ctf.
+  - 101 refinement tests pass (6 GPU skipped), 22 refine_tilt_ctf tests pass

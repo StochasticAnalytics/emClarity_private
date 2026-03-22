@@ -50,6 +50,7 @@ defocus, enabling reliable gradient descent over 100s of Angstroms.
 from __future__ import annotations
 
 import warnings
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -58,7 +59,12 @@ from ...ctf.emc_ctf_cpu import CTFCalculatorCPU
 from ...ctf.emc_ctf_params import CTFParams
 from ..emc_ctf_gradients import evaluate_score_and_gradient
 from ..emc_fourier_utils import FourierTransformer
-from ..emc_refine_tilt_ctf import RefinementOptions, RefinementResults, refine_tilt_ctf
+from ..emc_refine_tilt_ctf import (
+    RefinementOptions,
+    RefinementResults,
+    compute_half_astig_lower_bound,
+    refine_tilt_ctf,
+)
 from ..emc_scoring import create_peak_mask
 
 # ---------------------------------------------------------------------------
@@ -859,13 +865,15 @@ class TestAsymmetricBounds:
         )
 
     def test_bound_value_correct(self, base_ctf: CTFParams) -> None:
-        """Verify the computed lower bound matches the formula from the
-        task specification.
+        """Verify the implementation's lower bound matches the formula from
+        the task specification: ``-base_half + 1.0``.
         """
         base_half = float(base_ctf.half_astigmatism)  # (20000-18000)/2 = 1000
-        expected_lower = -(base_half - 1.0)  # -999.0
-        assert expected_lower == pytest.approx(-999.0, abs=0.1), (
-            f"Lower bound should be -(1000-1) = -999, got {expected_lower}"
+        actual_lower = compute_half_astig_lower_bound(base_half)
+        expected_lower = -base_half + 1.0  # -999.0
+        assert actual_lower == pytest.approx(expected_lower, abs=1e-10), (
+            f"compute_half_astig_lower_bound({base_half}) returned "
+            f"{actual_lower}, expected {expected_lower}"
         )
 
 
@@ -952,6 +960,79 @@ class TestDfSwap:
         assert abs(result.delta_astigmatism_angle) < np.pi / 4.0, (
             f"Angle change should be < 45 deg without swap, "
             f"got {np.degrees(result.delta_astigmatism_angle):.1f} deg"
+        )
+
+    def test_swap_fires_through_refine_tilt_ctf(
+        self,
+        ft: FourierTransformer,
+        ctf_calc: CTFCalculatorCPU,
+        base_ctf: CTFParams,
+        truth_ctf: CTFParams,
+        peak_mask: np.ndarray,
+    ) -> None:
+        """Integration test: the df1/df2 swap fires through the full
+        ``refine_tilt_ctf`` codepath.
+
+        Because asymmetric bounds prevent the optimizer from naturally
+        crossing zero, we mock the optimizer to report converged
+        parameters where ``base_half + delta < 0``, exercising the
+        post-optimisation canonicalisation path.
+        """
+        from .. import emc_refine_tilt_ctf as _rtc_module
+        from ...optimizers.emc_adam_optimizer import AdamOptimizer
+
+        n_particles = 5
+        data_fts, ref_fts = _make_multi_particle_data(
+            ft, ctf_calc, truth_ctf, n_particles=n_particles,
+        )
+
+        base_half = float(base_ctf.half_astigmatism)  # 1000.0
+        # Force delta_half = -1500 so eff_half = 1000 + (-1500) = -500 < 0
+        forced_delta_half = -(base_half + 500.0)
+        forced_params = np.zeros(3 + n_particles, dtype=np.float64)
+        forced_params[1] = forced_delta_half
+
+        class _SwapTriggeringOptimizer(AdamOptimizer):
+            """AdamOptimizer subclass that always reports forced params."""
+
+            def get_current_parameters(self) -> np.ndarray:
+                return forced_params.copy()
+
+        options = RefinementOptions(
+            optimizer_type="adam",
+            maximum_iterations=1,
+            minimum_global_iterations=1,
+        )
+
+        with patch.object(_rtc_module, "AdamOptimizer", _SwapTriggeringOptimizer):
+            result = refine_tilt_ctf(
+                data_fts, ref_fts, base_ctf,
+                tilt_angle_degrees=0.0,
+                options=options,
+                ctf_calculator=ctf_calc,
+                fourier_handler=ft,
+                peak_mask=peak_mask,
+            )
+
+        # Verify swap fired: effective half_astig should be positive
+        eff_half = base_half + result.delta_half_astigmatism
+        assert eff_half >= 0.0, (
+            f"After swap, eff_half should be positive, got {eff_half:.1f}"
+        )
+
+        # Verify the swap negated the effective half-astigmatism
+        old_eff_half = base_half + forced_delta_half  # -500
+        assert eff_half == pytest.approx(-old_eff_half, abs=1e-10), (
+            f"Swap should negate eff_half: "
+            f"old={old_eff_half}, new={eff_half}"
+        )
+
+        # Verify angle was rotated by pi/2
+        assert result.delta_astigmatism_angle == pytest.approx(
+            np.pi / 2.0, abs=1e-10,
+        ), (
+            f"Swap should rotate angle by pi/2, "
+            f"got {result.delta_astigmatism_angle:.4f} rad"
         )
 
 

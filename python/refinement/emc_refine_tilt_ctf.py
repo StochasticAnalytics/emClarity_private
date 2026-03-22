@@ -114,6 +114,31 @@ class RefinementResults:
 
 
 # ---------------------------------------------------------------------------
+# Bound computation helpers
+# ---------------------------------------------------------------------------
+
+
+def compute_half_astig_lower_bound(base_half_astigmatism: float) -> float:
+    """Compute the lower bound for delta half-astigmatism.
+
+    Prevents the effective half-astigmatism (``base + delta``) from crossing
+    zero during optimisation, which would violate the ``df1 >= df2``
+    convention.  A 1A margin guards against degenerate ``df1 == df2``
+    configurations.
+
+    Reference: PRD §Asymmetric Bounds, ``EMC_refine_tilt_ctf.m`` lines 122-124.
+
+    Args:
+        base_half_astigmatism: Current half-astigmatism from the base CTF
+            parameters (Angstroms).  Must be >= 0 for canonical inputs.
+
+    Returns:
+        Lower bound for delta half-astigmatism (Angstroms).
+    """
+    return -base_half_astigmatism + 1.0
+
+
+# ---------------------------------------------------------------------------
 # Main refinement function
 # ---------------------------------------------------------------------------
 
@@ -233,11 +258,12 @@ def refine_tilt_ctf(
     z_bound = options.z_offset_sigma * 3.0
     astig_angle_range = np.pi / 4.0  # [-45, +45] degrees
 
-    # Half-astigmatism uses symmetric bounds, same as defocus.  The df1 >= df2
-    # convention is enforced by post-optimisation canonicalisation (swap below)
-    # rather than by constraining the search space during optimisation.
+    # Asymmetric lower bound on half-astigmatism: prevent the effective
+    # half-astigmatism (base + delta) from crossing zero during optimisation.
+    # The 1A margin guards against degenerate df1 == df2 configurations.
+    # Reference: PRD §Asymmetric Bounds, EMC_refine_tilt_ctf.m lines 122-124.
     base_half_val = float(base_ctf_params.half_astigmatism)
-    half_astig_lower = -dsr
+    half_astig_lower = compute_half_astig_lower_bound(base_half_val)
 
     lower_bounds = np.concatenate([
         np.array([-dsr, half_astig_lower, -astig_angle_range]),
