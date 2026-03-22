@@ -1,3 +1,16 @@
+Developer: Completed TASK-011 [2026-03-22]
+  Task: TASK-011 - Per-tilt CTF refinement loop
+  - Implemented refine_tilt_ctf() in emc_refine_tilt_ctf.py (472 lines)
+  - Port of synthetic/EMC_refine_tilt_ctf.m with two-phase freeze/unfreeze design
+  - Supports ADAM and L-BFGS-B optimizers with auto-scaled learning rates
+  - Two-phase optimization: global params frozen first, then per-particle unfrozen
+  - Asymmetric bounds on half_astigmatism to prevent zero-crossing (1A margin)
+  - Post-optimization df1/df2 swap canonicalization (df1 >= df2)
+  - Convergence detection via score plateau with configurable patience
+  - 21 tests covering all 12 acceptance criteria with synthetic bandpass-filtered data
+  - Key decision: bandpass filtering on reference FTs is essential for convex landscape
+  - 100 total refinement module tests pass, 6 skipped (GPU), 0 failures
+
 Developer: Completed TASK-008/PATCH [2026-03-22]
   Task: TASK-008 PATCH - Fix QA defects in CTF derivative tests
   - Defect 1: Added GPU_VS_GPU_ATOL=1e-7 constant; used atol=GPU_VS_GPU_ATOL, rtol=0
@@ -846,3 +859,11 @@ Developer: Completed 2026-03-22 (TASK-009/DEV)
     - Gaussian penalties implemented as multiplicative weights (Python-only enhancement)
     - Data FTs carry spectral swap_phase; refs do not — single checkerboard shifts peak to image centre
   - 21 scoring tests pass; 62 refinement tests pass (6 GPU skipped); 214 CTF tests pass
+Developer: Completed 2026-03-22
+  - Fixed astigmatism gradient sign bug: when df1/df2 convention swap fires,
+    delta_half_astig maps to half_astig_ctf with sign -1, requiring astig_sign
+    factor in unit_factors of evaluate_score_and_gradient.
+  - Fixed dead variable penalty_contribution in test_penalty_sign_at_nonzero_dz:
+    added magnitude assertion (grad_diff >= 0.1 * penalty_contribution) to
+    verify penalty term is genuinely present in the gradient.
+
