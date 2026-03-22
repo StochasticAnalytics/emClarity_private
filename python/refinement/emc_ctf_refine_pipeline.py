@@ -327,6 +327,12 @@ def refine_ctf_from_star(
         raise RuntimeError(
             f"Failed to load image data from MRC stack: {stack_path}"
         )
+    if stack_data.ndim != 3:
+        raise RuntimeError(
+            f"Expected 3-D MRC stack (nz, ny, nx), "
+            f"got array with {stack_data.ndim} dimensions "
+            f"(shape {stack_data.shape})"
+        )
     tile_ny, tile_nx = stack_data.shape[1], stack_data.shape[2]
     logger.info(
         "  Stack tile size: [%d, %d], %d slices",
@@ -407,6 +413,12 @@ def refine_ctf_from_star(
                     f"position_in_stack must be >= 1 (1-indexed), "
                     f"got {pos} in tilt group '{tilt_name}'"
                 )
+            n_slices = stack_data.shape[0]
+            if pos > n_slices:
+                raise ValueError(
+                    f"position_in_stack {pos} exceeds stack depth "
+                    f"{n_slices} in tilt group '{tilt_name}'"
+                )
             slice_idx = pos - 1
             tile = stack_data[slice_idx].astype(np.float32)
 
@@ -452,7 +464,9 @@ def refine_ctf_from_star(
 
         # ── Per-tilt summary logging ─────────────────────────────────
         n_iters = len(results.score_history)
-        mean_score = float(np.mean(results.per_particle_scores))
+        _scores = results.per_particle_scores
+        _valid = _scores[~np.isnan(_scores)]
+        mean_score = float(np.mean(_valid)) if len(_valid) > 0 else float("nan")
         logger.info(
             "    %s | angle=%.1f | %d particles | %d iters | "
             "score=%.4f | converged=%s",
