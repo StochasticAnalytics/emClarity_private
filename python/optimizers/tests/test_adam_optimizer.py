@@ -115,6 +115,36 @@ class TestConstructor:
         )
         assert opt.get_current_parameters()[0] == 0.0
 
+    def test_epsilon_zero_raises(self) -> None:
+        """Negative control: epsilon=0 must raise ValueError."""
+        with pytest.raises(ValueError, match="epsilon must be positive"):
+            AdamOptimizer(np.array([1.0]), epsilon=0.0)
+
+    def test_epsilon_negative_raises(self) -> None:
+        """Negative control: negative epsilon must raise ValueError."""
+        with pytest.raises(ValueError, match="epsilon must be positive"):
+            AdamOptimizer(np.array([1.0]), epsilon=-1e-8)
+
+    def test_beta1_one_raises(self) -> None:
+        """Negative control: beta1=1.0 causes div-by-zero in bias correction."""
+        with pytest.raises(ValueError, match="beta1 must be in"):
+            AdamOptimizer(np.array([1.0]), beta1=1.0)
+
+    def test_beta2_one_raises(self) -> None:
+        """Negative control: beta2=1.0 causes div-by-zero in bias correction."""
+        with pytest.raises(ValueError, match="beta2 must be in"):
+            AdamOptimizer(np.array([1.0]), beta2=1.0)
+
+    def test_beta1_negative_raises(self) -> None:
+        """Negative control: negative beta1 is invalid."""
+        with pytest.raises(ValueError, match="beta1 must be in"):
+            AdamOptimizer(np.array([1.0]), beta1=-0.1)
+
+    def test_beta2_negative_raises(self) -> None:
+        """Negative control: negative beta2 is invalid."""
+        with pytest.raises(ValueError, match="beta2 must be in"):
+            AdamOptimizer(np.array([1.0]), beta2=-0.5)
+
 
 # ---------------------------------------------------------------------------
 # Test: NaN gradient handling
@@ -520,6 +550,38 @@ class TestAutoScaleLearningRate:
         # 3 * 10 / 100 = 0.3
         assert abs(opt._alpha - 0.3) < 1e-12
 
+    def test_zero_expected_range_raises(self) -> None:
+        """Negative control: zero expected_range must raise ValueError."""
+        opt = AdamOptimizer(np.array([0.0]))
+        with pytest.raises(ValueError, match="expected_range must be positive"):
+            opt.auto_scale_learning_rate(expected_range=0.0, n_iterations=100)
+
+    def test_negative_expected_range_raises(self) -> None:
+        """Negative control: negative expected_range must raise ValueError."""
+        opt = AdamOptimizer(np.array([0.0]))
+        with pytest.raises(ValueError, match="expected_range must be positive"):
+            opt.auto_scale_learning_rate(expected_range=-5.0, n_iterations=100)
+
+    def test_vector_range_with_negative_raises(self) -> None:
+        """Negative control: vector with any non-positive element raises."""
+        opt = AdamOptimizer(np.array([0.0, 0.0]))
+        with pytest.raises(ValueError, match="expected_range must be positive"):
+            opt.auto_scale_learning_rate(
+                expected_range=np.array([10.0, -1.0]), n_iterations=100
+            )
+
+    def test_vector_auto_scale_updates_alpha(self) -> None:
+        """Vector auto_scale updates _alpha to mean of non-frozen rates."""
+        opt = AdamOptimizer(np.array([0.0, 0.0]))
+        opt.auto_scale_learning_rate(
+            expected_range=np.array([10.0, 20.0]),
+            n_iterations=100,
+            safety_factor=3.0,
+        )
+        # Per-param rates: [0.3, 0.6]; alpha should be mean = 0.45
+        expected_alpha = (0.3 + 0.6) / 2.0
+        assert abs(opt._alpha - expected_alpha) < 1e-12
+
 
 # ---------------------------------------------------------------------------
 # Test: Score history and convergence
@@ -630,6 +692,12 @@ class TestLRDecay:
         dist_no_decay = abs(opt_no_decay.get_current_parameters()[0])
         dist_decay = abs(opt_decay.get_current_parameters()[0])
         assert dist_decay < dist_no_decay
+
+    def test_negative_decay_power_raises(self) -> None:
+        """Negative control: negative decay power must raise ValueError."""
+        opt = AdamOptimizer(np.array([0.0]))
+        with pytest.raises(ValueError, match="non-negative"):
+            opt.set_lr_decay_power(-0.5)
 
 
 # ---------------------------------------------------------------------------

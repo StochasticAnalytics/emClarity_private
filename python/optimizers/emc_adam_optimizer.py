@@ -51,6 +51,14 @@ class AdamOptimizer(OptimizerBase):
         params = np.asarray(initial_params, dtype=np.float64).ravel()
         if params.size == 0:
             raise ValueError("Initial parameters must be a non-empty vector.")
+        if not (0.0 <= beta1 < 1.0):
+            raise ValueError(
+                f"beta1 must be in [0, 1) for valid bias correction, got {beta1}."
+            )
+        if not (0.0 <= beta2 < 1.0):
+            raise ValueError(
+                f"beta2 must be in [0, 1) for valid bias correction, got {beta2}."
+            )
         if epsilon <= 0:
             raise ValueError(
                 f"epsilon must be positive to prevent division by zero, got {epsilon}."
@@ -90,7 +98,7 @@ class AdamOptimizer(OptimizerBase):
             score: Optional objective score to record.
 
         Raises:
-            ValueError: If gradient contains NaN values.
+            ValueError: If gradient contains NaN or Inf values.
         """
         grad = np.asarray(gradient, dtype=np.float64).ravel()
 
@@ -304,6 +312,11 @@ class AdamOptimizer(OptimizerBase):
             )
 
         expected_range_arr = np.asarray(expected_range, dtype=np.float64).ravel()
+        if np.any(expected_range_arr <= 0):
+            raise ValueError(
+                "expected_range must be positive for all elements, "
+                f"got min value {float(expected_range_arr.min())}."
+            )
 
         # Compute exact step sum for the current decay schedule
         p = self._lr_decay_power
@@ -331,6 +344,12 @@ class AdamOptimizer(OptimizerBase):
                 new_rates[frozen] = 0.0
             self._learning_rates = new_rates
 
+            # Update _alpha so unfreeze_parameters(idx, None) restores a
+            # representative rate rather than the stale default.
+            non_frozen = new_rates[new_rates > 0.0]
+            if non_frozen.size > 0:
+                self._alpha = float(np.mean(non_frozen))
+
     def set_amsgrad(self, enabled: bool) -> None:
         """Enable or disable AMSGrad variant.
 
@@ -353,8 +372,15 @@ class AdamOptimizer(OptimizerBase):
         the step size vanishes, guaranteeing convergence.
 
         Args:
-            power: Decay exponent. 0 disables decay.
+            power: Decay exponent. Must be non-negative. 0 disables decay.
+
+        Raises:
+            ValueError: If power is negative.
         """
+        if power < 0:
+            raise ValueError(
+                f"decay power must be non-negative, got {power}."
+            )
         self._lr_decay_power = power
 
     def set_alpha(self, alpha: float) -> None:
