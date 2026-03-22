@@ -1,3 +1,11 @@
+Developer: Completed TASK-013 PATCH round 4 [2026-03-22]
+  Task: TASK-013 - End-to-end synthetic validation (QA patch round 4)
+  - Refactored TestOptimizerComparison to reuse module-scoped fixtures (eliminated 2 redundant pipeline runs)
+  - Removed incorrect @pytest.mark.gpu from TestGradientSanityCheck (3 tests now run in CPU CI)
+  - Moved compute_snr_of_tiles import to module level for consistency
+  - Added shape guard assertion and clarified comment for ctf_image.T in _apply_ctf_to_tile
+  - Expanded test_offset_star_has_offset_ctf to verify all 50 particles instead of only particle[0]
+
 Developer: Completed TASK-011 [2026-03-22]
   Task: TASK-011 - Per-tilt CTF refinement loop
   - Implemented refine_tilt_ctf() in emc_refine_tilt_ctf.py (472 lines)
