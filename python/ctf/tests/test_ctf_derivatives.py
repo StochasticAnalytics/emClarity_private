@@ -39,6 +39,7 @@ from ..emc_ctf_cpu import CTFCalculatorCPU
 # ---------------------------------------------------------------------------
 GPU_VS_CPU_RTOL = 1e-5
 GPU_VS_CPU_ATOL = 1e-6
+GPU_VS_GPU_ATOL = 1e-7  # same-device kernel parity: ~1 float32 ULP
 
 # FD step sizes
 FD_STEP_D = 10.0       # Angstroms for mean defocus
@@ -283,14 +284,17 @@ class TestCTFOutputMatchesBasicKernel:
     calc_cpu = CTFCalculatorCPU()
     calc_gpu = CTFCalculator() if HAS_CUPY else None
 
-    @pytest.mark.parametrize("param_id", ALL_PARAM_IDS)
-    def test_cpu_ctf_matches_compute(self, param_id: str) -> None:
-        params = _make_params(param_id)
+    @pytest.mark.parametrize("param_id,do_sq_ctf", (
+        [(pid, False) for pid in ALL_PARAM_IDS]
+        + [(pid, True) for pid in ALL_PARAM_IDS]
+    ))
+    def test_cpu_ctf_matches_compute(self, param_id: str, do_sq_ctf: bool) -> None:
+        params = _make_params(param_id, do_sq_ctf=do_sq_ctf)
         ctf_basic = self.calc_cpu.compute(params, DIMS)
         ctf_deriv, _, _, _ = self.calc_cpu.compute_with_derivatives(params, DIMS)
         np.testing.assert_array_equal(
             ctf_deriv, ctf_basic,
-            err_msg=f"CPU derivative CTF differs from basic for {param_id}",
+            err_msg=f"CPU derivative CTF differs from basic for {param_id} do_sq_ctf={do_sq_ctf}",
         )
 
     @pytest.mark.skipif(not HAS_CUPY, reason="CuPy not available")
@@ -303,7 +307,7 @@ class TestCTFOutputMatchesBasicKernel:
         ctf_deriv = cp.asnumpy(ctf_deriv)
         np.testing.assert_allclose(
             ctf_deriv, ctf_basic,
-            rtol=GPU_VS_CPU_RTOL, atol=GPU_VS_CPU_ATOL,
+            rtol=0, atol=GPU_VS_GPU_ATOL,
             err_msg=f"GPU derivative CTF differs from basic for {param_id}",
         )
 
@@ -537,12 +541,13 @@ class TestNoNanInf:
 class TestGPUvsCPUDerivatives:
     """GPU derivative arrays must match CPU within GPU_VS_CPU_RTOL."""
 
+    calc_cpu = CTFCalculatorCPU()
     calc_gpu = CTFCalculator() if HAS_CUPY else None
 
     @pytest.mark.skipif(not HAS_CUPY, reason="CuPy not available")
     @pytest.mark.parametrize("param_id", ALL_PARAM_IDS)
     def test_gpu_vs_cpu_derivatives(self, param_id: str) -> None:
-        calc_cpu = CTFCalculatorCPU()
+        calc_cpu = self.calc_cpu
         calc_gpu = self.calc_gpu
         params = _make_params(param_id)
 
@@ -570,7 +575,7 @@ class TestGPUvsCPUDerivatives:
         "typical", "zero_astigmatism", "large_astigmatism",
     ])
     def test_gpu_vs_cpu_squared_derivatives(self, param_id: str) -> None:
-        calc_cpu = CTFCalculatorCPU()
+        calc_cpu = self.calc_cpu
         calc_gpu = self.calc_gpu
         params = _make_params(param_id, do_sq_ctf=True)
 
@@ -597,6 +602,7 @@ class TestGPUvsCPUDerivatives:
 class TestFiniteDifferenceGPU:
     """Validate GPU analytical derivatives against CPU-computed FD (spot checks)."""
 
+    calc_cpu = CTFCalculatorCPU()
     calc_gpu = CTFCalculator() if HAS_CUPY else None
 
     @pytest.mark.skipif(not HAS_CUPY, reason="CuPy not available")
@@ -605,7 +611,7 @@ class TestFiniteDifferenceGPU:
     ])
     def test_gpu_dD_vs_fd(self, param_id: str) -> None:
         calc_gpu = self.calc_gpu
-        calc_cpu = CTFCalculatorCPU()
+        calc_cpu = self.calc_cpu
         params = _make_params(param_id)
         _, dD_gpu, _, _ = calc_gpu.compute_with_derivatives(params, DIMS)
         dD_fd = _fd_derivative_defocus(
@@ -619,7 +625,7 @@ class TestFiniteDifferenceGPU:
     ])
     def test_gpu_dTheta_vs_fd(self, param_id: str) -> None:
         calc_gpu = self.calc_gpu
-        calc_cpu = CTFCalculatorCPU()
+        calc_cpu = self.calc_cpu
         params = _make_params(param_id)
         _, _, _, dTheta_gpu = calc_gpu.compute_with_derivatives(params, DIMS)
         dTheta_fd = _fd_derivative_angle(
