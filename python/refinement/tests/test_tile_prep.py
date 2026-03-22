@@ -502,11 +502,14 @@ class TestPrepareReferenceProjection:
 
         assert np.iscomplexobj(result)
 
-        # If result = conj(spectrum), then conj(result) = spectrum
-        unconjugated = np.conj(result)
-
-        # Re-conjugating should give back the original result
-        np.testing.assert_allclose(np.conj(unconjugated), result)
+        # Verify conjugation is non-trivial: the spectrum of a random
+        # projection has non-zero imaginary parts, so conjugation
+        # produces a distinct array.
+        assert np.any(result.imag != 0), "Spectrum has zero imaginary parts"
+        assert not np.allclose(result, np.conj(result)), (
+            "Result equals its own conjugate (purely real); "
+            "conjugation had no observable effect"
+        )
 
     def test_explicit_conjugate_comparison(
         self, soft_mask: np.ndarray, ft_pad: FourierTransformer,
