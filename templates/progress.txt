@@ -1,3 +1,15 @@
+Developer: Completed TASK-000a [2026-03-21]
+  Task: TASK-000a - Fix python/__init__.py duplicate __all__ and broken BasicArrayOps import; reconcile version
+  - Merged duplicate __all__ definitions into single list (second was silently overwriting first)
+  - Fixed import name: CudaBasicOps -> BasicArrayOps to match cuda_ops package export
+  - Updated __version__ from "1.0.0" to "1.7.0" to match pyproject.toml
+  - Removed orphaned cuda_ops/setup.py superseded by top-level pyproject.toml
+  - PATCH: Fixed stale CudaBasicOps import in python_bridge.py -> BasicArrayOps
+  - ENV FIX: Installed fastapi + test deps (pip) and Node.js 20 (nvm) to resolve
+    environment-only test failures (tsc: npx missing, backend_tests: fastapi missing)
+  - Verified: tsc clean (exit 0), backend_tests 85 passed / 1 skipped
+  - Code changes confirmed correct — no implementation fixes needed
+
 Developer: Completed TASK-040 [2026-03-18]
   Task: TASK-040 - Remove all remaining localStorage usage + ESLint rule
   - Removed localStorage migration code from useRecentProjects.ts, useRunProfiles.ts,
