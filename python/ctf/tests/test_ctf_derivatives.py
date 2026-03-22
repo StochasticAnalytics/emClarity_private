@@ -12,7 +12,6 @@ Finite-difference step sizes (chosen for float32 precision at typical scales):
 
 from __future__ import annotations
 
-import math
 from typing import Tuple
 
 import numpy as np
@@ -298,17 +297,20 @@ class TestCTFOutputMatchesBasicKernel:
         )
 
     @pytest.mark.skipif(not HAS_CUPY, reason="CuPy not available")
-    @pytest.mark.parametrize("param_id", ALL_PARAM_IDS)
-    def test_gpu_ctf_matches_compute(self, param_id: str) -> None:
+    @pytest.mark.parametrize("param_id,do_sq_ctf", (
+        [(pid, False) for pid in ALL_PARAM_IDS]
+        + [(pid, True) for pid in ALL_PARAM_IDS]
+    ))
+    def test_gpu_ctf_matches_compute(self, param_id: str, do_sq_ctf: bool) -> None:
         calc_gpu = self.calc_gpu
-        params = _make_params(param_id)
+        params = _make_params(param_id, do_sq_ctf=do_sq_ctf)
         ctf_basic = cp.asnumpy(calc_gpu.compute(params, DIMS))
         ctf_deriv, _, _, _ = calc_gpu.compute_with_derivatives(params, DIMS)
         ctf_deriv = cp.asnumpy(ctf_deriv)
         np.testing.assert_allclose(
             ctf_deriv, ctf_basic,
             rtol=0, atol=GPU_VS_GPU_ATOL,
-            err_msg=f"GPU derivative CTF differs from basic for {param_id}",
+            err_msg=f"GPU derivative CTF differs from basic for {param_id} do_sq_ctf={do_sq_ctf}",
         )
 
 
@@ -421,7 +423,7 @@ class TestHandComputedDerivatives:
     """Verify analytical derivatives at hand-computed test points.
 
     Along phi=theta:  cos(2*(phi-theta)) = 1, so dphase/dA = dphase/dD
-    Along phi=theta+pi/4: cos(2*(phi-theta)) = -1, so dphase/dA = -dphase/dD
+    Along phi=theta+pi/2: cos(2*(phi-theta)) = -1, so dphase/dA = -dphase/dD
     """
 
     calc = CTFCalculatorCPU()
@@ -618,6 +620,20 @@ class TestFiniteDifferenceGPU:
             calc_cpu, PARAM_SETS[param_id], DIMS, centered=False, do_sq_ctf=False,
         )
         _check_fd_agreement(cp.asnumpy(dD_gpu), dD_fd, f"gpu_dD/{param_id}")
+
+    @pytest.mark.skipif(not HAS_CUPY, reason="CuPy not available")
+    @pytest.mark.parametrize("param_id", [
+        "typical", "large_astigmatism", "angle_60",
+    ])
+    def test_gpu_dA_vs_fd(self, param_id: str) -> None:
+        calc_gpu = self.calc_gpu
+        calc_cpu = self.calc_cpu
+        params = _make_params(param_id)
+        _, _, dA_gpu, _ = calc_gpu.compute_with_derivatives(params, DIMS)
+        dA_fd = _fd_derivative_astigmatism(
+            calc_cpu, PARAM_SETS[param_id], DIMS, centered=False, do_sq_ctf=False,
+        )
+        _check_fd_agreement(cp.asnumpy(dA_gpu), dA_fd, f"gpu_dA/{param_id}")
 
     @pytest.mark.skipif(not HAS_CUPY, reason="CuPy not available")
     @pytest.mark.parametrize("param_id", [
