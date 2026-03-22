@@ -138,6 +138,11 @@ class FourierTransformer:
             raise ValueError(
                 f"inverse_fft requires a 2-D array, got ndim={spectrum.ndim}"
             )
+        if spectrum.shape != (self._half_nx, self._ny):
+            raise ValueError(
+                f"spectrum shape {spectrum.shape} does not match transformer "
+                f"half-grid dimensions ({self._half_nx}, {self._ny})"
+            )
         xp = _xp_for(spectrum)
         # s=(ny, nx) maps to axes=(1, 0): axis 1 gets ny, axis 0 gets nx
         return xp.fft.irfft2(spectrum, s=(self._ny, self._nx), axes=(1, 0))
@@ -164,26 +169,38 @@ class FourierTransformer:
         Returns:
             Element-wise product of *image* and the checkerboard.
         """
+        if image.ndim != 2:
+            raise ValueError(
+                f"swap_phase requires a 2-D array, got ndim={image.ndim}"
+            )
         xp = _xp_for(image)
-        cb = self._get_checkerboard(xp, image.shape)
+        cb = self._get_checkerboard(xp, image.shape, image.real.dtype)
         return image * cb
 
     def _get_checkerboard(
-        self, xp: type, shape: tuple[int, ...]
+        self, xp: type, shape: tuple[int, ...], dtype: np.dtype
     ) -> NDArray:
-        """Build or retrieve the cached ``(-1)^(i+j)`` checkerboard."""
-        # Rebuild if shape or device changed
+        """Build or retrieve the cached ``(-1)^(i+j)`` checkerboard.
+
+        Args:
+            dtype: Real dtype of the calling array; the checkerboard is cast
+                to this dtype so that ``image * checkerboard`` does not
+                silently upcast (e.g. complex64 → complex128).
+        """
+        # Rebuild if shape, device, or dtype changed
         if self._checkerboard is not None:
             same_xp = _xp_for(self._checkerboard) is xp
             same_shape = self._checkerboard.shape == shape
-            if same_xp and same_shape:
+            same_dtype = self._checkerboard.dtype == dtype
+            if same_xp and same_shape and same_dtype:
                 return self._checkerboard
 
         rows, cols = shape
-        i = xp.arange(rows, dtype=np.float64)[:, None]
-        j = xp.arange(cols, dtype=np.float64)[None, :]
-        # 1 - 2*(parity) avoids float-power rounding issues
-        self._checkerboard = 1.0 - 2.0 * ((i + j) % 2)
+        i = xp.arange(rows)[:, None]
+        j = xp.arange(cols)[None, :]
+        # Integer arithmetic then cast avoids float64 promotion from Python scalars
+        parity = (i + j) % 2
+        self._checkerboard = (1 - 2 * parity).astype(dtype)
         return self._checkerboard
 
     # ------------------------------------------------------------------
@@ -222,6 +239,11 @@ class FourierTransformer:
                 (invalid range — highpass resolution must be larger than
                 lowpass resolution in Angstroms).
         """
+        if pixel_size <= 0:
+            raise ValueError(
+                f"pixel_size must be positive, got {pixel_size}"
+            )
+
         if highpass_angstrom <= lowpass_angstrom:
             raise ValueError(
                 f"highpass_angstrom ({highpass_angstrom}) must be greater "
@@ -236,7 +258,8 @@ class FourierTransformer:
 
         xp = _xp_for(spectrum)
         mask = self._build_bandpass_mask(
-            xp, spectrum.shape, pixel_size, highpass_angstrom, lowpass_angstrom
+            xp, spectrum.shape, pixel_size, highpass_angstrom, lowpass_angstrom,
+            spectrum.real.dtype,
         )
         return spectrum * mask
 
@@ -247,15 +270,21 @@ class FourierTransformer:
         pixel_size: float,
         highpass_angstrom: float,
         lowpass_angstrom: float,
+        dtype: np.dtype = np.float64,
     ) -> NDArray:
-        """Construct the bandpass mask with cosine-edge rolloff."""
+        """Construct the bandpass mask with cosine-edge rolloff.
+
+        Args:
+            dtype: Real dtype of the spectrum; the mask is built in this
+                dtype so that ``spectrum * mask`` does not silently upcast.
+        """
         half_nx, ny = shape
 
         # Spatial frequencies in Angstroms^-1
         # First axis (halved): 0 .. half_nx-1, freq = i / (nx * pixel_size)
-        freq_x = xp.arange(half_nx, dtype=np.float64) / (self._nx * pixel_size)
+        freq_x = xp.arange(half_nx, dtype=dtype) / (self._nx * pixel_size)
         # Second axis (full FFT order): uses standard fftfreq layout
-        freq_y = xp.fft.fftfreq(ny, d=pixel_size).astype(np.float64)
+        freq_y = xp.fft.fftfreq(ny, d=pixel_size).astype(dtype)
 
         freq_mag = xp.sqrt(
             freq_x[:, None] ** 2 + freq_y[None, :] ** 2
@@ -320,6 +349,11 @@ class FourierTransformer:
         if ref_with_ctf.ndim != 2:
             raise ValueError(
                 f"compute_ref_norm requires a 2-D array, got ndim={ref_with_ctf.ndim}"
+            )
+        if ref_with_ctf.shape != (self._half_nx, self._ny):
+            raise ValueError(
+                f"ref_with_ctf shape {ref_with_ctf.shape} does not match transformer "
+                f"half-grid dimensions ({self._half_nx}, {self._ny})"
             )
         xp = _xp_for(ref_with_ctf)
         if self._inv_trim == 0:
