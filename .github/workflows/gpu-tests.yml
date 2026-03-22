@@ -55,9 +55,10 @@ jobs:
         
         echo "=== Installing CuPy for GPU support ==="
         # Try CUDA 12.x first, then 11.x as fallback
-        if pip install cupy-cuda12x; then
+        # Version constraint >=12.0.0 matches pyproject.toml [gpu] extras
+        if pip install 'cupy-cuda12x>=12.0.0'; then
           echo "✓ CuPy CUDA 12.x installed successfully"
-        elif pip install cupy-cuda11x; then
+        elif pip install 'cupy-cuda11x>=12.0.0'; then
           echo "✓ CuPy CUDA 11.x installed successfully"
         else
           echo "❌ Failed to install CuPy"
