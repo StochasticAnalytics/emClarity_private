@@ -88,7 +88,9 @@ def compute_ctf_friendly_size(n: int) -> int:
 
 
 def _is_7smooth(n: int) -> bool:
-    """Return True if *n* has no prime factor larger than 7."""
+    """Return True if *n* is a positive integer with no prime factor larger than 7."""
+    if n <= 0:
+        return False
     for p in (2, 3, 5, 7):
         while n % p == 0:
             n //= p
@@ -170,6 +172,12 @@ def create_ctf_mask(ctf_size: int) -> np.ndarray:
     """
     origin = ctf_size // 2
     radius = origin - 7
+
+    if radius <= 0:
+        raise ValueError(
+            f"ctf_size={ctf_size} yields non-positive mask radius "
+            f"({origin} - 7 = {radius}); ctf_size must be >= 16"
+        )
 
     iy = np.arange(ctf_size, dtype=np.float32)
     ix = np.arange(ctf_size, dtype=np.float32)
@@ -296,34 +304,19 @@ def _rotate_volume_trilinear(
 ) -> np.ndarray:
     """Rotate a 3D volume using trilinear interpolation.
 
-    The volume is assumed to have shape ``[Z, Y, X]`` with the origin at
+    The volume has shape ``[Z, Y, X]`` with origin at
     ``(nz//2, ny//2, nx//2)`` (0-indexed Fourier convention).
 
-    For each output voxel at position ``r_out`` relative to the origin,
-    the input position is ``r_in = R^T * r_out`` (inverse mapping for
-    interpolation).  Since we already have the inverse rotation matrix,
-    we use it directly: ``r_in = R_inv * r_out`` and then
-    ``r_in_grid = r_in + origin`` to get absolute grid coordinates.
-
-    Wait — actually, the rotation matrix we receive IS the inverse rotation.
-    For proper interpolation (output-to-input mapping), we need to find
-    for each output voxel where it came from in the input. Since the
-    *forward* transform maps input→output as ``r_out = R_fwd * r_in``,
-    the inverse mapping is ``r_in = R_fwd^{-1} * r_out = R_inv * r_out``.
-    But we already have R_inv = R_fwd^T, so we apply R_inv directly.
-
-    However, there's a subtlety: in the MATLAB code, the interpolator
-    applies the rotation with 'inv' flag, which means it rotates the
-    *coordinate grid* by the inverse rotation to achieve the forward
-    rotation of the volume content. So R_inv applied as an output-to-input
-    map rotates the volume content by R_fwd.
-
-    We follow this convention: apply R_inv as the coordinate mapping
-    (output→input), which rotates volume content by the forward rotation.
+    Uses output-to-input coordinate mapping: for each output voxel at
+    position ``r_out`` (relative to origin), the source position is
+    ``r_in = R_inv @ r_out``.  Since *rotation_matrix* is already the
+    inverse rotation (``R_fwd^T``), applying it as the coordinate map
+    rotates volume content by the forward rotation — matching the MATLAB
+    ``interp3d(..., 'inv')`` convention.
 
     Args:
         volume: 3-D array of shape ``(nz, ny, nx)``.
-        rotation_matrix: 3x3 inverse rotation matrix.
+        rotation_matrix: 3x3 inverse rotation matrix (``R_fwd^T``).
 
     Returns:
         Rotated volume of the same shape.
@@ -447,11 +440,19 @@ def prepare_reference_projection(
 
     Rotates the volume by SPIDER ZYZ Euler angles using the **inverse
     rotation** convention, projects along the Z-axis (axis 0 for [Z,Y,X]
-    ordered volumes), applies a soft mask, pads, transforms to Fourier
-    space, and returns the **complex conjugate** (pre-conjugated for
-    cross-correlation).
+    ordered volumes), applies a soft mask, mean-subtracts, RMS-normalizes,
+    pads, transforms to Fourier space, and returns the **complex conjugate**
+    (pre-conjugated for cross-correlation).
 
     Mirrors ``ctf/EMC_ctf_refine_from_star.m`` lines 311-317.
+
+    .. note:: **Phase-centering asymmetry with data tiles.**
+       Data tiles receive :meth:`FourierTransformer.swap_phase` (checkerboard
+       multiply) before the FFT, while reference projections do **not**.
+       This intentional asymmetry shifts the cross-correlation peak from the
+       array corner to the image centre, allowing sub-pixel peak extraction
+       without an ``fftshift``.  See :func:`emc_scoring.score_ctf_candidates`
+       for the consumer contract.
 
     Args:
         volume: 3-D reference volume, shape ``(nz, ny, nx)`` in [Z,Y,X]
@@ -481,15 +482,24 @@ def prepare_reference_projection(
     # Project along Z (axis 0) for [Z,Y,X] volumes → 2D [Y,X]
     projection = np.sum(rotated, axis=0)
 
+    # Convert mask to NumPy for CPU-side work (mask may be CuPy when
+    # volume was on GPU, but projection is always NumPy from scipy).
+    mask_np = mask if isinstance(mask, np.ndarray) else mask.get()
+
     # Match mask shape via center crop/pad
-    tile_ny, tile_nx = mask.shape
+    tile_ny, tile_nx = mask_np.shape
     projection = center_crop_or_pad(projection, (tile_ny, tile_nx))
 
     # Apply soft mask
-    masked = mask * projection
+    masked = mask_np * projection
 
     # Mean-subtract
     masked = masked - np.mean(masked)
+
+    # RMS-normalize (MATLAB: ref_tile ./ rms(ref_tile(:)))
+    rms_val = np.sqrt(np.mean(masked ** 2))
+    if float(rms_val) > 0.0:
+        masked = masked / rms_val
 
     # Pad to CTFSIZE
     padded = center_crop_or_pad(masked, (pad_size, pad_size))

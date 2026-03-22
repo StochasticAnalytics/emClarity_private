@@ -536,6 +536,9 @@ class TestPrepareReferenceProjection:
         projection = center_crop_or_pad(projection, soft_mask.shape)
         masked = soft_mask * projection
         masked = masked - np.mean(masked)
+        rms_val = np.sqrt(np.mean(masked ** 2))
+        if rms_val > 0.0:
+            masked = masked / rms_val
         padded = center_crop_or_pad(masked, (PAD_SIZE, PAD_SIZE))
         spectrum = ft_pad.forward_fft(padded)
 
