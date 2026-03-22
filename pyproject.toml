@@ -56,6 +56,10 @@ emclarity-gui = "gui.main:main"
 "Bug Reports" = "https://github.com/StochasticAnalytics/emClarity/issues"
 "Source" = "https://github.com/StochasticAnalytics/emClarity"
 
+[tool.setuptools.package-data]
+"cuda_ops" = ["*.cu", "*.cuh"]
+"ctf.cuda" = ["*.cu", "*.cuh"]
+
 [tool.setuptools.packages.find]
 where = ["python"]
 

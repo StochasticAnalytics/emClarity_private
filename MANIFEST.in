@@ -1,0 +1,2 @@
+recursive-include python *.cu *.cuh
+recursive-include python *.npy *.json
