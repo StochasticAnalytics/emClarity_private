@@ -420,11 +420,16 @@ def prepare_data_tile(
     # Center-crop or pad to CTFSIZE
     padded = center_crop_or_pad(masked, (pad_size, pad_size))
 
-    # Swap phase (checkerboard multiply for DC centering)
-    swapped = fourier_handler.swap_phase(padded)
-
     # Forward FFT
-    spectrum = fourier_handler.forward_fft(swapped)
+    spectrum = fourier_handler.forward_fft(padded)
+
+    # Swap phase in spectral domain (checkerboard multiply for DC centering).
+    # Applied AFTER FFT so the checkerboard modulates frequency bins directly,
+    # shifting the cross-correlation peak from (0,0) to (nx//2, ny//2) in the
+    # IFFT output.  Applying the checkerboard in real-space before FFT (the
+    # previous implementation) shifts the spectrum itself, which decorrelates
+    # the cross-correlation rather than centering it.
+    spectrum = fourier_handler.swap_phase(spectrum)
 
     # Apply bandpass filter
     filtered = fourier_handler.apply_bandpass(

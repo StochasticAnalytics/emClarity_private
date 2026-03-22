@@ -911,3 +911,32 @@ Developer: Completed 2026-03-22
     exceeds second axis
   - All 446 relevant tests pass (22 refine_tilt_ctf, 101 refinement,
     131 optimizer, 214 ctf)
+
+Developer: Completed 2026-03-22 [d1906ce3/TASK-012b/PATCH round 4]
+  - Defect 1 (MEDIUM): Added upper-bound check on position_in_stack;
+    raises ValueError when pos > stack_data.shape[0]
+  - Defect 2 (MEDIUM): Fixed mean_score NaN propagation; filters NaN
+    sentinels before computing mean, returns float("nan") when all NaN
+  - Defect 3 (MEDIUM): Added ndim validation for stack_data before
+    shape[1]/shape[2] indexing; raises RuntimeError if not 3-D
+  - Defect 4 (MEDIUM): Added test_nan_sentinel_coverage.py with positive,
+    negative, and mixed controls for the NaN sentinel guard in
+    _apply_refinement_to_particles
+  - All 165 refinement module tests pass
+
+Developer: Completed 2026-03-22 [d1906ce3/TASK-013/DEV]
+  - Implemented end-to-end synthetic validation tests for CTF refinement pipeline
+  - Fixed swap_phase bug in prepare_data_tile: checkerboard was applied in
+    real space (before FFT) instead of spectral domain (after FFT), which
+    broke cross-correlation peak placement
+  - Created synthetic data generator (generate_synthetic_data.py) producing
+    CTF-modulated tiles with known ground-truth parameters
+  - 22 E2E tests covering: CTF recovery (L-BFGS-B and ADAM), gradient sanity,
+    optimizer comparison, positive/negative controls, per-particle delta_z,
+    score monotonicity, SNR verification, dataset integrity
+  - Key design decisions:
+    - Lower defocus regime (4500/2000A) to reduce mask-CTF interaction bias
+    - lowpass_cutoff=3.5A for CTF-sensitive frequency range
+    - Separate low-defocus dataset (700A, no astigmatism) for positive control
+      where mask-CTF bias is < 10A (acceptance criterion)
+  - All 22 E2E tests pass; all 165 existing module tests pass

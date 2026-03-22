@@ -445,13 +445,13 @@ class TestPrepareDataTile:
             highpass=400.0, lowpass=10.0,
         )
 
-        recovered = ft_pad.inverse_fft(result)
-
-        # Undo phase swap (checkerboard is self-inverse)
-        unswapped = ft_pad.swap_phase(recovered)
+        # Undo spectral-domain phase swap (checkerboard is self-inverse)
+        # before inverse FFT to recover the original spatial layout.
+        unswapped_spectrum = ft_pad.swap_phase(result)
+        recovered = ft_pad.inverse_fft(unswapped_spectrum)
 
         # Crop back to original tile size for comparison
-        cropped = center_crop_or_pad(unswapped, (TILE_SIZE, TILE_SIZE))
+        cropped = center_crop_or_pad(recovered, (TILE_SIZE, TILE_SIZE))
 
         # Recovered image should positively correlate with original.
         # Correlation is modest (~0.2) because the soft mask zeros tile
