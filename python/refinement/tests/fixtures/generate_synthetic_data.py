@@ -571,8 +571,6 @@ def generate_synthetic_dataset(
 
 def compute_snr_of_tiles(
     stack_path: Path,
-    reference_path: Path,
-    truth_star_path: Path,
 ) -> float:
     """Estimate the SNR of generated tiles by comparing signal to noise.
 
@@ -582,8 +580,6 @@ def compute_snr_of_tiles(
 
     Args:
         stack_path: Path to the MRC particle stack.
-        reference_path: Path to the reference volume (unused, for API symmetry).
-        truth_star_path: Path to ground-truth star file (unused).
 
     Returns:
         Estimated SNR as a float.

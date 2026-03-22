@@ -92,6 +92,8 @@ _STANDARD_OFFSET = CTFOffset(
 
 # Pipeline options tuned for synthetic data
 _MAX_ITERATIONS = 50
+_LOWPASS_CUTOFF = 3.5      # Angstroms — CTF-sensitive frequency range
+_HIGHPASS_CUTOFF = 400.0   # Angstroms
 
 
 # ---------------------------------------------------------------------------
@@ -167,8 +169,8 @@ def lbfgsb_result(
         optimizer_type="lbfgsb",
         maximum_iterations=_MAX_ITERATIONS,
         minimum_global_iterations=3,
-        lowpass_cutoff=3.5,
-        highpass_cutoff=400.0,
+        lowpass_cutoff=_LOWPASS_CUTOFF,
+        highpass_cutoff=_HIGHPASS_CUTOFF,
     )
     result = refine_ctf_from_star(
         synthetic_data.offset_star_path,
@@ -192,8 +194,8 @@ def adam_result(
         optimizer_type="adam",
         maximum_iterations=_MAX_ITERATIONS,
         minimum_global_iterations=3,
-        lowpass_cutoff=3.5,
-        highpass_cutoff=400.0,
+        lowpass_cutoff=_LOWPASS_CUTOFF,
+        highpass_cutoff=_HIGHPASS_CUTOFF,
     )
     result = refine_ctf_from_star(
         synthetic_data.offset_star_path,
@@ -239,7 +241,10 @@ def _compute_recovery_stats(
         r_half = (rp["defocus_1"] - rp["defocus_2"]) / 2.0
         half_astig_errors.append(r_half - gt_half_astig)
 
-        angle_errors.append(rp["defocus_angle"] - gt_angle)
+        raw_angle_diff = rp["defocus_angle"] - gt_angle
+        # Wrap to [-90, 90) — astigmatism angles have 180° periodicity
+        wrapped = ((raw_angle_diff + 90.0) % 180.0) - 90.0
+        angle_errors.append(wrapped)
 
     defocus_errors_arr = np.array(defocus_errors)
     half_astig_errors_arr = np.array(half_astig_errors)
@@ -304,7 +309,7 @@ def _prepare_gradient_test_data(
 
         data_ft = prepare_data_tile(
             tile, soft_mask, ctf_size, fourier_handler,
-            microscope.pixel_size, 400.0, 3.5,
+            microscope.pixel_size, _HIGHPASS_CUTOFF, _LOWPASS_CUTOFF,
         )
         ref_ft = prepare_reference_projection(
             ref_volume, euler_angles, soft_mask, ctf_size, fourier_handler,
@@ -356,7 +361,6 @@ def _prepare_gradient_test_data(
 
 
 @pytest.mark.slow
-@pytest.mark.gpu
 class TestSNRVerification:
     """Verify that synthetic tiles have the specified signal-to-noise ratio."""
 
@@ -418,8 +422,6 @@ class TestSNRVerification:
 
         measured_snr = compute_snr_of_tiles(
             synthetic_data.stack_path,
-            synthetic_data.reference_path,
-            synthetic_data.truth_star_path,
         )
 
         assert np.isfinite(measured_snr), (
@@ -515,7 +517,11 @@ class TestGradientSanityCheck:
         """Analytical gradient matches finite-difference gradient within 5%.
 
         Uses central differences with a step size of 1.0 Angstrom for
-        defocus parameters and 0.001 radians for angle.
+        defocus parameters and 0.001 radians for angle.  Both the
+        analytical and FD evaluations use a fixed peak mask, so this
+        comparison validates the gradient under a fixed-peak approximation
+        (i.e. the cross-correlation peak position is held constant across
+        parameter perturbations rather than re-located per step).
         """
         (
             data_fts, ref_fts, base_ctf, tilt_angle, fourier_handler,
@@ -613,7 +619,7 @@ class TestCTFRecoveryLBFGSB:
         """Scores increase from initial to final iteration."""
         _, _, result = lbfgsb_result
 
-        # Check that at least one tilt group has increasing scores
+        # Check that all tilt groups with sufficient history show score increase
         for tgr in result.tilt_group_results:
             history = tgr.refinement_results.score_history
             if len(history) >= 2:
@@ -715,8 +721,8 @@ class TestOptimizerComparison:
                 optimizer_type="lbfgsb",
                 maximum_iterations=max_iter,
                 minimum_global_iterations=3,
-                lowpass_cutoff=3.5,
-                highpass_cutoff=400.0,
+                lowpass_cutoff=_LOWPASS_CUTOFF,
+                highpass_cutoff=_HIGHPASS_CUTOFF,
             ),
         )
 
@@ -732,8 +738,8 @@ class TestOptimizerComparison:
                 optimizer_type="adam",
                 maximum_iterations=max_iter,
                 minimum_global_iterations=3,
-                lowpass_cutoff=3.5,
-                highpass_cutoff=400.0,
+                lowpass_cutoff=_LOWPASS_CUTOFF,
+                highpass_cutoff=_HIGHPASS_CUTOFF,
             ),
         )
 
@@ -824,8 +830,8 @@ class TestPositiveControl:
             optimizer_type="lbfgsb",
             maximum_iterations=_MAX_ITERATIONS,
             minimum_global_iterations=3,
-            lowpass_cutoff=3.5,
-            highpass_cutoff=400.0,
+            lowpass_cutoff=_LOWPASS_CUTOFF,
+            highpass_cutoff=_HIGHPASS_CUTOFF,
         )
 
         result = refine_ctf_from_star(
@@ -890,8 +896,8 @@ class TestNegativeControl:
             optimizer_type="lbfgsb",
             maximum_iterations=_MAX_ITERATIONS,
             minimum_global_iterations=3,
-            lowpass_cutoff=3.5,
-            highpass_cutoff=400.0,
+            lowpass_cutoff=_LOWPASS_CUTOFF,
+            highpass_cutoff=_HIGHPASS_CUTOFF,
         )
 
         result = refine_ctf_from_star(
@@ -917,7 +923,6 @@ class TestNegativeControl:
 
 
 @pytest.mark.slow
-@pytest.mark.gpu
 class TestDatasetIntegrity:
     """Verify the synthetic dataset is well-formed."""
 
