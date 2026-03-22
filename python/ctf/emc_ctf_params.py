@@ -87,6 +87,12 @@ class CTFParams:
         Returns:
             Frozen CTFParams instance with all derived quantities.
         """
+        if not (0.0 <= amplitude_contrast < 1.0):
+            raise ValueError(
+                f"amplitude_contrast must be in [0, 1): got {amplitude_contrast}. "
+                "Values >= 1.0 produce NaN via sqrt(1 - ac^2) in the phase formula."
+            )
+
         f32 = np.float32
         pi = f32(math.pi)
 
@@ -96,10 +102,13 @@ class CTFParams:
         d1 = f32(df1)
         d2 = f32(df2)
         angle = f32(angle_degrees)
-        cs = f32(cs_mm)
+        # cs_mm_f32 keeps the mm-unit value distinct from cs_internal (scaled
+        # by 1e7).  Using cs_internal in cs_term; confusing the two causes a
+        # 1e7x magnitude error.
+        cs_mm_f32 = f32(cs_mm)
 
         # Unit conversions matching C++ constructor (core_headers.cuh:74-79)
-        cs_internal = f32(cs * f32(1e7))
+        cs_internal = f32(cs_mm_f32 * f32(1e7))
 
         # amplitude_phase: atanf(ac / sqrtf(1 - ac^2))
         amplitude_phase = f32(np.arctan(

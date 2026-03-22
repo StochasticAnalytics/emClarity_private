@@ -78,9 +78,11 @@ class CTFCalculatorCPU:
             else:
                 x_signed = x_idx
 
-        # Scale to spatial frequency (1/Angstrom)
-        x_freq = x_signed.astype(np.float32) * float(fvx)
-        y_freq = y_signed.astype(np.float32) * float(fvy)
+        # Scale to spatial frequency (1/Angstrom).
+        # Keep fvx/fvy as np.float32 (not Python float) so the product
+        # stays float32 — float() would upcast to float64.
+        x_freq = x_signed.astype(np.float32) * fvx
+        y_freq = y_signed.astype(np.float32) * fvy
 
         # Build 2-D grids: meshgrid with indexing='xy' gives
         # xv shape (out_ny, out_nx) where xv[row, col] = x_freq[col]
