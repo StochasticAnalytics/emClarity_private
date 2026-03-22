@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import logging
 import types as _types
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Protocol, Tuple, Union
 
 import numpy as np
 
@@ -47,6 +47,21 @@ else:
 
 from ..ctf.emc_ctf_params import CTFParams
 from .emc_fourier_utils import FourierTransformer
+
+
+class CTFCalculatorLike(Protocol):
+    """Structural type for CTF calculator instances.
+
+    Both ``CTFCalculator`` (GPU) and ``CTFCalculatorCPU`` satisfy this
+    protocol via their ``compute`` method.
+    """
+
+    def compute(
+        self,
+        params: CTFParams,
+        dims: Tuple[int, int],
+        centered: bool = ...,
+    ) -> NDArray: ...
 
 
 def _xp_for(x: NDArray) -> _types.ModuleType:
@@ -94,10 +109,10 @@ def create_peak_mask(nx: int, ny: int, radius: float) -> np.ndarray:
 
 def evaluate_score_and_shifts(
     params: np.ndarray,
-    data_fts: list,
-    ref_fts: list,
+    data_fts: list[NDArray],
+    ref_fts: list[NDArray],
     base_ctf_params: CTFParams,
-    ctf_calculator: object,
+    ctf_calculator: CTFCalculatorLike,
     fourier_handler: FourierTransformer,
     tilt_angle_degrees: float,
     peak_mask: np.ndarray,
@@ -252,9 +267,14 @@ def evaluate_score_and_shifts(
         if xp is not np and isinstance(ctf_image, np.ndarray):
             ctf_image = xp.asarray(ctf_image)
 
+        # --- Migrate reference FT to correct device if needed ---------------
+        ref_ft_i = ref_fts[i]
+        if xp is not np and isinstance(ref_ft_i, np.ndarray):
+            ref_ft_i = xp.asarray(ref_ft_i)
+
         # --- Apply CTF to reference ---------------------------------------
         # ref_fts are pre-conjugated — no conj() needed.
-        ref_with_ctf = ref_fts[i] * ctf_image
+        ref_with_ctf = ref_ft_i * ctf_image
 
         # --- Normalise reference ------------------------------------------
         ref_norm = fourier_handler.compute_ref_norm(ref_with_ctf)
@@ -300,7 +320,14 @@ def evaluate_score_and_shifts(
         shift_weight = float(np.exp(-shift_mag_sq / (2.0 * shift_sigma ** 2)))
         z_weight = float(np.exp(-(dz ** 2) / (2.0 * z_offset_sigma ** 2)))
 
-        per_particle_scores[i] = peak_height * shift_weight * z_weight
+        # Subtractive penalty: always reduces the score regardless of peak
+        # sign.  For positive peaks this is equivalent to multiplicative
+        # weighting (peak * w).  For negative peaks, multiplicative
+        # weighting would make the score *less* negative (i.e. better in a
+        # maximisation objective), inverting the intended penalty direction.
+        combined_weight = shift_weight * z_weight
+        penalty_amount = abs(peak_height) * (1.0 - combined_weight)
+        per_particle_scores[i] = peak_height - penalty_amount
         shifts[i, 0] = shift_x
         shifts[i, 1] = shift_y
 

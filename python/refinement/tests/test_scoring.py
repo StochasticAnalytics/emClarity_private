@@ -432,10 +432,6 @@ class TestEffectiveDefocus:
         # At tilt=60: dz_contribution = 500 * cos(60) = 250
         # Equivalent to delta_df=250 at tilt=0
         params_equiv = np.array([250.0, 0.0, 0.0, 0.0])
-        score_equiv, _, _ = _score_one(
-            ft, ctf_calc, base_ctf, peak_mask, data_ft, ref_ft,
-            params=params_equiv, tilt_angle=0.0,
-        )
 
         # dz=500 at tilt=60 should give similar defocus offset as delta_df=250 at tilt=0
         params_tilt60_dz = np.array([0.0, 0.0, 0.0, dz_val])
@@ -643,7 +639,6 @@ class TestGaussianPenalty:
         )
 
         # The z-penalty should reduce the score
-        expected_z_factor = np.exp(-(30.0 ** 2) / (2.0 * 50.0 ** 2))
         assert score_with_dz < score_no_dz, (
             f"z-penalty should reduce score: {score_with_dz} >= {score_no_dz}"
         )
