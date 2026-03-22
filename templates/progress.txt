@@ -867,3 +867,10 @@ Developer: Completed 2026-03-22
     added magnitude assertion (grad_diff >= 0.1 * penalty_contribution) to
     verify penalty term is genuinely present in the gradient.
 
+
+Developer: Completed 2026-03-22
+  - [TASK-011/PATCH] Fixed asymmetric half-astigmatism lower bound
+  - Replaced symmetric -dsr bound with max(-dsr, -(base_half - 1.0))
+    to prevent effective half-astigmatism from crossing zero
+  - Moved base_half_val computation earlier to eliminate duplication
+  - All 21 refinement tests pass
