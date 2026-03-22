@@ -139,10 +139,15 @@ class CTFParams:
         )
 
     def to_kernel_args(self) -> dict[str, object]:
-        """Return a flat dictionary of all values for CuPy kernel dispatch.
+        """Return a flat dictionary mapping each field name to its value.
 
         Keys match the field names of this dataclass.  Boolean fields are
         included as Python bools; numeric fields as np.float32.
+
+        Note:
+            This returns a ``dict``, not a positional argument tuple.  For
+            direct CuPy kernel dispatch use the positional tuple constructed
+            in ``CTFCalculator.compute()``.
 
         Returns:
             Dictionary mapping parameter names to their values.

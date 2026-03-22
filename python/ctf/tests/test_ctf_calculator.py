@@ -56,8 +56,11 @@ def _load_baseline_params() -> dict:
         return json.load(f)
 
 
-BASELINE_META = _load_baseline_params()
-FIXED = BASELINE_META["fixed_params"]
+try:
+    BASELINE_META = _load_baseline_params()
+except FileNotFoundError:
+    BASELINE_META = {}
+FIXED = BASELINE_META.get("fixed_params", {})
 
 
 def _make_ctf_params(bl: dict) -> CTFParams:
@@ -87,7 +90,7 @@ def _load_baseline_array(index: int) -> np.ndarray:
 # ---------------------------------------------------------------------------
 # Parameterised baseline IDs
 # ---------------------------------------------------------------------------
-ALL_BASELINE_IDS = [bl["index"] for bl in BASELINE_META["baselines"]]
+ALL_BASELINE_IDS = [bl["index"] for bl in BASELINE_META.get("baselines", [])]
 
 
 def _baseline_by_index(index: int) -> dict:

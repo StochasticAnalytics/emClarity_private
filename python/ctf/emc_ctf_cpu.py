@@ -116,7 +116,6 @@ class CTFCalculatorCPU:
 
         return np.ascontiguousarray(result, dtype=np.float32)
 
-    @staticmethod
-    def is_ready() -> bool:
+    def is_ready(self) -> bool:
         """CPU fallback is always ready."""
         return True
