@@ -771,3 +771,18 @@ Developer: Completed TASK-038 PATCH [2026-03-18]
   - Confirmation feedback after successful snapshot load
   - Backend: logging for malformed snapshots, ambiguous-match guard in load_snapshot
   - Documented ExportMButton side-effect of creating permanent snapshot
+
+Developer: Completed TASK-000d [2026-03-21]
+  Task: TASK-000d - Add package_data and MANIFEST.in for CUDA sources and test fixtures
+  - Added [tool.setuptools.package-data] section to pyproject.toml with entries for
+    cuda_ops and ctf.cuda packages to include *.cu and *.cuh files
+  - Created top-level MANIFEST.in with recursive-include rules for CUDA sources
+    (*.cu, *.cuh) and test fixtures (*.npy, *.json) under python/
+  - Key decision: used package names without "python." prefix since
+    [tool.setuptools.packages.find] uses where=["python"], making the package root
+    the python/ directory itself
+  - ctf.cuda entry is forward-looking (directory doesn't exist yet) but harmless
+
+Developer: Completed TASK-000d PATCH [2026-03-21]
+  - Removed dead "ctf.cuda" package-data entry (no such package exists)
+  - Narrowed MANIFEST.in *.json glob to python/ctf/tests/fixtures/ only
