@@ -222,9 +222,14 @@ def _apply_ctf_to_tile(
     # Forward FFT
     spectrum = fourier_handler.forward_fft(padded)
 
-    # Compute CTF image
+    # Compute CTF image — CTFCalculatorCPU.compute returns (ny, nx//2+1);
+    # FourierTransformer stores spectra as (nx//2+1, ny), so transpose.
     ctf_image = ctf_calculator.compute(ctf_params, (nx, ny))
-    ctf_image = ctf_image.T  # (nx//2+1, ny) to match FourierTransformer layout
+    assert ctf_image.shape == (ny, nx // 2 + 1), (
+        f"CTF image shape {ctf_image.shape} does not match expected "
+        f"({ny}, {nx // 2 + 1}) before transpose"
+    )
+    ctf_image = ctf_image.T  # now (nx//2+1, ny)
 
     # Apply CTF
     spectrum_ctf = spectrum * ctf_image

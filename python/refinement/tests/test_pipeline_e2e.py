@@ -55,6 +55,7 @@ from .fixtures.generate_synthetic_data import (
     GroundTruthCTF,
     MicroscopeParams,
     SyntheticDataset,
+    compute_snr_of_tiles,
     generate_synthetic_dataset,
 )
 
@@ -413,8 +414,6 @@ class TestSNRVerification:
         underestimates per-tile SNR due to CTF variation across tilt angles,
         so bounds are generous while still catching gross generation errors.
         """
-        from .fixtures.generate_synthetic_data import compute_snr_of_tiles
-
         # Verify dataset records the expected SNR
         assert synthetic_data.snr == 5.0, (
             f"Dataset SNR is {synthetic_data.snr}, expected 5.0"
@@ -444,7 +443,6 @@ class TestSNRVerification:
 
 
 @pytest.mark.slow
-@pytest.mark.gpu
 class TestGradientSanityCheck:
     """Verify gradient validity at the initial (offset) parameters.
 
@@ -698,57 +696,26 @@ class TestOptimizerComparison:
     """Compare L-BFGS-B and ADAM convergence on the same synthetic data."""
 
     def test_lbfgsb_fewer_iterations(
-        self, synthetic_data: SyntheticDataset,
-        tmp_path_factory: pytest.TempPathFactory,
+        self,
+        lbfgsb_result: tuple[Path, SyntheticDataset, PipelineResults],
+        adam_result: tuple[Path, SyntheticDataset, PipelineResults],
     ) -> None:
         """L-BFGS-B converges in fewer iterations than ADAM.
 
-        Both optimizers are run with the same maximum iteration budget.
-        L-BFGS-B, being a quasi-Newton method, should achieve comparable
-        or better score in fewer iterations.
+        Both optimizers are run with the same maximum iteration budget
+        (via module-scoped fixtures).  L-BFGS-B, being a quasi-Newton
+        method, should achieve comparable or better score in fewer
+        iterations.
         """
-        max_iter = _MAX_ITERATIONS
-
-        # Run L-BFGS-B
-        lbfgsb_dir = tmp_path_factory.mktemp("cmp_lbfgsb")
-        lbfgsb_out = lbfgsb_dir / "refined.star"
-        lbfgsb_result = refine_ctf_from_star(
-            synthetic_data.offset_star_path,
-            synthetic_data.stack_path,
-            synthetic_data.reference_path,
-            lbfgsb_out,
-            options=PipelineOptions(
-                optimizer_type="lbfgsb",
-                maximum_iterations=max_iter,
-                minimum_global_iterations=3,
-                lowpass_cutoff=_LOWPASS_CUTOFF,
-                highpass_cutoff=_HIGHPASS_CUTOFF,
-            ),
-        )
-
-        # Run ADAM
-        adam_dir = tmp_path_factory.mktemp("cmp_adam")
-        adam_out = adam_dir / "refined.star"
-        adam_result = refine_ctf_from_star(
-            synthetic_data.offset_star_path,
-            synthetic_data.stack_path,
-            synthetic_data.reference_path,
-            adam_out,
-            options=PipelineOptions(
-                optimizer_type="adam",
-                maximum_iterations=max_iter,
-                minimum_global_iterations=3,
-                lowpass_cutoff=_LOWPASS_CUTOFF,
-                highpass_cutoff=_HIGHPASS_CUTOFF,
-            ),
-        )
+        _, _, lbfgsb_pipeline = lbfgsb_result
+        _, _, adam_pipeline = adam_result
 
         # Compare total iterations across all tilt groups
         lbfgsb_total_iters = sum(
-            tgr.n_iterations for tgr in lbfgsb_result.tilt_group_results
+            tgr.n_iterations for tgr in lbfgsb_pipeline.tilt_group_results
         )
         adam_total_iters = sum(
-            tgr.n_iterations for tgr in adam_result.tilt_group_results
+            tgr.n_iterations for tgr in adam_pipeline.tilt_group_results
         )
 
         assert lbfgsb_total_iters <= adam_total_iters, (
@@ -968,25 +935,30 @@ class TestDatasetIntegrity:
         offset_particles, _ = parse_star_file(synthetic_data.offset_star_path)
         truth_particles, _ = parse_star_file(synthetic_data.truth_star_path)
 
-        op = offset_particles[0]
-        tp = truth_particles[0]
+        assert len(offset_particles) == len(truth_particles)
 
-        offset_mean = (op["defocus_1"] + op["defocus_2"]) / 2.0
-        truth_mean = (tp["defocus_1"] + tp["defocus_2"]) / 2.0
+        for idx, (op, tp) in enumerate(
+            zip(offset_particles, truth_particles, strict=True),
+        ):
+            offset_mean = (op["defocus_1"] + op["defocus_2"]) / 2.0
+            truth_mean = (tp["defocus_1"] + tp["defocus_2"]) / 2.0
 
-        # Verify the offset is approximately +300A
-        assert abs((offset_mean - truth_mean) - _STANDARD_OFFSET.defocus_offset) < 1.0, (
-            f"Defocus offset is {offset_mean - truth_mean:.1f}A, "
-            f"expected ~{_STANDARD_OFFSET.defocus_offset}A"
-        )
+            # Verify the offset is approximately +300A
+            assert abs(
+                (offset_mean - truth_mean) - _STANDARD_OFFSET.defocus_offset
+            ) < 1.0, (
+                f"Particle {idx}: defocus offset is "
+                f"{offset_mean - truth_mean:.1f}A, "
+                f"expected ~{_STANDARD_OFFSET.defocus_offset}A"
+            )
 
-        # Verify angle offset matches _STANDARD_OFFSET
-        expected_angle_offset = _STANDARD_OFFSET.angle_offset
-        assert abs(
-            (op["defocus_angle"] - tp["defocus_angle"])
-            - expected_angle_offset
-        ) < 0.1, (
-            f"Angle offset is "
-            f"{op['defocus_angle'] - tp['defocus_angle']:.2f} deg, "
-            f"expected ~{expected_angle_offset} deg"
-        )
+            # Verify angle offset matches _STANDARD_OFFSET
+            expected_angle_offset = _STANDARD_OFFSET.angle_offset
+            assert abs(
+                (op["defocus_angle"] - tp["defocus_angle"])
+                - expected_angle_offset
+            ) < 0.1, (
+                f"Particle {idx}: angle offset is "
+                f"{op['defocus_angle'] - tp['defocus_angle']:.2f} deg, "
+                f"expected ~{expected_angle_offset} deg"
+            )
