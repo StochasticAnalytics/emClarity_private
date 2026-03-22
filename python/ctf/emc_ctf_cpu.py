@@ -10,8 +10,6 @@ Output layout: C-contiguous float32, shape (ny, out_nx).
 
 from __future__ import annotations
 
-from typing import Tuple
-
 import numpy as np
 
 from .emc_ctf_params import CTFParams
@@ -28,7 +26,7 @@ class CTFCalculatorCPU:
     def compute(
         self,
         params: CTFParams,
-        dims: Tuple[int, int],
+        dims: tuple[int, int],
         centered: bool = False,
     ) -> np.ndarray:
         """Compute a 2-D CTF image on the CPU.
@@ -121,9 +119,9 @@ class CTFCalculatorCPU:
     def compute_with_derivatives(
         self,
         params: CTFParams,
-        dims: Tuple[int, int],
+        dims: tuple[int, int],
         centered: bool = False,
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Compute CTF and analytical derivatives on the CPU.
 
         Returns the CTF image and its partial derivatives with respect to

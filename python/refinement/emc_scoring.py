@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import logging
 import types as _types
-from typing import TYPE_CHECKING, Protocol, Tuple, Union
+from typing import TYPE_CHECKING, Protocol, Union
 
 import numpy as np
 
@@ -59,7 +59,7 @@ class CTFCalculatorLike(Protocol):
     def compute(
         self,
         params: CTFParams,
-        dims: Tuple[int, int],
+        dims: tuple[int, int],
         centered: bool = ...,
     ) -> NDArray: ...
 
@@ -245,6 +245,10 @@ def evaluate_score_and_shifts(
 
         # --- Build per-particle CTFParams ---------------------------------
         angle_eff_deg = np.degrees(angle_eff_rad)
+        # do_sq_ctf is intentionally False regardless of base_ctf_params:
+        # cross-correlation scoring requires the signed CTF (sin), not CTF^2,
+        # because the sign encodes the contrast-transfer phase relationship
+        # needed for correct defocus-dependent interference.
         particle_ctf = CTFParams.from_defocus_pair(
             df1=df1_eff,
             df2=df2_eff,
@@ -263,9 +267,11 @@ def evaluate_score_and_shifts(
         ctf_image = ctf_calculator.compute(particle_ctf, (nx, ny))
         ctf_image = ctf_image.T  # now (nx//2+1, ny)
 
-        # Move to correct device when data lives on GPU but CTF is on CPU
+        # Move CTF to correct device when data and CTF disagree.
         if xp is not np and isinstance(ctf_image, np.ndarray):
             ctf_image = xp.asarray(ctf_image)
+        elif xp is np and HAS_CUPY and isinstance(ctf_image, cp.ndarray):
+            ctf_image = ctf_image.get()
 
         # --- Migrate reference FT to correct device if needed ---------------
         ref_ft_i = ref_fts[i]
@@ -278,7 +284,7 @@ def evaluate_score_and_shifts(
 
         # --- Normalise reference ------------------------------------------
         ref_norm = fourier_handler.compute_ref_norm(ref_with_ctf)
-        if ref_norm < 1e-30:
+        if not (ref_norm >= 1e-30):
             logger.warning(
                 "Particle %d skipped: degenerate CTF (ref_norm=%g < 1e-30)",
                 i,

@@ -402,7 +402,7 @@ class TestEffectiveDefocus:
         self, ft: FourierTransformer, ctf_calc: CTFCalculatorCPU,
         base_ctf: CTFParams, peak_mask: np.ndarray,
     ) -> None:
-        """At tilt=0, dz has no effect (cos(0)=1); at tilt=60,
+        """At tilt=0, dz has full effect (cos(0)=1); at tilt=60,
         contribution is dz*cos(60)=dz/2."""
         data_ft, ref_ft = _make_synthetic_particle(
             ft, ctf_calc, base_ctf, seed=88,
@@ -524,7 +524,7 @@ class TestDfSwap:
         # delta_half = -200 flips ordering: df1=20000+(-200)=19800,
         #                                   df2=19800-(-200)=20000
         # Swap fires.
-        params = np.array([-0.0, -200.0, 0.0, 0.0])
+        params = np.array([0.0, -200.0, 0.0, 0.0])
         score, scores, _ = _score_one(
             ft, ctf_calc, base, peak_mask, data_ft, ref_ft, params=params,
         )
@@ -712,9 +712,17 @@ class TestGaussianPenalty:
             shift_sigma=1e6,
             z_offset_sigma=50.0,  # tight z penalty
         )
-        # With huge sigma, penalty ≈ 1. With tight sigma (50A), dz=100A
-        # gives weight = exp(-100^2/(2*50^2)) ≈ 0.135.
-        # So score_large_sigma must be substantially higher than score_tight_sigma.
+        # Positive control: with huge sigma the penalty weight ≈ 1.0,
+        # so score_large_sigma should remain close to the dz=0 baseline.
+        # The only difference is CTF mismatch from dz=100A.
+        assert abs(score_large_sigma - score_zero_dz) < abs(score_zero_dz - score_tight_sigma), (
+            f"Large-sigma gap ({abs(score_large_sigma - score_zero_dz):.4f}) "
+            f"should be smaller than tight-sigma gap "
+            f"({abs(score_zero_dz - score_tight_sigma):.4f})"
+        )
+
+        # With tight sigma (50A), dz=100A gives weight =
+        # exp(-100^2/(2*50^2)) ≈ 0.135, so score drops substantially.
         assert score_large_sigma > score_tight_sigma, (
             f"Large sigma ({score_large_sigma:.4f}) should exceed tight sigma "
             f"({score_tight_sigma:.4f}) — penalty not applied when sigma is huge"

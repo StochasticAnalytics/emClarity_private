@@ -264,6 +264,9 @@ class TestCsInternal:
             df1=15000.0, df2=14000.0, angle_degrees=0.0, pixel_size=1.0,
             wavelength=0.02, cs_mm=cs_mm, amplitude_contrast=0.07,
         )
+        assert p.cs_mm == np.float32(cs_mm), (
+            f"cs_mm should round-trip: expected {np.float32(cs_mm)}, got {p.cs_mm}"
+        )
         assert p.cs_internal == expected
 
 
