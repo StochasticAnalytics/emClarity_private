@@ -7,6 +7,7 @@ emClarity's CTF refinement pipeline.
 
 from .emc_star_parser import (
     COLUMN_SPEC,
+    NUM_COLUMNS,
     group_particles_by_tilt,
     parse_star_file,
     write_star_file,
@@ -14,6 +15,7 @@ from .emc_star_parser import (
 
 __all__ = [
     "COLUMN_SPEC",
+    "NUM_COLUMNS",
     "group_particles_by_tilt",
     "parse_star_file",
     "write_star_file",

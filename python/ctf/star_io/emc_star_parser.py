@@ -93,7 +93,10 @@ def _format_value(value: int | float | str, col_type: type) -> str:
     """Format a particle field value for writing to a star file.
 
     Uses representations that roundtrip through parsing:
-    - int: decimal integer string (no decimal point)
+    - int: decimal integer string (no decimal point). Non-integral float
+      values are truncated toward zero (e.g., 1.9 → "1") to match the
+      MATLAB reference behaviour where all numeric columns are read via
+      str2double then cast to integer for index/group fields.
     - float: Python str() which produces the shortest representation that
       uniquely identifies the float (guarantees float(str(x)) == x)
     - str: returned unchanged
@@ -184,6 +187,9 @@ def write_star_file(
 
     Raises:
         KeyError: If a particle dict is missing a required column key.
+        ValueError: If any particle's ``original_image_filename`` contains
+            spaces (the whitespace-delimited star format cannot represent
+            filenames with embedded spaces).
     """
     path = Path(path)
 

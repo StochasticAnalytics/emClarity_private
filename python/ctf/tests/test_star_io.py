@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from python.ctf.star_io.emc_star_parser import (
+from ..star_io.emc_star_parser import (
     COLUMN_SPEC,
     NUM_COLUMNS,
     group_particles_by_tilt,
@@ -295,6 +295,25 @@ class TestRoundtrip:
 
 
 # ---------------------------------------------------------------------------
+# Write error handling (negative controls)
+# ---------------------------------------------------------------------------
+
+class TestWriteErrors:
+    """Verify write_star_file raises on unsupported inputs."""
+
+    def test_space_in_filename_raises_value_error(
+        self, parsed: tuple[list[dict], list[str]], tmp_path: Path
+    ) -> None:
+        """Filenames with spaces must raise ValueError (whitespace-delimited format)."""
+        particles, headers = parsed
+        # Shallow-copy the first particle and inject a space in the filename.
+        bad_particle = dict(particles[0])
+        bad_particle["original_image_filename"] = "tilt A.mrc"
+        with pytest.raises(ValueError, match="spaces"):
+            write_star_file(tmp_path / "should_not_exist.star", [bad_particle], headers)
+
+
+# ---------------------------------------------------------------------------
 # Group by tilt (acceptance criterion)
 # ---------------------------------------------------------------------------
 
@@ -363,8 +382,8 @@ class TestHeaderEdgeCases:
         p.write_text(content)
         particles, header_lines = parse_star_file(p)
         assert len(particles) == 1
-        # All blank lines + comment + data_ + loop_ + label = headers
-        assert len(header_lines) >= 5
+        # comment + blank + data_test + blank + loop_ + label + blank = 7
+        assert len(header_lines) == 7
 
     def test_multiple_comment_styles(self, tmp_path: Path) -> None:
         """Lines starting with # should be treated as headers regardless of content."""
