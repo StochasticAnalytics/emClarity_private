@@ -4,8 +4,8 @@ CUDA-accelerated basic array operations for emClarity.
 This module provides GPU-accelerated implementations of basic array operations
 using CuPy's RawKernel interface to load custom CUDA kernels.
 
-All arrays use Fortran-contiguous (column-major) memory layout for optimal
-CUDA kernel performance and MATLAB compatibility.
+All arrays use C-contiguous (row-major) memory layout for optimal
+CUDA kernel performance and CuPy/NumPy compatibility.
 """
 
 from pathlib import Path

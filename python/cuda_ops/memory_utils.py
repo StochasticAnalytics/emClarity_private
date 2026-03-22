@@ -2,7 +2,7 @@
 memory_utils.py
 
 Memory layout utilities for emClarity CUDA operations.
-Ensures consistent Fortran-style (column-major) memory layout for CUDA kernels.
+Ensures consistent C-contiguous (row-major) memory layout for CUDA kernels.
 
 Author: emClarity Python Conversion  
 Date: September 2025
@@ -20,8 +20,11 @@ STRICT_CHECKS = os.getenv("EMCLARITY_NO_STRICT_CUPY_ORDERING_CHECKS", "0") != "1
 
 def ensure_f(x: cp.ndarray, *, allow_copy: bool = False, dtype: Optional[cp.dtype] = None) -> cp.ndarray:
     """
-    Ensure array is Fortran-contiguous (column-major) as required by emClarity CUDA kernels.
-    
+    Legacy: ensure array is Fortran-contiguous (column-major).
+
+    Retained for backward compatibility with code that still needs F-order arrays.
+    New CUDA kernel code should use ensure_c() for C-contiguous (row-major) layout.
+
     Args:
         x: Input CuPy array
         allow_copy: If True, allow copying when input is not F-contiguous
@@ -60,11 +63,8 @@ def ensure_f(x: cp.ndarray, *, allow_copy: bool = False, dtype: Optional[cp.dtyp
 
 def ensure_c(x: cp.ndarray, *, allow_copy: bool = False, dtype: Optional[cp.dtype] = None) -> cp.ndarray:
     """
-    Ensure array is C-contiguous (row-major).
-    
-    Note: This function is provided for completeness but emClarity CUDA kernels
-    should use Fortran-contiguous arrays. Use ensure_f() instead.
-    
+    Ensure array is C-contiguous (row-major) as required by emClarity CUDA kernels.
+
     Args:
         x: Input CuPy array
         allow_copy: If True, allow copying when input is not C-contiguous  
@@ -103,15 +103,18 @@ def ensure_c(x: cp.ndarray, *, allow_copy: bool = False, dtype: Optional[cp.dtyp
 
 def create_fortran_array(shape, dtype=cp.float32, **kwargs) -> cp.ndarray:
     """
-    Create a new Fortran-contiguous CuPy array.
-    
+    Legacy: create a new Fortran-contiguous (column-major) CuPy array.
+
+    Retained for backward compatibility. New code should create C-contiguous
+    arrays via cp.empty() (which defaults to C-order) or ensure_c().
+
     Args:
         shape: Array shape
         dtype: Data type (default: float32)
         **kwargs: Additional arguments passed to cp.empty
-        
+
     Returns:
-        Fortran-contiguous array
+        Fortran-contiguous array (legacy layout)
     """
     # Force Fortran order
     kwargs['order'] = 'F'
