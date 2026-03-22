@@ -233,11 +233,11 @@ def refine_tilt_ctf(
     z_bound = options.z_offset_sigma * 3.0
     astig_angle_range = np.pi / 4.0  # [-45, +45] degrees
 
-    # Asymmetric lower bound for half-astigmatism: prevent the effective
-    # half-astigmatism (base + delta) from crossing zero, with a 1A margin.
-    # This maintains the df1 >= df2 convention during optimisation.
+    # Half-astigmatism uses symmetric bounds, same as defocus.  The df1 >= df2
+    # convention is enforced by post-optimisation canonicalisation (swap below)
+    # rather than by constraining the search space during optimisation.
     base_half_val = float(base_ctf_params.half_astigmatism)
-    half_astig_lower = max(-dsr, -(base_half_val - 1.0))
+    half_astig_lower = -dsr
 
     lower_bounds = np.concatenate([
         np.array([-dsr, half_astig_lower, -astig_angle_range]),
