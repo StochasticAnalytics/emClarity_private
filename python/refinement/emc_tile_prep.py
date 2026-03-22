@@ -391,6 +391,10 @@ def prepare_data_tile(
     """
     xp = _xp_for(tile)
 
+    # Ensure mask is on the same device as tile
+    if xp is not np:
+        mask = cp.asarray(mask)
+
     # Apply soft mask
     masked = mask * tile
 
