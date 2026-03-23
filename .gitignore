@@ -168,3 +168,5 @@ testScripts/*.logy
 CLAUDE.md
 .claude
 dot-claude
+
+worktrees/
