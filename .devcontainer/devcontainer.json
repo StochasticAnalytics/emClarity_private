@@ -4,12 +4,21 @@
   "workspaceFolder": "${localWorkspaceFolder}",
   // NOTE: Container image must match .vscode/CONTAINER_REPO_NAME and CONTAINER_VERSION_TOP
   // Update all three when changing container version or repository
-  "image": "ghcr.io/stochasticanalytics/cistem_build_env:v4.0.0",
+  "image": "ghcr.io/stochasticanalytics/cistem_build_env:v4.1.1",
   "initializeCommand": ".devcontainer/check-version.sh",
-  "postCreateCommand": "bash .devcontainer/configure-git.sh && source ~/.nvm/nvm.sh && npm install -g @anthropic-ai/sandbox-runtime pyright typescript-language-server typescript",
+  // CLAUDE_CONFIG_DIR must be set in the host environment. On container create:
+  //   1. Fail fast if unset (prevents silent fallback to ephemeral ~/.claude)
+  //   2. Symlink ~/.claude → $CLAUDE_CONFIG_DIR so IDE plugins find config at default path
+  //   3. Install fast-moving npm packages that shouldn't be baked into the image
+  "postCreateCommand": "bash -c 'if [ -z \"$CLAUDE_CONFIG_DIR\" ]; then echo \"ERROR: CLAUDE_CONFIG_DIR not set in host env. Add export CLAUDE_CONFIG_DIR=... to ~/.bashrc\" >&2; exit 1; fi && rm -rf ~/.claude && ln -sfn \"$CLAUDE_CONFIG_DIR\" ~/.claude && npm install -g @anthropic-ai/sandbox-runtime'",
   "remoteUser": "cisTEMdev",
   "hostRequirements": {
     "gpu": "optional"
+  },
+  // containerEnv is available during postCreateCommand (unlike remoteEnv).
+  // CLAUDE_CONFIG_DIR must be here so the postCreateCommand symlink succeeds.
+  "containerEnv": {
+    "CLAUDE_CONFIG_DIR": "${localEnv:CLAUDE_CONFIG_DIR}"
   },
   "remoteEnv": {
     // We need to set this so we can use wxmctrl -lpx | grep ${WORKSPACE_BASENAME} | awk '{print $1}' to find window IDs
@@ -19,7 +28,7 @@
     "WORKSPACE_BASENAME": "${localWorkspaceFolderBasename}",
     "WORKSPACE_CONTAINER_NAME": "cisTEMx-${localEnv:USER}-${localWorkspaceFolderBasename}",
     // Persist Claude Code sessions, plans, and memories across container rebuilds
-    "CLAUDE_CONFIG_DIR": "/sa_shared/.claude"
+    "CLAUDE_CONFIG_DIR": "${localEnv:CLAUDE_CONFIG_DIR}"
   },
   // To add mounts, enable smudge/clean filters, define variable in bashrc ... cistem_mounts=("source=/scratch,target=/scratch,type=bind" "source=/sa_shared,target=/sa_shared,type=bind")"
   // Leave the following line comment, it is used as a placeholder for the devcontainer-filter.sh script to insert the mounts.
@@ -67,3 +76,4 @@
       ]
     }
   }
+}

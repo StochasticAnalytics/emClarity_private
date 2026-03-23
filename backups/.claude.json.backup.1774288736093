@@ -1,0 +1,70 @@
+{
+  "numStartups": 1,
+  "installMethod": "native",
+  "autoUpdates": false,
+  "firstStartTime": "2026-03-23T17:36:24.995Z",
+  "opusProMigrationComplete": true,
+  "sonnet1m45MigrationComplete": true,
+  "userID": "87227b5bb656478af6f7ea439f616ef1fb6829eec9157e9bc8fca00da80d2b32",
+  "autoUpdatesProtectedForNative": true,
+  "changelogLastFetched": 1774288632618,
+  "shiftEnterKeyBindingInstalled": true,
+  "projects": {
+    "/sa_shared/git/emClarity_private": {
+      "allowedTools": [],
+      "mcpContextUris": [],
+      "mcpServers": {},
+      "enabledMcpjsonServers": [],
+      "disabledMcpjsonServers": [],
+      "hasTrustDialogAccepted": true,
+      "projectOnboardingSeenCount": 0,
+      "hasClaudeMdExternalIncludesApproved": false,
+      "hasClaudeMdExternalIncludesWarningShown": false,
+      "hasCompletedProjectOnboarding": true,
+      "exampleFiles": [
+        "mCompile.sh",
+        "BH_ctf_Correct3d.m",
+        "BH_alignRaw3d_v2.m",
+        "BH_synthetic_mapBack.m",
+        "BH_average3d.m"
+      ],
+      "exampleFilesGeneratedAt": 1774288644229
+    }
+  },
+  "hasCompletedOnboarding": true,
+  "lastOnboardingVersion": "2.1.81",
+  "githubRepoPaths": {
+    "stochasticanalytics/emclarity_private": [
+      "/sa_shared/git/emClarity_private"
+    ]
+  },
+  "clientDataCache": {
+    "data": null,
+    "timestamp": 1774288642798
+  },
+  "opus1mMergeNoticeSeenCount": 1,
+  "lastReleaseNotesSeen": "2.1.81",
+  "officialMarketplaceAutoInstallAttempted": true,
+  "officialMarketplaceAutoInstalled": false,
+  "officialMarketplaceAutoInstallFailReason": "unknown",
+  "officialMarketplaceAutoInstallRetryCount": 1,
+  "officialMarketplaceAutoInstallLastAttemptTime": 1774288644077,
+  "officialMarketplaceAutoInstallNextRetryTime": 1774295844077,
+  "hasIdeOnboardingBeenShown": {
+    "vscode": true
+  },
+  "oauthAccount": {
+    "accountUuid": "944216b7-b55e-4c82-9cdf-21b7d421fb58",
+    "emailAddress": "ben@clearnoise.org",
+    "organizationUuid": "16eb2890-95c6-4405-aa90-57833d48546b",
+    "hasExtraUsageEnabled": false,
+    "billingType": "stripe_subscription",
+    "accountCreatedAt": "2025-09-16T14:11:30.807223Z",
+    "subscriptionCreatedAt": "2025-09-16T14:13:21.679500Z",
+    "displayName": "Benjamin",
+    "organizationRole": "admin",
+    "workspaceRole": null,
+    "organizationName": "ben@clearnoise.org's Organization"
+  },
+  "anonymousId": "claudecode.v1.1b838367-89dd-4290-a29c-6fbb51c016ad"
+}
