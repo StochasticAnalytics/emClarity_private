@@ -6,7 +6,7 @@
   // Update all three when changing container version or repository
   "image": "ghcr.io/stochasticanalytics/cistem_build_env:v4.0.0",
   "initializeCommand": ".devcontainer/check-version.sh",
-  "postCreateCommand": "bash .devcontainer/configure-git.sh",
+  "postCreateCommand": "bash .devcontainer/configure-git.sh && source ~/.nvm/nvm.sh && npm install -g @anthropic-ai/sandbox-runtime pyright typescript-language-server typescript",
   "remoteUser": "cisTEMdev",
   "hostRequirements": {
     "gpu": "optional"
@@ -35,6 +35,10 @@
   // Whisper Assistant server runs on separate whisper-net bridge network with port 4444 exposed to host.
   // This devcontainer accesses whisper via localhost:4444 through host network.
   "runArgs": [
+    "--gpus",
+    "all",
+    "--security-opt",
+    "apparmor=unconfined",
     "-it",
     "--net",
     "host",
