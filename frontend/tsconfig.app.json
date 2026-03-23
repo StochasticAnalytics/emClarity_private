@@ -29,7 +29,8 @@
     /* Path aliases */
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*", "../dot-claude/frontend/src/*"],
+      "@ui/*": ["../dot-claude/frontend/src/components/ui/*"]
     }
   },
   "include": ["src"]
