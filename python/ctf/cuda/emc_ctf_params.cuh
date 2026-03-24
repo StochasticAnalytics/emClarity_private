@@ -20,9 +20,9 @@
 /* Provide cufftReal typedef so we don't need the full cuFFT header. */
 typedef float cufftReal;
 
-const float PI = 3.14159265358979323f;
-const float PI_sq = PI * PI;
-const float PI_half = 0.5f * PI;
+constexpr float PI = 3.14159265358979323f;
+constexpr float PI_sq = PI * PI;
+constexpr float PI_half = 0.5f * PI;
 
 struct ctfParams {
 

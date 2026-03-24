@@ -1,0 +1,39 @@
+{
+  "condition_index": 11,
+  "mean_defocus": 9000.0,
+  "half_astigmatism": 500.0,
+  "defocus_angle": 50.0,
+  "df1": 9500.0,
+  "df2": 8500.0,
+  "pixel_size": 1.2,
+  "wavelength": 0.019687575658938104,
+  "snr_structural": 1.0,
+  "snr_shot": 0.1,
+  "n_particles": 10,
+  "tilt_angle": 0.0,
+  "delta_z_sigma": 30.0,
+  "particle_delta_zs": [
+    -7.82802153515867,
+    -34.47746308118323,
+    25.441429807020633,
+    -35.51778479404605,
+    -10.439218082008377,
+    16.976071964549917,
+    -1.9275636165685306,
+    6.425375364376685,
+    -49.584313037677184,
+    17.27197310491789
+  ],
+  "perturbations": {
+    "small": {
+      "defocus": 100.0,
+      "astig": 30.0,
+      "angle": 2.0
+    },
+    "large": {
+      "defocus": 500.0,
+      "astig": 150.0,
+      "angle": 8.0
+    }
+  }
+}

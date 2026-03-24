@@ -14,7 +14,10 @@
   //      - @playwright/cli: Headless browser CLI for visual verification of frontend work (screenshots, snapshots).
   //        Required so Claude can self-verify CSS/layout changes without human eyeball per iteration.
   //        install-browser downloads the bundled Chromium binary (~130MB).
-  "postCreateCommand": "bash -c 'if [ -z \"$CLAUDE_CONFIG_DIR\" ]; then echo \"ERROR: CLAUDE_CONFIG_DIR not set in host env. Add export CLAUDE_CONFIG_DIR=... to ~/.bashrc\" >&2; exit 1; fi && rm -rf ~/.claude && ln -sfn \"$CLAUDE_CONFIG_DIR\" ~/.claude && npm install -g @anthropic-ai/sandbox-runtime @playwright/cli@0.1.1 && playwright-cli install-browser'",
+  // TODO(CuPy): cupy-cuda12x should be added to the base Docker image (cistem_build_env)
+  // rather than installed here. It's here temporarily because the image is built in a
+  // separate repo and we need CuPy now for CTF refinement GPU testing.
+  "postCreateCommand": "bash -c 'if [ -z \"$CLAUDE_CONFIG_DIR\" ]; then echo \"ERROR: CLAUDE_CONFIG_DIR not set in host env. Add export CLAUDE_CONFIG_DIR=... to ~/.bashrc\" >&2; exit 1; fi && rm -rf ~/.claude && ln -sfn \"$CLAUDE_CONFIG_DIR\" ~/.claude && npm install -g @anthropic-ai/sandbox-runtime @playwright/cli@0.1.1 && playwright-cli install-browser && pip install cupy-cuda12x'",
   // On every container start: generate env.sh and ensure .bashrc sources it.
   // This makes $PROJECT_ROOT and $DOT_CLAUDE_DIR available in all terminals.
   "postStartCommand": "bash -c 'dot-claude/.claude/scripts/setup_env.sh && grep -q \"dot-claude/.claude/env.sh\" ~/.bashrc 2>/dev/null || echo \"\\n# Project environment from setup_env.sh\\n[ -f \\\"${PWD}/dot-claude/.claude/env.sh\\\" ] && source \\\"${PWD}/dot-claude/.claude/env.sh\\\"\" >> ~/.bashrc'",
