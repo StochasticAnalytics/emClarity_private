@@ -9,8 +9,15 @@
   // CLAUDE_CONFIG_DIR must be set in the host environment. On container create:
   //   1. Fail fast if unset (prevents silent fallback to ephemeral ~/.claude)
   //   2. Symlink ~/.claude → $CLAUDE_CONFIG_DIR so IDE plugins find config at default path
-  //   3. Install fast-moving npm packages that shouldn't be baked into the image
-  "postCreateCommand": "bash -c 'if [ -z \"$CLAUDE_CONFIG_DIR\" ]; then echo \"ERROR: CLAUDE_CONFIG_DIR not set in host env. Add export CLAUDE_CONFIG_DIR=... to ~/.bashrc\" >&2; exit 1; fi && rm -rf ~/.claude && ln -sfn \"$CLAUDE_CONFIG_DIR\" ~/.claude && npm install -g @anthropic-ai/sandbox-runtime'",
+  //   3. Install fast-moving npm packages that shouldn't be baked into the image:
+  //      - @anthropic-ai/sandbox-runtime: Claude Code's Bash sandbox (bwrap). Iterates faster than Docker image releases.
+  //      - @playwright/cli: Headless browser CLI for visual verification of frontend work (screenshots, snapshots).
+  //        Required so Claude can self-verify CSS/layout changes without human eyeball per iteration.
+  //        install-browser downloads the bundled Chromium binary (~130MB).
+  "postCreateCommand": "bash -c 'if [ -z \"$CLAUDE_CONFIG_DIR\" ]; then echo \"ERROR: CLAUDE_CONFIG_DIR not set in host env. Add export CLAUDE_CONFIG_DIR=... to ~/.bashrc\" >&2; exit 1; fi && rm -rf ~/.claude && ln -sfn \"$CLAUDE_CONFIG_DIR\" ~/.claude && npm install -g @anthropic-ai/sandbox-runtime @playwright/cli@0.1.1 && playwright-cli install-browser'",
+  // On every container start: generate env.sh and ensure .bashrc sources it.
+  // This makes $PROJECT_ROOT and $DOT_CLAUDE_DIR available in all terminals.
+  "postStartCommand": "bash -c 'dot-claude/.claude/scripts/setup_env.sh && grep -q \"dot-claude/.claude/env.sh\" ~/.bashrc 2>/dev/null || echo \"\\n# Project environment from setup_env.sh\\n[ -f \\\"${PWD}/dot-claude/.claude/env.sh\\\" ] && source \\\"${PWD}/dot-claude/.claude/env.sh\\\"\" >> ~/.bashrc'",
   "remoteUser": "cisTEMdev",
   "hostRequirements": {
     "gpu": "optional"
@@ -40,10 +47,9 @@
   // end_mounts
   // UID is 1000 in base container (default)
   "updateRemoteUserUID": false,
-  // Network configuration: Using host networking for maximum compatibility.
-  // Whisper Assistant server runs on separate whisper-net bridge network with port 4444 exposed to host.
-  // This devcontainer accesses whisper via localhost:4444 through host network.
-  //thon orchestrator.py --prd templates/prd-dashboard-combined.json --config config.worktree.json --stream
+  // Network configuration: Using host networking for X11 forwarding and bwrap sandbox compatibility.
+  // NET_ADMIN required for bwrap to create network namespaces (CLONE_NEWNET).
+  // Physical firewall restricts access to 172.16.10.0/24 VLAN.
   "runArgs": [
     "--gpus",
     "all",
@@ -67,7 +73,7 @@
     "vscode": {
       "extensions": [
         "maelvalais.autoconf",
-        "ms-python.autopep8",
+        "charliermarsh.ruff",
         "ms-vscode.cpptools",
         "ms-vscode.cpptools-extension-pack",
         "cschlosser.doxdocgen",

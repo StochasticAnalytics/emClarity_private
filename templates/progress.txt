@@ -985,3 +985,10 @@ Developer: Completed 2026-03-22 (TASK-013 PATCH round 3)
     compute_snr_of_tiles and updated call site
   - [LOW] Added fixed-peak approximation caveat to gradient FD test docstring
   - All 165 refinement module tests pass
+
+Developer: Patch Completed
+  - Root cause: oracle ran with project_root=dot-claude/ but backend/ and tests/ were in parent worktree
+  - Fix 1: Created backend symlink (dot-claude/backend -> ../backend); fastapi installed; 85 backend tests pass
+  - Fix 2: Created tests symlink (dot-claude/tests -> ../tests); created emclarity_e2e_plugin as pytest11 plugin that auto-starts FastAPI server; 35 e2e tests pass
+  - Fix 3: Assert count restored to 83 via tests/ symlink (grep -r assert tests/ now finds real files)
+  - Key insight: pytest resolves symlinks to real paths for conftest.py discovery, so a conftest.py at dot-claude/ level is NOT found. Used pytest11 entry_point mechanism instead (loaded globally by pytest regardless of rootdir).
