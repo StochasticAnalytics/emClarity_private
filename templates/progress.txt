@@ -1159,3 +1159,21 @@ Developer: Completed TASK-010 QA patch
   - Fix 5 (MEDIUM): List routes use _safe_parse() to skip malformed entries (partial-failure pattern)
   - Fix 6 (MEDIUM): oauthAvailable renamed to claudeCliAvailable (accurately describes binary check)
   - All 36 backend tests pass; TypeScript compiles clean
+
+Developer: Completed TASK-011 [2026-03-25]
+  Task: TASK-011 - Decision Log fullstack wiring
+  - Created decision_service.py: Python port of TypeScript decisionParser.ts
+  - Parser reads DOT_CLAUDE_DIR/.claude/decisions.md using ## heading + bold-labeled section format
+  - create_decision appends entries via open('a') mode (append-only, no read-modify-write)
+  - Updated api/decisions.py: GET returns parsed entries sorted date-descending, POST accepts DecisionEntry
+  - Created useDecisions.ts hook (60s polling) and useCreateDecision mutation
+  - Updated DecisionLogView.tsx: replaced SEED_DECISIONS_MD with useDecisions hook
+  - Wrapped timeline in DataSection for loading/error/retry states
+  - TypeScript compiles without errors; pre-existing test failures unrelated to changes
+
+Developer: Completed TASK-011 PATCH [2026-03-25]
+  Task: TASK-011 - Decision Log QA defect fixes
+  - Fixed dialog closing before mutation resolves; now stays open during pending, shows error inline on failure
+  - Added Pydantic field_validator to reject blank context/decision on write, eliminating phantom entries
+  - Added frontend context validation with required indicator
+  - Fixed _extract_section regex to distinguish section headers from inline bold text
