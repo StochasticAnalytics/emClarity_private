@@ -257,7 +257,7 @@ class FourierTransformer:
                 f"apply_bandpass requires a 2-D array, got ndim={spectrum.ndim}"
             )
 
-        if pixel_size <= 0:
+        if not pixel_size > 0:
             raise ValueError(
                 f"pixel_size must be positive, got {pixel_size}"
             )

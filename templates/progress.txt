@@ -1064,3 +1064,11 @@ Developer: Completed TASK-005b [2026-03-25]
   - Positive control: finite score reaches optimizer.step(), confirming mock wiring validity
   - Mocks evaluate_score_and_gradient and _create_adam_optimizer to isolate guard logic
   - All 237 refinement tests pass (235 existing + 2 new), ruff clean
+
+Developer: Completed TASK-006 [2026-03-25]
+  TASK-006: Regression tests for pixel_size and bandpass validation (KI-244)
+  - Added TestBandpassPixelSizeGuard class to test_fourier_utils_guards.py
+  - test_zero_pixel_size_raises: pixel_size=0.0 triggers ValueError
+  - test_negative_pixel_size_raises: pixel_size=-1.0 triggers ValueError
+  - test_valid_pixel_size_passes: pixel_size=1.34 positive control, no error
+  - All 14 guard tests pass, ruff clean on modified file
