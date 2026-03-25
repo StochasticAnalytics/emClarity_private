@@ -65,7 +65,7 @@ class TestUnfreezeLrValues:
         # Build some history
         rng = np.random.default_rng(42)
         for _i in range(5):
-            opt.step(rng.standard_normal(n))
+            opt.step(rng.standard_normal(n), score_is_maximized=True)
         assert opt.get_history_length() > 0
 
         # Freeze, then unfreeze with lr_values
@@ -110,7 +110,7 @@ class TestUnfreezeLrValues:
 
             for _ in range(20):
                 params = opt.get_current_parameters()
-                opt.step(grad_f(params), score=f(params))
+                opt.step(grad_f(params), score=f(params), score_is_maximized=False)
 
             if use_lr:
                 opt.unfreeze_parameters(
@@ -121,7 +121,7 @@ class TestUnfreezeLrValues:
 
             for _ in range(20):
                 params = opt.get_current_parameters()
-                opt.step(grad_f(params), score=f(params))
+                opt.step(grad_f(params), score=f(params), score_is_maximized=False)
 
             results.append(opt.get_current_parameters())
 

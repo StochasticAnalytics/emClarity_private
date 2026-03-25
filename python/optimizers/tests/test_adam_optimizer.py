@@ -157,26 +157,26 @@ class TestNaNGradient:
     def test_nan_gradient_raises(self) -> None:
         opt = AdamOptimizer(np.array([1.0, 2.0]))
         with pytest.raises(ValueError, match="NaN"):
-            opt.step(np.array([np.nan, 0.5]))
+            opt.step(np.array([np.nan, 0.5]), score_is_maximized=True)
 
     def test_all_nan_gradient_raises(self) -> None:
         opt = AdamOptimizer(np.array([1.0]))
         with pytest.raises(ValueError, match="NaN"):
-            opt.step(np.array([np.nan]))
+            opt.step(np.array([np.nan]), score_is_maximized=True)
 
     def test_parameters_unchanged_after_nan_rejection(self) -> None:
         """Parameters are not modified when NaN gradient is rejected."""
         opt = AdamOptimizer(np.array([1.0, 2.0]))
         initial = opt.get_current_parameters().copy()
         with pytest.raises(ValueError):
-            opt.step(np.array([np.nan, 0.5]))
+            opt.step(np.array([np.nan, 0.5]), score_is_maximized=True)
         np.testing.assert_array_equal(opt.get_current_parameters(), initial)
 
     def test_timestep_unchanged_after_nan_rejection(self) -> None:
         """Timestep does not increment on rejected NaN gradient."""
         opt = AdamOptimizer(np.array([1.0]))
         with pytest.raises(ValueError):
-            opt.step(np.array([np.nan]))
+            opt.step(np.array([np.nan]), score_is_maximized=True)
         assert opt.get_timestep() == 0
 
 
@@ -202,7 +202,7 @@ class TestSingleStep:
 
     def test_first_step_hand_computed(self) -> None:
         opt = AdamOptimizer(np.array([0.0, 0.0]))
-        opt.step(np.array([2.0, -4.0]))
+        opt.step(np.array([2.0, -4.0]), score_is_maximized=True)
 
         params = opt.get_current_parameters()
         np.testing.assert_allclose(params, [-0.001, 0.001], atol=1e-10)
@@ -210,9 +210,9 @@ class TestSingleStep:
     def test_timestep_increments(self) -> None:
         opt = AdamOptimizer(np.array([0.0]))
         assert opt.get_timestep() == 0
-        opt.step(np.array([1.0]))
+        opt.step(np.array([1.0]), score_is_maximized=True)
         assert opt.get_timestep() == 1
-        opt.step(np.array([1.0]))
+        opt.step(np.array([1.0]), score_is_maximized=True)
         assert opt.get_timestep() == 2
 
 
@@ -237,7 +237,7 @@ class TestQuadraticConvergence:
                 2.0 * (params[0] - 3.0),
                 2.0 * (params[1] + 2.0),
             ])
-            opt.step(grad)
+            opt.step(grad, score_is_maximized=True)
 
         final = opt.get_current_parameters()
         np.testing.assert_allclose(final, [3.0, -2.0], atol=0.01)
@@ -255,7 +255,7 @@ class TestQuadraticConvergence:
                 2.0 * (params[0] - 3.0),
                 2.0 * (params[1] + 2.0),
             ])
-            opt.step(grad)
+            opt.step(grad, score_is_maximized=True)
 
         final = opt.get_current_parameters()
         np.testing.assert_allclose(final, [3.0, -2.0], atol=0.01)
@@ -272,7 +272,7 @@ class TestQuadraticConvergence:
                 2.0 * (params[1] + 2.0),
             ])
             score = (params[0] - 3.0) ** 2 + (params[1] + 2.0) ** 2
-            opt.step(grad, score=score)
+            opt.step(grad, score=score, score_is_maximized=True)
 
         history = opt.get_score_history()
         # Final score should be much smaller than initial
@@ -302,7 +302,7 @@ class TestBoundsClamping:
                 2.0 * (params[0] - 3.0),
                 2.0 * (params[1] + 2.0),
             ])
-            opt.step(grad)
+            opt.step(grad, score_is_maximized=True)
             current = opt.get_current_parameters()
             assert np.all(current >= 0.0), f"Below lower bound: {current}"
             assert np.all(current <= 2.0), f"Above upper bound: {current}"
@@ -324,7 +324,7 @@ class TestBoundsClamping:
         opt = AdamOptimizer(np.array([0.0]))
         opt.set_bounds(np.array([-np.inf]), np.array([np.inf]))
         opt.set_alpha(1.0)
-        opt.step(np.array([1.0]))
+        opt.step(np.array([1.0]), score_is_maximized=True)
         # Parameter should move freely
         assert opt.get_current_parameters()[0] != 0.0
 
@@ -349,7 +349,7 @@ class TestFreezeUnfreeze:
         opt.freeze_parameters(np.array([0]))
 
         for _ in range(10):
-            opt.step(np.array([1.0, 1.0]))
+            opt.step(np.array([1.0, 1.0]), score_is_maximized=True)
 
         params = opt.get_current_parameters()
         assert params[0] == 0.0, "Frozen parameter should not change"
@@ -363,7 +363,7 @@ class TestFreezeUnfreeze:
         opt.freeze_parameters(np.array([0]))
 
         for _ in range(5):
-            opt.step(np.array([1.0, 1.0]))
+            opt.step(np.array([1.0, 1.0]), score_is_maximized=True)
 
         assert opt.get_current_parameters()[0] == 0.0
 
@@ -371,7 +371,7 @@ class TestFreezeUnfreeze:
         opt.unfreeze_parameters(np.array([0]))
 
         for _ in range(5):
-            opt.step(np.array([1.0, 1.0]))
+            opt.step(np.array([1.0, 1.0]), score_is_maximized=True)
 
         assert opt.get_current_parameters()[0] != 0.0, \
             "Unfrozen parameter should resume moving"
@@ -406,18 +406,18 @@ class TestFreezeUnfreeze:
 
         # First freeze/unfreeze cycle
         opt.freeze_parameters(np.array([0]))
-        opt.step(np.array([1.0, 1.0]))
+        opt.step(np.array([1.0, 1.0]), score_is_maximized=True)
         val_after_frozen = opt.get_current_parameters()[0]
         assert val_after_frozen == 0.0
 
         opt.unfreeze_parameters(np.array([0]))
-        opt.step(np.array([1.0, 1.0]))
+        opt.step(np.array([1.0, 1.0]), score_is_maximized=True)
         val_after_unfreeze = opt.get_current_parameters()[0]
         assert val_after_unfreeze != 0.0
 
         # Second freeze cycle
         opt.freeze_parameters(np.array([0]))
-        opt.step(np.array([1.0, 1.0]))
+        opt.step(np.array([1.0, 1.0]), score_is_maximized=True)
         val_after_refreeze = opt.get_current_parameters()[0]
         assert val_after_refreeze == val_after_unfreeze
 
@@ -445,7 +445,7 @@ class TestAMSGrad:
         for _ in range(50):
             # Varying gradient magnitudes to exercise v_hat_max tracking
             grad = rng.standard_normal(3) * rng.uniform(0.1, 10.0)
-            opt.step(grad)
+            opt.step(grad, score_is_maximized=True)
 
             current_v_hat_max = opt._v_hat_max.copy()
             assert np.all(current_v_hat_max >= prev_v_hat_max - 1e-15), \
@@ -473,8 +473,8 @@ class TestAMSGrad:
         opt_amsgrad.set_amsgrad(True)
 
         for g in grads:
-            opt_vanilla.step(g)
-            opt_amsgrad.step(g)
+            opt_vanilla.step(g, score_is_maximized=True)
+            opt_amsgrad.step(g, score_is_maximized=True)
 
         # With varying gradient magnitudes, trajectories should differ
         vanilla_params = opt_vanilla.get_current_parameters()
@@ -598,9 +598,9 @@ class TestScoreHistory:
 
     def test_score_recorded_via_step(self) -> None:
         opt = AdamOptimizer(np.array([0.0]))
-        opt.step(np.array([1.0]), score=10.0)
-        opt.step(np.array([1.0]), score=5.0)
-        opt.step(np.array([1.0]), score=2.5)
+        opt.step(np.array([1.0]), score=10.0, score_is_maximized=True)
+        opt.step(np.array([1.0]), score=5.0, score_is_maximized=True)
+        opt.step(np.array([1.0]), score=2.5, score_is_maximized=True)
 
         history = opt.get_score_history()
         assert history == [10.0, 5.0, 2.5]
@@ -608,9 +608,9 @@ class TestScoreHistory:
     def test_no_score_not_recorded(self) -> None:
         """Steps without score don't add to history."""
         opt = AdamOptimizer(np.array([0.0]))
-        opt.step(np.array([1.0]))
-        opt.step(np.array([1.0]), score=5.0)
-        opt.step(np.array([1.0]))
+        opt.step(np.array([1.0]), score_is_maximized=True)
+        opt.step(np.array([1.0]), score=5.0, score_is_maximized=True)
+        opt.step(np.array([1.0]), score_is_maximized=True)
 
         assert opt.get_score_history() == [5.0]
 
@@ -623,15 +623,15 @@ class TestScoreHistory:
         opt = AdamOptimizer(np.array([0.0]))
         scores = [10.0, 10.005, 10.003, 10.004]
         for s in scores:
-            opt.step(np.array([0.0]), score=s)
+            opt.step(np.array([0.0]), score=s, score_is_maximized=True)
 
         assert opt.has_converged(n_lookback=3, threshold=0.001)
 
     def test_has_converged_false_insufficient_scores(self) -> None:
         """Not enough scores means not converged."""
         opt = AdamOptimizer(np.array([0.0]))
-        opt.step(np.array([0.0]), score=10.0)
-        opt.step(np.array([0.0]), score=9.5)
+        opt.step(np.array([0.0]), score=10.0, score_is_maximized=True)
+        opt.step(np.array([0.0]), score=9.5, score_is_maximized=True)
 
         assert not opt.has_converged(n_lookback=3)
 
@@ -640,7 +640,7 @@ class TestScoreHistory:
         opt = AdamOptimizer(np.array([0.0]))
         scores = [10.0, 8.0, 7.0, 6.0]
         for s in scores:
-            opt.step(np.array([0.0]), score=s)
+            opt.step(np.array([0.0]), score=s, score_is_maximized=True)
 
         assert not opt.has_converged(n_lookback=3, threshold=0.001)
 
@@ -649,7 +649,7 @@ class TestScoreHistory:
         opt = AdamOptimizer(np.array([0.0]))
         scores = [0.0, 0.0001, 0.0001, 0.0001]
         for s in scores:
-            opt.step(np.array([0.0]), score=s)
+            opt.step(np.array([0.0]), score=s, score_is_maximized=True)
 
         assert not opt.has_converged(n_lookback=3)
 
@@ -658,7 +658,7 @@ class TestScoreHistory:
         opt = AdamOptimizer(np.array([0.0]))
         # 5 scores, last 3 nearly identical to the one before
         for s in [100.0, 100.0, 100.05, 100.03, 100.04]:
-            opt.step(np.array([0.0]), score=s)
+            opt.step(np.array([0.0]), score=s, score_is_maximized=True)
 
         assert opt.has_converged()
 
@@ -686,8 +686,8 @@ class TestLRDecay:
         opt_decay.set_lr_decay_power(0.5)
 
         for _ in range(20):
-            opt_no_decay.step(np.array([1.0]))
-            opt_decay.step(np.array([1.0]))
+            opt_no_decay.step(np.array([1.0]), score_is_maximized=True)
+            opt_decay.step(np.array([1.0]), score_is_maximized=True)
 
         dist_no_decay = abs(opt_no_decay.get_current_parameters()[0])
         dist_decay = abs(opt_decay.get_current_parameters()[0])
@@ -716,7 +716,7 @@ class TestReturnValueIsolation:
 
     def test_score_history_is_copy(self) -> None:
         opt = AdamOptimizer(np.array([0.0]))
-        opt.step(np.array([1.0]), score=5.0)
+        opt.step(np.array([1.0]), score=5.0, score_is_maximized=True)
         history = opt.get_score_history()
         history.append(999.0)
         assert len(opt.get_score_history()) == 1

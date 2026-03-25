@@ -85,17 +85,29 @@ class AdamOptimizer(OptimizerBase):
     # Core interface (OptimizerBase abstract methods)
     # ------------------------------------------------------------------
 
-    def step(self, gradient: np.ndarray, score: float | None = None) -> None:
+    def step(
+        self,
+        gradient: np.ndarray,
+        score: float | None = None,
+        *,
+        score_is_maximized: bool,
+    ) -> None:
         """Perform one ADAM update step.
 
         Applies bias-corrected first and second moment estimates to update
         parameters. Clamps to bounds if set. Records score if provided.
+
+        ADAM maximises: when *score_is_maximized* is True the score is stored
+        as-is in the history (natural positive CC convention).
 
         Reference: adamOptimizer.m lines 38-86 (``update`` method).
 
         Args:
             gradient: Gradient vector with same length as parameters.
             score: Optional objective score to record.
+            score_is_maximized: If True, score is in maximisation convention
+                (higher = better) and stored as-is.  If False, negated before
+                storing so history remains in maximisation convention.
 
         Raises:
             ValueError: If gradient contains NaN or Inf values.
@@ -113,7 +125,9 @@ class AdamOptimizer(OptimizerBase):
             raise ValueError("Gradient contains Inf values.")
 
         if score is not None:
-            self._score_history.append(float(score))
+            # ADAM maximises: store in maximisation convention (higher = better)
+            stored = float(score) if score_is_maximized else -float(score)
+            self._score_history.append(stored)
 
         self._t += 1
 

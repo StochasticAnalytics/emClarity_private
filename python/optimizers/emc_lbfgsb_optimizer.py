@@ -118,13 +118,23 @@ class LBFGSBOptimizer(OptimizerBase):
     # Core interface (OptimizerBase abstract methods)
     # ------------------------------------------------------------------
 
-    def step(self, gradient: np.ndarray, score: float | None = None) -> None:
+    def step(
+        self,
+        gradient: np.ndarray,
+        score: float | None = None,
+        *,
+        score_is_maximized: bool,
+    ) -> None:
         """Perform one L-BFGS-B update step.
 
         Computes a search direction using two-loop recursion on the L-BFGS
         history, projects it onto the feasible region, then performs
         backtracking line search with Armijo condition (when an objective
         function is available).
+
+        ``has_converged()`` uses ``abs()`` on relative changes so it is
+        sign-agnostic — the negation keeps the internal history in a consistent
+        convention but convergence detection does not depend on sign.
 
         **Ordering invariant when ``set_objective`` is active:** ``score``
         must equal ``objective_fn(get_current_parameters())`` — that is,
@@ -141,6 +151,9 @@ class LBFGSBOptimizer(OptimizerBase):
                 as the baseline ``f(x_k)`` for the Armijo line search
                 and must therefore be evaluated at the current parameters
                 before calling ``step()``.
+            score_is_maximized: If True, score is in maximisation convention
+                (higher = better) and is negated before storing so history
+                tracks the minimisation objective.  If False, stored as-is.
 
         Raises:
             ValueError: If gradient contains NaN or Inf values, or has
@@ -159,7 +172,10 @@ class LBFGSBOptimizer(OptimizerBase):
             raise ValueError("Gradient contains Inf values.")
 
         if score is not None:
-            self._score_history.append(float(score))
+            # L-BFGS-B minimises: negate maximisation scores so history
+            # tracks the minimisation objective (lower = better)
+            stored = -float(score) if score_is_maximized else float(score)
+            self._score_history.append(stored)
 
         # Zero out gradient for frozen parameters
         grad_active = grad.copy()

@@ -391,7 +391,8 @@ def refine_tilt_ctf(
         # --- Check convergence --------------------------------------------
         # Need enough history for lookback.
         min_for_convergence = options.minimum_global_iterations + 3
-        optimizer.step(gradient, score=total_score)
+        # score is natural positive CC; optimizer handles sign via bool
+        optimizer.step(gradient, score=total_score, score_is_maximized=True)
 
         if (
             iteration >= min_for_convergence
@@ -537,7 +538,7 @@ def _create_lbfgsb_optimizer(
             shift_sigma=options.shift_sigma,
             z_offset_sigma=options.z_offset_sigma,
         )
-        return -score
+        return -score  # Objective returns -score for L-BFGS-B Wolfe line search
 
     optimizer.set_objective(objective)
 

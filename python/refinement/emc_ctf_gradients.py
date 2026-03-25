@@ -410,7 +410,7 @@ def evaluate_score_and_gradient(
 
     total_score = float(np.sum(per_particle_scores))
 
-    # --- Negate gradient (maximize score, optimizer minimizes) -------------
+    # Negate: optimizer minimizes, we maximize CC
     gradient = -gradient
 
     return total_score, per_particle_scores, shifts, gradient

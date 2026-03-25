@@ -1,3 +1,10 @@
+Developer: Completed TASK-001 [2026-03-24]
+  Task: TASK-001 - Fix KI-213: remove raw amplitude_contrast from to_kernel_args()
+  - Removed 'amplitude_contrast' key from CTFParams.to_kernel_args() dict
+  - Only 'amplitude_phase' (atan-derived) remains for kernel consumers
+  - Updated REQUIRED_KEYS in test to match new dict shape
+  - All 61 CTF params tests pass
+
 Developer: Completed TASK-013 PATCH round 4 [2026-03-22]
   Task: TASK-013 - End-to-end synthetic validation (QA patch round 4)
   - Refactored TestOptimizerComparison to reuse module-scoped fixtures (eliminated 2 redundant pipeline runs)
@@ -1000,3 +1007,15 @@ Developer: Completed TASK-000b [2026-03-24]
   - Retained try/except in masking/test_padded_array.py (LOCKED: CPU test paths must still run)
   - Kept try/except pattern in masking/tests/test_emc_pad_zeros_3d.py (mixed CPU/GPU tests)
   - Result: 0 collection errors, 688 tests collected, no new ruff violations
+
+Developer: Completed 2026-03-24
+  TASK-002: Refactor score convention with score_is_maximized parameter
+  - Added score_is_maximized: bool (required, keyword-only, no default) to OptimizerBase.step() signature
+  - Note: test_default_score_is_maximized_is_true in test_sign_convention.py is a locked test; its name is misleading (no default exists) but the test body correctly passes score_is_maximized=True explicitly
+  - ADAM stores scores in maximisation convention (as-is when True, negated when False)
+  - L-BFGS-B stores scores in minimisation convention (negated when True, as-is when False)
+  - Updated emc_refine_tilt_ctf.py caller to pass score_is_maximized=True explicitly
+  - Added inline comments at 3 sign-negation points (gradient, caller, objective)
+  - Updated 3 existing L-BFGS-B tests to pass score_is_maximized=False for minimisation objectives
+  - Wrote TestSignConventionIntegration (10 tests) and TestWrongSignConvention (3 tests)
+  - All 144 optimizer tests pass, all 22 refinement tests pass, ruff clean
