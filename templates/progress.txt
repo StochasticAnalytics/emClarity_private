@@ -1056,3 +1056,11 @@ Developer: Completed TASK-005a [2026-03-25]
   - Added test_neg_inf_gradient_raises, test_large_finite_gradient_accepted to L-BFGS-B
   - Renamed ADAM TestNaNGradient class to TestGradientValidation for consistency with L-BFGS-B
   - All 164 optimizer tests pass, ruff clean on modified files
+
+Developer: Completed TASK-005b [2026-03-25]
+  Task: TASK-005b - Regression test for pipeline-level NaN score guard
+  - Added test_nan_score_guard.py with negative and positive controls
+  - Negative control: mocked NaN total_score triggers nan_break, verifies optimizer.step() not called, outputs sanitised to 0.0
+  - Positive control: finite score reaches optimizer.step(), confirming mock wiring validity
+  - Mocks evaluate_score_and_gradient and _create_adam_optimizer to isolate guard logic
+  - All 237 refinement tests pass (235 existing + 2 new), ruff clean
