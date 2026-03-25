@@ -141,4 +141,8 @@ testpaths = ["python"]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --tb=short"
+addopts = "-v --tb=short --strict-markers"
+markers = [
+    "gpu: marks tests that require NVIDIA GPU hardware and CuPy",
+    "slow: marks tests with long runtimes (deselect with '-m not slow')",
+]

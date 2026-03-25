@@ -13,7 +13,9 @@ import sys
 import unittest
 from pathlib import Path
 
-import cupy as cp
+import pytest
+
+cp = pytest.importorskip("cupy")
 
 # Add the python package root to path for proper imports
 python_root = Path(__file__).parent.parent.parent
@@ -33,14 +35,16 @@ class TestMemoryUtils(unittest.TestCase):
 
         # Create test arrays with different memory layouts
         self.test_shape = (3, 4)
-        self.test_data = [[1.0, 2.0, 3.0, 4.0],
-                         [5.0, 6.0, 7.0, 8.0],
-                         [9.0, 10.0, 11.0, 12.0]]
+        self.test_data = [
+            [1.0, 2.0, 3.0, 4.0],
+            [5.0, 6.0, 7.0, 8.0],
+            [9.0, 10.0, 11.0, 12.0],
+        ]
 
     def test_ensure_f_with_f_contiguous_input(self):
         """Test ensure_f with F-contiguous input."""
         # Create F-contiguous array
-        arr = cp.array(self.test_data, order='F', dtype=cp.float32)
+        arr = cp.array(self.test_data, order="F", dtype=cp.float32)
         self.assertTrue(arr.flags.f_contiguous)
         self.assertFalse(arr.flags.c_contiguous)
 
@@ -57,7 +61,7 @@ class TestMemoryUtils(unittest.TestCase):
     def test_ensure_f_with_c_contiguous_input_allow_copy_true(self):
         """Test ensure_f with C-contiguous input and allow_copy=True."""
         # Create C-contiguous array
-        arr = cp.array(self.test_data, order='C', dtype=cp.float32)
+        arr = cp.array(self.test_data, order="C", dtype=cp.float32)
         self.assertTrue(arr.flags.c_contiguous)
         self.assertFalse(arr.flags.f_contiguous)
 
@@ -73,7 +77,7 @@ class TestMemoryUtils(unittest.TestCase):
     def test_ensure_f_with_c_contiguous_input_allow_copy_false(self):
         """Test ensure_f with C-contiguous input and allow_copy=False (should fail)."""
         # Create C-contiguous array
-        arr = cp.array(self.test_data, order='C', dtype=cp.float32)
+        arr = cp.array(self.test_data, order="C", dtype=cp.float32)
         self.assertTrue(arr.flags.c_contiguous)
         self.assertFalse(arr.flags.f_contiguous)
 
@@ -87,7 +91,7 @@ class TestMemoryUtils(unittest.TestCase):
     def test_ensure_f_with_dtype_conversion(self):
         """Test ensure_f with dtype conversion."""
         # Create F-contiguous array with different dtype
-        arr = cp.array(self.test_data, order='F', dtype=cp.float64)
+        arr = cp.array(self.test_data, order="F", dtype=cp.float64)
         self.assertTrue(arr.flags.f_contiguous)
         self.assertEqual(arr.dtype, cp.float64)
 
@@ -102,7 +106,7 @@ class TestMemoryUtils(unittest.TestCase):
     def test_ensure_c_with_c_contiguous_input(self):
         """Test ensure_c with C-contiguous input."""
         # Create C-contiguous array
-        arr = cp.array(self.test_data, order='C', dtype=cp.float32)
+        arr = cp.array(self.test_data, order="C", dtype=cp.float32)
         self.assertTrue(arr.flags.c_contiguous)
         self.assertFalse(arr.flags.f_contiguous)
 
@@ -114,7 +118,7 @@ class TestMemoryUtils(unittest.TestCase):
     def test_ensure_c_with_f_contiguous_input_allow_copy_true(self):
         """Test ensure_c with F-contiguous input and allow_copy=True."""
         # Create F-contiguous array
-        arr = cp.array(self.test_data, order='F', dtype=cp.float32)
+        arr = cp.array(self.test_data, order="F", dtype=cp.float32)
         self.assertTrue(arr.flags.f_contiguous)
         self.assertFalse(arr.flags.c_contiguous)
 
@@ -130,7 +134,7 @@ class TestMemoryUtils(unittest.TestCase):
     def test_ensure_c_with_f_contiguous_input_allow_copy_false(self):
         """Test ensure_c with F-contiguous input and allow_copy=False (should fail)."""
         # Create F-contiguous array
-        arr = cp.array(self.test_data, order='F', dtype=cp.float32)
+        arr = cp.array(self.test_data, order="F", dtype=cp.float32)
         self.assertTrue(arr.flags.f_contiguous)
         self.assertFalse(arr.flags.c_contiguous)
 
@@ -175,11 +179,12 @@ class TestMemoryUtils(unittest.TestCase):
         import importlib
 
         from cuda_ops import memory_utils
+
         importlib.reload(memory_utils)
 
         try:
             # Create C-contiguous array
-            arr = cp.array(self.test_data, order='C', dtype=cp.float32)
+            arr = cp.array(self.test_data, order="C", dtype=cp.float32)
             self.assertTrue(arr.flags.c_contiguous)
             self.assertFalse(arr.flags.f_contiguous)
 
@@ -197,7 +202,7 @@ class TestMemoryUtils(unittest.TestCase):
     def test_non_contiguous_array(self):
         """Test with non-contiguous array (e.g., from slicing)."""
         # Create a larger array and take a slice to make it non-contiguous
-        large_arr = cp.arange(60, dtype=cp.float32).reshape(6, 10, order='F')
+        large_arr = cp.arange(60, dtype=cp.float32).reshape(6, 10, order="F")
         sliced_arr = large_arr[::2, ::2]  # Non-contiguous slice
 
         self.assertFalse(sliced_arr.flags.f_contiguous)

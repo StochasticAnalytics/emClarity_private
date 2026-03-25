@@ -59,17 +59,13 @@ class ParameterDefinition:
     category: str = "General"
     subcategory: str = ""
 
-    def to_gui_value(
-        self, si_value: float | list[float]
-    ) -> float | list[float]:
+    def to_gui_value(self, si_value: float | list[float]) -> float | list[float]:
         """Convert SI value to GUI display value."""
         if isinstance(si_value, (list, tuple)):
             return [v * self.gui_scaling_factor for v in si_value]
         return si_value * self.gui_scaling_factor
 
-    def to_si_value(
-        self, gui_value: float | list[float]
-    ) -> float | list[float]:
+    def to_si_value(self, gui_value: float | list[float]) -> float | list[float]:
         """Convert GUI display value to SI value."""
         if isinstance(gui_value, (list, tuple)):
             return [v / self.gui_scaling_factor for v in gui_value]
@@ -317,16 +313,21 @@ class UnifiedParameterManager:
             self._load_extended_config(config_path)
 
     def _load_extended_config(self, config_path: str):
-        """Load additional parameter definitions from JSON config."""
+        """Validate that an extended config file is parseable JSON.
+
+        TODO: Implement loading additional parameters from JSON.
+        Currently only validates the file is valid JSON; does not
+        extend the registry with user-defined parameters.
+        """
         try:
             with open(config_path) as f:
                 json.load(f)
-
-            # TODO: Implement loading additional parameters from JSON
-            # This would extend the default registry with user-defined parameters
-
+            logger.debug(
+                "Validated extended config at %s (loading not yet implemented)",
+                config_path,
+            )
         except Exception as e:
-            logger.warning(f"Could not load extended config from {config_path}: {e}")
+            logger.warning(f"Could not parse extended config from {config_path}: {e}")
 
     # MATLAB conversion methods (from original parameter_converter)
     def parse_matlab_file(self, file_path: str | Path) -> dict[str, Any]:

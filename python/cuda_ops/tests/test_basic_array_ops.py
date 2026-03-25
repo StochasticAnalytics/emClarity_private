@@ -13,7 +13,9 @@ import time
 import unittest
 from pathlib import Path
 
-import cupy as cp
+import pytest
+
+cp = pytest.importorskip("cupy")
 import numpy as np
 
 # Add the python package root to path for proper imports

@@ -1,3 +1,44 @@
+Developer: Completed TASK-012 [2026-03-25]
+  Task: TASK-012 - Schema comparison test and end-to-end verification
+  - Created test_schema_match.py: reads types.ts via regex, compares field names against Pydantic JSON schemas
+  - Brace-counting parser handles nested types (e.g. DecisionEntry's Array<{ name: string; reason: string }>)
+  - Covers 12 model pairs including required WorkItem, SkillDefinition, HookDefinition, ChangelogEntry, DecisionEntry
+  - Positive control validates parser extracts known fields; negative control verifies mismatch detection
+  - All 52 backend tests pass; TypeScript compiles without errors
+
+Developer: Completed TASK-008 [2026-03-25]
+  Task: TASK-008 - Work Items backend: GitHub Issues integration via gh CLI
+  - Created github_service.py with gh CLI subprocess calls for list/get/create/update operations
+  - Label mapping convention: status:*, priority:*, intensity:*, surface:*, project:* labels to typed fields
+  - Issue body parsing extracts description, notes, progress, decision_history, depends_on, blocked_by
+  - 60-second TTL cache for list_issues with invalidation on create/update
+  - GithubAuthError custom exception with HTTP 503 + setup instructions at route level
+  - Updated work_items.py routes: GET /, GET /{id}, POST /, PATCH /{id}/status
+  - Request body models: CreateWorkItemRequest, UpdateStatusRequest
+  - All 36 backend scaffold tests pass; TypeScript compiles without errors
+
+Developer: Completed TASK-007 PATCH [2026-03-25]
+  - Fixed misleading comment in alert_service.py line 125: bare-repo guard correctly skips bare repositories, not the main worktree
+  - Committed in dot-claude sub-repo as [38c3f906/TASK-007/PATCH] e920d8f
+
+Developer: Completed TASK-006 [2026-03-25]
+  Task: TASK-006 - Project Anatomy fullstack wiring
+  - Implemented anatomy_service.py: get_skills(), get_hooks(), get_claude_md_stack(), get_mcp_servers(), get_settings(), get_anatomy()
+  - Replaced stub routes in dot-claude/backend/api/anatomy.py with real service delegates
+  - Added useAnatomyData.ts TanStack Query hook (60s staleTime/refetchInterval)
+  - Wired ProjectAnatomyView.tsx to live data via useAnatomyData hook with DataSection loading/error states
+  - All anatomy sections (skills, hooks, CLAUDE.md, MCP servers, settings) read from real filesystem
+  - Committed in dot-claude sub-repo as [38c3f906/TASK-006/DEV] 81927e6
+
+Developer: Completed TASK-002 [2026-03-25]
+  Task: TASK-002 - Pydantic response models matching TypeScript interfaces
+  - Verified all model files in dot-claude/backend/models/ (anatomy.py, activity.py, work_item.py, intel.py, decision.py)
+  - Models were created as part of TASK-001 scaffold and refined in TASK-001/PATCH
+  - Validated all camelCase serialization against types.ts field-by-field
+  - WorkItem: 17 fields, blockedBy preserved as null via model_dump override
+  - ChangelogEntry: id field present for acknowledge endpoint
+  - All 36 scaffold tests pass
+
 Developer: Completed TASK-013 PATCH round 4 [2026-03-22]
   Task: TASK-013 - End-to-end synthetic validation (QA patch round 4)
   - Refactored TestOptimizerComparison to reuse module-scoped fixtures (eliminated 2 redundant pipeline runs)
@@ -992,3 +1033,155 @@ Developer: Patch Completed
   - Fix 2: Created tests symlink (dot-claude/tests -> ../tests); created emclarity_e2e_plugin as pytest11 plugin that auto-starts FastAPI server; 35 e2e tests pass
   - Fix 3: Assert count restored to 83 via tests/ symlink (grep -r assert tests/ now finds real files)
   - Key insight: pytest resolves symlinks to real paths for conftest.py discovery, so a conftest.py at dot-claude/ level is NOT found. Used pytest11 entry_point mechanism instead (loaded globally by pytest regardless of rootdir).
+
+Developer: Completed TASK-003/PATCH [2026-03-25]
+  - Fixed /api/anatomy to return ApiResponse envelope (partial-failure contract)
+  - Fixed pytest.ini [tool:pytest] -> [pytest] section header so markers/--strict-markers are active
+  - Removed dead bare expression and unused _d1/_d2 assignments in _apply_tapering
+
+Developer: Completed TASK-004 [2026-03-25]
+  Task: TASK-004 - DevContainer env vars and dashboard startup script
+  - Verified dot-claude/scripts/start-dashboard.sh exists and is executable (chmod +x)
+  - Script starts uvicorn on port 8001 and Vite dev server in parallel
+  - Signal trapping (SIGINT/SIGTERM/EXIT) kills both background processes on exit
+  - Uses setsid for npm process group cleanup to prevent orphan Vite processes
+  - Uses wait -n to detect if either service exits and trigger cleanup of the other
+
+Developer: Patch Completed 2026-03-25
+  - Restored _assert_cupy_when_gpu_present session fixture in python/conftest.py (defect 1)
+  - Replaced bare 'import cupy as cp' with 'pytest.importorskip("cupy")' in test_emc_cuda_basic_ops.py, test_memory_utils.py, test_basic_array_ops.py (defect 2)
+  - Added --strict-markers and gpu/slow marker definitions to pyproject.toml [tool.pytest.ini_options] (defect 3)
+  - Replaced module-level print() calls with logging.info/warning in test_padded_array.py (defect 4)
+  - Added command -v preflight checks for uvicorn and npm in start-dashboard.sh (defect 5)
+  - Fixed NameError in debug_transpose.py by capturing ensure_c() return value as a_c (defect 6)
+
+Developer: Completed TASK-005 [2026-03-25]
+  Task: TASK-005 - Frontend data layer: TanStack Query, API client, Vite proxy, reusable components
+  - Verified @tanstack/react-query ^5.95.2 in package.json and installed
+  - Vite proxy configured: /api -> http://localhost:8001 with changeOrigin
+  - API client (src/lib/api.ts): apiFetch<T> generic, ApiError class, Content-Type JSON, detail extraction
+  - QueryClient (src/lib/queryClient.ts): staleTime 30_000, retry 1, refetchOnWindowFocus, sonner toast on error
+  - main.tsx wraps App in QueryClientProvider
+  - DataSection.tsx: Skeleton loading, error card with retry button, children on success
+  - EmptyState.tsx: centered muted message with configurable lucide icon (defaults to Inbox)
+  - LastUpdated.tsx: formatDistanceToNow from date-fns, 10s setInterval refresh
+  - ChangelogEntry in types.ts already has id: string field
+  - hooks/index.ts barrel export created
+  - TypeScript compiles without errors (npx tsc --noEmit)
+Developer: Completed 2026-03-25
+  - Removed debug print('test print\n') from python/cuda_ops/tests/test_emc_cuda_basic_ops.py line 82
+  - Single-line fix, no logic changes
+
+Developer: Completed TASK-005/PATCH [2026-03-25]
+  Task: TASK-005 - Frontend data layer patch
+  - Mounted <Toaster /> in main.tsx so sonner toasts are rendered
+  - Removed redundant try/except ImportError + @skipIf from test_emc_cuda_basic_ops.py;
+    pytest.importorskip at module scope is the correct single guard
+
+Developer: Completed TASK-007/DEV [2026-03-25]
+  Task: TASK-007 - Activity feed and alerts backend services
+  - Created activity_service.py: aggregates git log, lab notebook mtimes, and memory file changes
+  - Created alert_service.py: detects stale worktrees (>7 days) and stale intel cache
+  - Wired stub routes in activity.py and router.py to call real service methods
+  - Added 30-second TTL cache for git log subprocess results
+  - Added response_model_exclude_none=True to match TypeScript optional field semantics
+  - Stable IDs via SHA-256 hashing of source identifiers for consistent frontend tracking
+
+Developer: Completed TASK-007 PATCH [2026-03-25]
+  Task: TASK-007 - Activity feed and alerts backend services (QA patch)
+  - Fixed timestamp sort: parse ISO 8601 to UTC datetime before comparing,
+    correcting ordering when git log emits non-UTC timezone offsets
+  - Fixed memory dir path: derive from CLAUDE_CONFIG_DIR env var instead of
+    hardcoded /sa_shared host path
+  - Fixed TTL cache keying: cache dict now keyed on (days, limit) tuple so
+    calls with different time windows return independent cached results
+
+Developer: Completed TASK-007 PATCH round 2
+  - Defect 1: git log now fetches 3× caller's limit before multi-source merge
+    to prevent silent data loss when notebook/memory entries displace git entries
+  - Defect 2: memory path slug derived dynamically from PROJECT_ROOT instead of
+    hardcoded; added logger.warning when candidate directory is missing
+  - Defect 3: alert stable IDs now use wt_name (not absolute path) for worktree
+    alerts and fixed key 'intel-cache' for intel alerts — portable across machines
+  - Defect 4: added 60s TTL cache to alert_service following activity_service pattern
+
+Developer: Completed TASK-008 PATCH [2026-03-25]
+  Task: TASK-008 - Work Items backend: QA defect fixes
+  - Fixed cache keying: _issues_cache now dict[str, list[WorkItem]] keyed by state
+  - Fixed TimeoutExpired: now raises RuntimeError instead of GithubAuthError
+  - Fixed create_issue fallback: raises RuntimeError instead of returning GH-0 corrupted item
+  - Fixed request models: CreateWorkItemRequest/UpdateStatusRequest inherit CamelCaseModel
+  - Fixed RuntimeError propagation: all four routes now catch RuntimeError and return HTTP 502
+  - Fixed silent empty list: json.JSONDecodeError in list_issues now raises RuntimeError
+  - Fixed type narrowing: replaced type:ignore[assignment] with cast() in _parse_labels
+  - Fixed unguarded json.loads: update_issue_status checks isinstance(parsed, dict) before .get()
+
+Developer: Completed TASK-009
+  - Created useActivityFeed, useAlerts, useWorkItems TanStack Query hooks
+  - useUpdateWorkItemStatus implements optimistic update with snapshot rollback
+  - Wired MissionControlView: replaced seed imports with hooks, added DataSection wrappers and LastUpdated
+  - Wired WorkItemsView: replaced seed imports, wired mutations, added 503 auth-required state
+  - Both views share ['work-items'] query key for cross-view cache coherence
+  - TypeScript compiles without errors
+
+Developer: Completed TASK-009 PATCH [2026-03-25]
+  Task: TASK-009/PATCH - Fix QA defects for Mission Control and Work Items frontend wiring
+  - [HIGH] Wired handleItemUpdate in WorkItemsView and MissionControlView to new useUpdateWorkItem hook; status changes route through backend PATCH endpoint, priority/progress use optimistic cache updates
+  - [MEDIUM] Removed synchronous onOpenChange(false) from CreateItemForm handleSubmit; dialog now closes only on mutation success via parent callback; added isSubmitting/submitError props for loading state and error display
+  - [MEDIUM] Added label prop to DataSection for unique aria-labels; passed section-specific labels in MissionControlView (alerts, work items, activity) and WorkItemsView
+  - [LOW] Changed WorkItemDetail open prop from selectedItemId !== null to selectedItem !== null, matching MissionControlView pattern and preventing stale-ID open state
+  - TypeScript compiles without errors; 36 backend tests pass
+
+Developer: Completed TASK-010 [2026-03-25]
+  Task: TASK-010 - Landscape Intelligence fullstack wiring with Anthropic SDK
+  - Created intel_service.py with httpx blog scraping, HTML parsing, and auth fallback chain (claude CLI -> anthropic SDK -> skip)
+  - Stable hash-based ID generation for changelog entries (cl- prefix + sha256[:12])
+  - Cache persisted to dot-claude/.claude/cache/intel_cache.json with freshness timestamps
+  - Replaced stub routes in intel.py: GET changelog/features/promos, POST scrape (BackgroundTasks), GET scrape/status, PATCH acknowledge
+  - Created useIntelData.ts with 6 TanStack Query hooks (useChangelog, useFeatures, usePromos, useScrapeStatus, useTriggerScrape, useAcknowledgeEntry)
+  - Updated ChangelogTimeline to id-based acknowledge (was index-based)
+  - Wired LandscapeIntelView with DataSection, refresh button, staleness indicator, and auth status dialog
+  - TypeScript compiles cleanly (npx tsc --noEmit)
+
+Developer: Completed TASK-010/PATCH
+  - Fixed get_auth_status() to return camelCase keys (oauthAvailable, apiKeyAvailable, lastScrapeSuccess, entryCount) matching frontend ScrapeStatus interface
+  - Replaced asyncio.get_event_loop() with asyncio.get_running_loop() in scrape_blog() coroutine (lines 525, 530)
+  - Updated SDK model ID from 'claude-sonnet-4-20250514' to 'claude-sonnet-4-6'
+  - All 36 tests pass
+
+Developer: Patch Completed 2026-03-25
+  - Fixed auth dialog guard in LandscapeIntelView.tsx: removed redundant !apiKeyAvailable condition
+  - Dialog now opens when !oauthAvailable (regardless of apiKeyAvailable), making the API key path reachable
+
+
+Developer: Completed TASK-010 PATCH [2026-03-25]
+  - Fixed DialogDescription in LandscapeIntelView auth dialog
+  - Description now conditionally shows 'credentials detected' vs 'no credentials available'
+  - Resolves contradiction between description text and 'Use API key?' button when apiKeyAvailable is true
+
+Developer: Completed TASK-010 QA patch
+  - Fix 1 (HIGH): ChangelogTimeline key changed from composite date-summary string to entry.id
+  - Fix 2 (HIGH): handleRefresh now shows auth dialog when scrapeStatus.data is undefined
+  - Fix 3 (MEDIUM): useTriggerScrape mutationFn return type corrected to ScrapeStatus
+  - Fix 4 (MEDIUM): get_auth_status() returns CamelCaseModel ScrapeStatus, not raw dict
+  - Fix 5 (MEDIUM): List routes use _safe_parse() to skip malformed entries (partial-failure pattern)
+  - Fix 6 (MEDIUM): oauthAvailable renamed to claudeCliAvailable (accurately describes binary check)
+  - All 36 backend tests pass; TypeScript compiles clean
+
+Developer: Completed TASK-011 [2026-03-25]
+  Task: TASK-011 - Decision Log fullstack wiring
+  - Created decision_service.py: Python port of TypeScript decisionParser.ts
+  - Parser reads DOT_CLAUDE_DIR/.claude/decisions.md using ## heading + bold-labeled section format
+  - create_decision appends entries via open('a') mode (append-only, no read-modify-write)
+  - Updated api/decisions.py: GET returns parsed entries sorted date-descending, POST accepts DecisionEntry
+  - Created useDecisions.ts hook (60s polling) and useCreateDecision mutation
+  - Updated DecisionLogView.tsx: replaced SEED_DECISIONS_MD with useDecisions hook
+  - Wrapped timeline in DataSection for loading/error/retry states
+  - TypeScript compiles without errors; pre-existing test failures unrelated to changes
+
+Developer: Completed TASK-011 PATCH [2026-03-25]
+  Task: TASK-011 - Decision Log QA defect fixes
+  - Fixed dialog closing before mutation resolves; now stays open during pending, shows error inline on failure
+  - Added Pydantic field_validator to reject blank context/decision on write, eliminating phantom entries
+  - Added frontend context validation with required indicator
+  - Fixed _extract_section regex to distinguish section headers from inline bold text
