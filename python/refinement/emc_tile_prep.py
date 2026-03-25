@@ -488,7 +488,9 @@ def prepare_reference_projection(
     """
     xp = _xp_for(volume)
 
-    # Convert CuPy → NumPy for scipy rotation (CPU operation)
+    # KI-313/319: CPU-only rotation is intentional — scipy.ndimage.map_coordinates
+    # has no CuPy equivalent, so the volume is moved to host for rotation and the
+    # resulting projection is re-uploaded to GPU after masking/padding.
     vol_np = volume if isinstance(volume, np.ndarray) else volume.get()
 
     phi, theta, psi = euler_angles

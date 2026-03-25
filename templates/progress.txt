@@ -1036,3 +1036,16 @@ TASK-002b: L-BFGS-B optimizer overhaul with domain-informed hyperparameters
   - Extracted _convergence_lookback() helper to reduce refine_tilt_ctf complexity
   - Pre-existing: L-BFGS-B half-astig recovery improved 86.8A -> 68.0A (still above 50A)
   - All 168 optimizer+refinement tests pass, no new ruff errors introduced
+
+Developer: Completed TASK-003 [2026-03-25]
+  Task: TASK-003 - Verify KI-320: rotation matrix with 4 test types at off-axis angles
+  - Added 43 tests in 4 categories: scipy comparison, geometric vectors, orthogonality, round-trip
+  - Confirmed SPIDER ZYZ matches scipy extrinsic 'zyz' convention (not intrinsic 'ZYZ')
+  - All off-axis angles chosen to avoid trig-zero masking of sign bugs
+  - Rotation matrix implementation verified correct; KI-320 concern unfounded
+
+Developer: Completed TASK-004 [2026-03-25]
+  Task: TASK-004 - Document KI-313/319: CPU-only rotation in prepare_reference_projection()
+  - Added KI comment near line 491 of emc_tile_prep.py
+  - Explains that scipy.ndimage.map_coordinates is CPU-only, making the GPU→CPU→GPU transfer intentional
+  - All 38 tile_prep tests pass, no code logic changes
