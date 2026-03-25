@@ -1,22 +1,25 @@
-"""
-Tests for CUDA-accelerated basic array operations.
-"""
+"""Tests for CUDA-accelerated basic array operations."""
 
 import unittest
 from unittest import skipIf
 
-import cupy as cp
-import numpy as np
+import pytest
 
+# Guard 1: skip entire module at collection time if CuPy is not installed.
+# This is a different failure mode from Guard 2 — CuPy absent means no GPU runtime at all.
+cp = pytest.importorskip("cupy", reason="CuPy required for CUDA basic ops tests")
+
+# Guard 2: CuPy may be present but the compiled kernel binary (.so) may be missing.
+# importorskip cannot catch this because the error occurs inside our package, not cupy itself.
 try:
     from ..emc_cuda_basic_ops import CudaBasicOps
 
-    CUPY_AVAILABLE = True
+    CUDA_BASIC_OPS_AVAILABLE = True
 except ImportError:
-    CUPY_AVAILABLE = False
+    CUDA_BASIC_OPS_AVAILABLE = False
 
 
-@skipIf(not CUPY_AVAILABLE, "CuPy not available")
+@skipIf(not CUDA_BASIC_OPS_AVAILABLE, "CudaBasicOps kernel loading not available")
 class TestCudaBasicOps(unittest.TestCase):
     """Test CUDA basic operations implementation."""
 
@@ -80,7 +83,6 @@ class TestCudaBasicOps(unittest.TestCase):
 
         result = self.cuda_ops.transpose_2d(a)
         expected = cp.array([[1.0, 4.0], [2.0, 5.0], [3.0, 6.0]], dtype=cp.float32)
-        print("test print\n")
         cp.testing.assert_array_equal(result, expected)
 
         # Test larger random matrix

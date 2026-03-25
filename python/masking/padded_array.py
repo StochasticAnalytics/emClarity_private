@@ -1,5 +1,5 @@
 """
-PaddedArray class for efficient 3D image padding with GPU support
+PaddedArray class for efficient 3D image padding with GPU support.
 
 This module provides a class-based approach to padding operations that allows
 for memory reuse and efficient GPU processing. Inspired by fourierTransformer.m
@@ -11,7 +11,7 @@ Date: September 2025
 
 import logging
 import warnings
-from typing import Any, Dict, Literal, Optional, Tuple, Union
+from typing import Any, Literal
 
 import numpy as np
 
@@ -47,12 +47,12 @@ class PaddedArray:
 
     def __init__(
         self,
-        input_shape: Optional[Tuple[int, ...]] = None,
-        output_shape: Optional[Tuple[int, ...]] = None,
+        input_shape: tuple[int, ...] | None = None,
+        output_shape: tuple[int, ...] | None = None,
         method: Literal["GPU", "CPU"] = "CPU",
         precision: Literal["single", "double", "singleTaper", "doubleTaper"] = "single",
         use_once: bool = False,
-        extrap_val: Optional[Union[float, str]] = None,
+        extrap_val: float | str | None = None,
     ):
         """
         Initialize PaddedArray for efficient padding operations.
@@ -67,7 +67,7 @@ class PaddedArray:
         """
         # Validate GPU availability
         if method == "GPU" and not HAS_CUPY:
-            warnings.warn("CuPy not available, falling back to CPU")
+            warnings.warn("CuPy not available, falling back to CPU", stacklevel=2)
             method = "CPU"
 
         # Store configuration
@@ -144,12 +144,12 @@ class PaddedArray:
 
     def pad_image(
         self,
-        image: Union[np.ndarray, Any],
-        pad_low: Union[np.ndarray, Tuple, str],
-        pad_top: Optional[Union[np.ndarray, Tuple]] = None,
+        image: np.ndarray | Any,
+        pad_low: np.ndarray | tuple | str,
+        pad_top: np.ndarray | tuple | None = None,
         fourier_oversample: bool = False,
         force_new_array: bool = False,
-    ) -> Union[np.ndarray, Any]:
+    ) -> np.ndarray | Any:
         """
         Pad an image using the configured settings.
 
@@ -164,13 +164,11 @@ class PaddedArray:
             Padded image array
         """
         # Parse input image
-        original_is_gpu = False
         if self.method == "GPU":
             if not isinstance(image, cp.ndarray):
                 image = cp.asarray(image, dtype=self.dtype)
             else:
                 image = image.astype(self.dtype)
-            original_is_gpu = True
         else:
             if isinstance(image, cp.ndarray):
                 image = cp.asnumpy(image)
@@ -228,7 +226,7 @@ class PaddedArray:
 
         return padded_img
 
-    def _create_new_padded_array(self, shape: Tuple[int, ...], image=None):
+    def _create_new_padded_array(self, shape: tuple[int, ...], image=None):
         """Create a new padded array with the specified shape."""
         # Parse extrapolation parameters
         self._update_extrap_params(image)
@@ -407,11 +405,11 @@ class PaddedArray:
 
     def update_config(
         self,
-        input_shape: Optional[Tuple[int, ...]] = None,
-        output_shape: Optional[Tuple[int, ...]] = None,
-        method: Optional[str] = None,
-        precision: Optional[str] = None,
-        extrap_val: Optional[Union[float, str]] = None,
+        input_shape: tuple[int, ...] | None = None,
+        output_shape: tuple[int, ...] | None = None,
+        method: str | None = None,
+        precision: str | None = None,
+        extrap_val: float | str | None = None,
     ):
         """
         Update configuration parameters. May trigger reallocation of stored array.
@@ -464,7 +462,7 @@ class PaddedArray:
     def to_gpu(self):
         """Move stored arrays to GPU memory (like fourierTransformer)."""
         if not HAS_CUPY:
-            warnings.warn("CuPy not available, cannot move to GPU")
+            warnings.warn("CuPy not available, cannot move to GPU", stacklevel=2)
             return
 
         if self._array_is_initialized and self.method == "CPU":
@@ -472,7 +470,7 @@ class PaddedArray:
             self.method = "GPU"
             logger.debug("Moved PaddedArray to GPU")
 
-    def get_memory_info(self) -> Dict[str, Any]:
+    def get_memory_info(self) -> dict[str, Any]:
         """Get information about memory usage."""
         info = {
             "method": self.method,
@@ -504,14 +502,14 @@ class PaddedArray:
 
 # Convenience functions for backward compatibility
 def create_padded_array_once(
-    image: Union[np.ndarray, Any],
-    pad_low: Union[np.ndarray, Tuple, str],
-    pad_top: Optional[Union[np.ndarray, Tuple]] = None,
+    image: np.ndarray | Any,
+    pad_low: np.ndarray | tuple | str,
+    pad_top: np.ndarray | tuple | None = None,
     method: Literal["GPU", "CPU"] = "CPU",
     precision: Literal["single", "double", "singleTaper", "doubleTaper"] = "single",
-    extrap_val: Optional[Union[float, str]] = None,
+    extrap_val: float | str | None = None,
     fourier_oversample: bool = False,
-) -> Union[np.ndarray, Any]:
+) -> np.ndarray | Any:
     """
     Convenience function for single-use padding (matches original interface).
 
@@ -540,7 +538,6 @@ def BH_padZeros3d_class(
     """
     # Parse optional arguments
     extrap_val = None
-    fourier_oversample = False
 
     if len(varargin) > 0:
         if isinstance(varargin[0], (int, float)):
@@ -550,7 +547,6 @@ def BH_padZeros3d_class(
 
         if len(varargin) > 1:
             extrap_val = 0  # Reset for Fourier oversampling
-            fourier_oversample = True
 
     # Determine output shape for persistent storage
     if isinstance(IMAGE, (np.ndarray, type(cp.ndarray if HAS_CUPY else np.ndarray))):

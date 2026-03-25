@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test and demonstration script for PaddedArray class
+Test and demonstration script for PaddedArray class.
 
 This script demonstrates the key features:
 1. Single-use mode for one-off padding operations
@@ -19,19 +19,14 @@ import numpy as np
 from masking.emc_pad_zeros_3d import emc_pad_zeros_3d
 from masking.padded_array import PaddedArray, create_padded_array_once
 
-# Clean package imports - no sys.path manipulation needed
-
-
-# Try to import CuPy
+# Gracefully degrade when CuPy is absent — CPU test paths must still run
 try:
     import cupy as cp
 
     HAS_CUPY = True
-    print("✅ CuPy available - GPU tests enabled")
 except ImportError:
+    cp = None  # type: ignore[assignment]
     HAS_CUPY = False
-    cp = None
-    print("⚠️  CuPy not available - CPU tests only")
 
 
 def test_single_use_mode():

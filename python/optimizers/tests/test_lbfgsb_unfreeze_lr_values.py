@@ -8,7 +8,6 @@ AdamOptimizer but does not alter L-BFGS-B behavior.
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from ..emc_lbfgsb_optimizer import LBFGSBOptimizer
 
@@ -65,7 +64,7 @@ class TestUnfreezeLrValues:
 
         # Build some history
         rng = np.random.default_rng(42)
-        for i in range(5):
+        for _i in range(5):
             opt.step(rng.standard_normal(n))
         assert opt.get_history_length() > 0
 

@@ -9,10 +9,10 @@ For a full implementation, see the complete parser in testScripts/python/metaDat
 import ast
 import os
 from pathlib import Path
-from typing import Any, Dict, Union
+from typing import Any
 
 
-def parse_parameter_file(parameter_file: Union[str, Path]) -> Dict[str, Any]:
+def parse_parameter_file(parameter_file: str | Path) -> dict[str, Any]:
     """
     Parse emClarity parameter file.
 
@@ -39,7 +39,7 @@ def parse_parameter_file(parameter_file: Union[str, Path]) -> Dict[str, Any]:
     return params
 
 
-def _parse_basic_parameters(parameter_file: Path) -> Dict[str, Any]:
+def _parse_basic_parameters(parameter_file: Path) -> dict[str, Any]:
     """Parse basic parameters from file."""
     params = {}
 
@@ -67,7 +67,7 @@ def _parse_basic_parameters(parameter_file: Path) -> Dict[str, Any]:
         with open(parameter_file) as f:
             lines = f.readlines()
     except Exception as e:
-        raise ValueError(f"Error reading parameter file: {e}")
+        raise ValueError(f"Error reading parameter file: {e}") from e
 
     # Remove comments and empty lines
     raw_lines = []
@@ -98,7 +98,7 @@ def _parse_basic_parameters(parameter_file: Path) -> Dict[str, Any]:
     return params
 
 
-def _validate_and_set_defaults(params: Dict[str, Any]) -> Dict[str, Any]:
+def _validate_and_set_defaults(params: dict[str, Any]) -> dict[str, Any]:
     """Validate required parameters and set defaults."""
     # Check required parameters
     required = [

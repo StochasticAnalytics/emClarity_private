@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
-Python equivalent of EMC_str2double.m
+Python equivalent of EMC_str2double.m.
 
 Converts string to double with error handling.
 """
 
-from typing import Union
 
 
-def emc_str2double(value: Union[str, float, int]) -> float:
+def emc_str2double(value: str | float | int) -> float:
     """
     Convert string to double (float) with error handling.
 
@@ -30,13 +29,13 @@ def emc_str2double(value: Union[str, float, int]) -> float:
     if isinstance(value, str):
         try:
             return float(value)
-        except ValueError:
-            raise ValueError(f"Cannot convert '{value}' to float")
+        except ValueError as err:
+            raise ValueError(f"Cannot convert '{value}' to float") from err
 
     raise ValueError(f"Cannot convert {type(value)} to float")
 
 
-def emc_str2int(value: Union[str, int, float]) -> int:
+def emc_str2int(value: str | int | float) -> int:
     """
     Convert string to integer with error handling.
 
@@ -58,8 +57,8 @@ def emc_str2int(value: Union[str, int, float]) -> int:
     if isinstance(value, str):
         try:
             return int(float(value))  # Handle strings like "3.0"
-        except ValueError:
-            raise ValueError(f"Cannot convert '{value}' to int")
+        except ValueError as err:
+            raise ValueError(f"Cannot convert '{value}' to int") from err
 
     raise ValueError(f"Cannot convert {type(value)} to int")
 

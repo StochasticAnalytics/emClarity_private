@@ -13,7 +13,6 @@ to (ny, nx_half) before comparing against our row-major output.
 from __future__ import annotations
 
 import json
-import math
 from pathlib import Path
 
 import numpy as np
@@ -143,12 +142,12 @@ class TestGPUBaselines:
     """GPU implementation vs MATLAB baselines."""
 
     @pytest.fixture()
-    def gpu_calc(self) -> "CTFCalculator":
+    def gpu_calc(self) -> CTFCalculator:
         return CTFCalculator()
 
     @pytest.mark.parametrize("bl_index", ALL_BASELINE_IDS)
     def test_gpu_matches_baseline(
-        self, gpu_calc: "CTFCalculator", bl_index: int
+        self, gpu_calc: CTFCalculator, bl_index: int
     ) -> None:
         bl = _baseline_by_index(bl_index)
         params = _make_ctf_params(bl)

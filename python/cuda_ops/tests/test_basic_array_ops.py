@@ -1,5 +1,5 @@
 """
-test_basic_array_ops.py
+test_basic_array_ops.py.
 
 Comprehensive tests for CUDA basic array operations.
 Tests both functionality and performance against NumPy/CuPy equivalents.
@@ -13,8 +13,10 @@ import time
 import unittest
 from pathlib import Path
 
-import cupy as cp
 import numpy as np
+import pytest
+
+cp = pytest.importorskip("cupy", reason="CuPy required for CUDA array ops tests")
 
 # Add the python package root to path for proper imports
 python_root = Path(__file__).parent.parent.parent

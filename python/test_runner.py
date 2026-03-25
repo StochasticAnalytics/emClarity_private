@@ -13,14 +13,13 @@ import argparse
 import sys
 import unittest
 from pathlib import Path
-from typing import List, Optional
 
 # Add python directory to path
 python_dir = Path(__file__).parent
 sys.path.insert(0, str(python_dir))
 
 
-def discover_test_modules() -> List[str]:
+def discover_test_modules() -> list[str]:
     """Discover all test modules in the python directory."""
     test_modules = []
 
@@ -36,7 +35,7 @@ def discover_test_modules() -> List[str]:
 
 
 def run_tests(
-    module_filter: Optional[str] = None,
+    module_filter: str | None = None,
     coverage: bool = False,
     ci_mode: bool = False,
     verbose: bool = True,

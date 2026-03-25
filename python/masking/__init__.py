@@ -1,5 +1,5 @@
 """
-emClarity Python masking package
+emClarity Python masking package.
 
 This package contains Python conversions of emClarity's image masking and padding functionality.
 """

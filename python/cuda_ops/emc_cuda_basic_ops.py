@@ -9,11 +9,10 @@ CUDA kernel performance and CuPy/NumPy compatibility.
 """
 
 from pathlib import Path
-from typing import Tuple
 
 import cupy as cp
 
-from .memory_utils import ensure_c, create_fortran_array
+from .memory_utils import ensure_c
 
 __all__ = ["CudaBasicOps"]
 
@@ -34,7 +33,7 @@ class CudaBasicOps:
         self._load_cuda_kernels()
 
     def _load_cuda_kernels(self):
-        """Load CUDA kernels from the .cu file"""
+        """Load CUDA kernels from the .cu file."""
         # First load the utility functions
         utils_file = Path(__file__).parent / "emc_cuda_utils.cuh"
         with open(utils_file) as f:
@@ -81,34 +80,34 @@ class CudaBasicOps:
 
     def _calculate_grid_block(
         self, total_threads: int, block_size: int = 256
-    ) -> Tuple[int, int]:
+    ) -> tuple[int, int]:
         """Calculate grid and block dimensions for 1D kernels."""
         blocks = (total_threads + block_size - 1) // block_size
         return (blocks,), (block_size,)
 
     def _calculate_grid_block_2d(
         self, ny: int, nx: int, threads_per_block_x: int = 16, threads_per_block_y: int = 16
-    ) -> Tuple[Tuple[int, int], Tuple[int, int]]:
+    ) -> tuple[tuple[int, int], tuple[int, int]]:
         """
         Calculate launch parameters for 2D kernels.
-        
+
         Args:
             ny: Number of elements in Y dimension
-            nx: Number of elements in X dimension  
+            nx: Number of elements in X dimension
             threads_per_block_x: Threads per block in X dimension
             threads_per_block_y: Threads per block in Y dimension
-            
+
         Returns:
             (num_blocks, threads_per_block) where:
-            - num_blocks: (num_blocks_x, num_blocks_y) 
+            - num_blocks: (num_blocks_x, num_blocks_y)
             - threads_per_block: (threads_per_block_x, threads_per_block_y)
         """
         num_blocks_x = (nx + threads_per_block_x - 1) // threads_per_block_x
         num_blocks_y = (ny + threads_per_block_y - 1) // threads_per_block_y
-        
+
         num_blocks = (num_blocks_x, num_blocks_y)
         threads_per_block = (threads_per_block_x, threads_per_block_y)
-        
+
         return num_blocks, threads_per_block
 
     def _calculate_grid_block_3d(
@@ -119,7 +118,7 @@ class CudaBasicOps:
         block_x: int = 8,
         block_y: int = 8,
         block_z: int = 8,
-    ) -> Tuple[Tuple[int, int, int], Tuple[int, int, int]]:
+    ) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
         """Calculate grid and block dimensions for 3D kernels."""
         grid_x = (nx + block_x - 1) // block_x
         grid_y = (ny + block_y - 1) // block_y
@@ -128,7 +127,7 @@ class CudaBasicOps:
 
     def add_arrays(self, a: cp.ndarray, b: cp.ndarray) -> cp.ndarray:
         """
-        Element-wise addition of two arrays: c = a + b
+        Element-wise addition of two arrays: c = a + b.
 
         Args:
             a: First input array
@@ -168,7 +167,7 @@ class CudaBasicOps:
 
     def multiply_scalar(self, a: cp.ndarray, scalar: float) -> cp.ndarray:
         """
-        Multiply array by scalar: b = a * scalar
+        Multiply array by scalar: b = a * scalar.
 
         Args:
             a: Input array
@@ -203,7 +202,7 @@ class CudaBasicOps:
     def transpose_2d(self, a: cp.ndarray) -> cp.ndarray:
         """
         Transpose a 2D matrix.
-        
+
         Input array shape: (ny, nx) - emClarity convention
         Output array shape: (nx, ny) - transposed
 

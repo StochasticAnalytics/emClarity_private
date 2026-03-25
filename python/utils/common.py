@@ -8,7 +8,7 @@ Python modules to reduce code duplication and ensure consistency.
 import logging
 import warnings
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any
 
 import numpy as np
 
@@ -59,7 +59,7 @@ class GPUContext:
 
     def ensure_array_type(
         self, array: Any, prefer_gpu: bool = False
-    ) -> Tuple[Any, Any]:
+    ) -> tuple[Any, Any]:
         """
         Ensure array is proper type and return (array, array_module).
 
@@ -117,7 +117,7 @@ def validate_array_shape_compatibility(
 
 
 def validate_array_dtype(
-    array: Any, expected_dtypes: Union[type, Tuple[type, ...]], name: str = "array"
+    array: Any, expected_dtypes: type | tuple[type, ...], name: str = "array"
 ) -> None:
     """Validate array has expected data type."""
     if isinstance(expected_dtypes, type):
@@ -129,7 +129,7 @@ def validate_array_dtype(
 
 
 def safe_file_path(
-    path: Union[str, Path], must_exist: bool = True, create_parent: bool = False
+    path: str | Path, must_exist: bool = True, create_parent: bool = False
 ) -> Path:
     """
     Safely convert and validate file path.
@@ -153,7 +153,7 @@ def safe_file_path(
     return path_obj
 
 
-def ensure_temp_directory(temp_dir: Optional[Path] = None) -> Path:
+def ensure_temp_directory(temp_dir: Path | None = None) -> Path:
     """
     Ensure temporary directory exists and return its path.
 
@@ -173,7 +173,7 @@ def ensure_temp_directory(temp_dir: Optional[Path] = None) -> Path:
 
 def setup_logging(
     level: int = logging.INFO,
-    format_string: Optional[str] = None,
+    format_string: str | None = None,
     include_cuda_info: bool = True,
 ) -> None:
     """Setup consistent logging for emClarity modules."""
@@ -207,7 +207,7 @@ def deprecated_warning(old_name: str, new_name: str, version: str = "2.0.0") -> 
     )
 
 
-def memory_info() -> Dict[str, Any]:
+def memory_info() -> dict[str, Any]:
     """Get memory information for debugging."""
     info = {"cpu_memory_available": True, "gpu_memory_available": HAS_CUPY}
 

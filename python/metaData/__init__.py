@@ -1,5 +1,5 @@
 """
-emClarity Python metaData package
+emClarity Python metaData package.
 
 This package contains Python conversions of emClarity's metadata handling functionality.
 

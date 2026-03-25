@@ -1,5 +1,5 @@
 """
-Unified emClarity Parameter Management System
+Unified emClarity Parameter Management System.
 
 This module provides comprehensive parameter management for emClarity, supporting:
 - MATLAB ↔ JSON conversion with backward compatibility
@@ -17,7 +17,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -42,9 +42,9 @@ class ParameterDefinition:
 
     # Value constraints
     default_value: Any = None
-    min_value: Optional[float] = None
-    max_value: Optional[float] = None
-    choices: Optional[List[str]] = None
+    min_value: float | None = None
+    max_value: float | None = None
+    choices: list[str] | None = None
 
     # GUI display configuration
     gui_unit: str = ""
@@ -52,24 +52,24 @@ class ParameterDefinition:
     display_decimals: int = 6
 
     # Vector parameters
-    vector_size: Optional[int] = None
-    vector_bounds: Optional[List[Tuple[float, float]]] = None
+    vector_size: int | None = None
+    vector_bounds: list[tuple[float, float]] | None = None
 
     # Organization
     category: str = "General"
     subcategory: str = ""
 
     def to_gui_value(
-        self, si_value: Union[float, List[float]]
-    ) -> Union[float, List[float]]:
+        self, si_value: float | list[float]
+    ) -> float | list[float]:
         """Convert SI value to GUI display value."""
         if isinstance(si_value, (list, tuple)):
             return [v * self.gui_scaling_factor for v in si_value]
         return si_value * self.gui_scaling_factor
 
     def to_si_value(
-        self, gui_value: Union[float, List[float]]
-    ) -> Union[float, List[float]]:
+        self, gui_value: float | list[float]
+    ) -> float | list[float]:
         """Convert GUI display value to SI value."""
         if isinstance(gui_value, (list, tuple)):
             return [v / self.gui_scaling_factor for v in gui_value]
@@ -83,7 +83,7 @@ class ParameterDefinition:
             return None
         return self.to_gui_value(self.default_value)
 
-    def validate_value(self, value: Any) -> Tuple[bool, str]:
+    def validate_value(self, value: Any) -> tuple[bool, str]:
         """
         Validate a value against this parameter's constraints.
 
@@ -140,9 +140,9 @@ class ParameterRegistry:
     """
 
     def __init__(self):
-        self._parameters: Dict[str, ParameterDefinition] = {}
-        self._matlab_lookup: Dict[str, str] = {}
-        self._json_lookup: Dict[str, str] = {}
+        self._parameters: dict[str, ParameterDefinition] = {}
+        self._matlab_lookup: dict[str, str] = {}
+        self._json_lookup: dict[str, str] = {}
         self._load_default_parameters()
 
     def _load_default_parameters(self):
@@ -273,7 +273,7 @@ class ParameterRegistry:
         self._matlab_lookup[param.matlab_name] = param.json_name
         self._json_lookup[param.json_name] = param.matlab_name
 
-    def get_parameter(self, name: str) -> Optional[ParameterDefinition]:
+    def get_parameter(self, name: str) -> ParameterDefinition | None:
         """Get parameter by JSON name or MATLAB name."""
         if name in self._parameters:
             return self._parameters[name]
@@ -281,13 +281,13 @@ class ParameterRegistry:
             return self._parameters[self._matlab_lookup[name]]
         return None
 
-    def get_all_parameters(self) -> Dict[str, ParameterDefinition]:
+    def get_all_parameters(self) -> dict[str, ParameterDefinition]:
         """Get all registered parameters."""
         return self._parameters.copy()
 
     def get_parameters_by_category(
         self, category: str
-    ) -> Dict[str, ParameterDefinition]:
+    ) -> dict[str, ParameterDefinition]:
         """Get all parameters in a specific category."""
         return {
             name: param
@@ -295,7 +295,7 @@ class ParameterRegistry:
             if param.category == category
         }
 
-    def get_required_parameters(self) -> List[str]:
+    def get_required_parameters(self) -> list[str]:
         """Get list of required parameter names (JSON format)."""
         return [name for name, param in self._parameters.items() if param.required]
 
@@ -308,7 +308,7 @@ class UnifiedParameterManager:
     and the metaData parameter converter into a single, comprehensive system.
     """
 
-    def __init__(self, config_path: Optional[str] = None):
+    def __init__(self, config_path: str | None = None):
         self.registry = ParameterRegistry()
         self.config_path = config_path
 
@@ -320,7 +320,7 @@ class UnifiedParameterManager:
         """Load additional parameter definitions from JSON config."""
         try:
             with open(config_path) as f:
-                config_data = json.load(f)
+                json.load(f)
 
             # TODO: Implement loading additional parameters from JSON
             # This would extend the default registry with user-defined parameters
@@ -329,7 +329,7 @@ class UnifiedParameterManager:
             logger.warning(f"Could not load extended config from {config_path}: {e}")
 
     # MATLAB conversion methods (from original parameter_converter)
-    def parse_matlab_file(self, file_path: Union[str, Path]) -> Dict[str, Any]:
+    def parse_matlab_file(self, file_path: str | Path) -> dict[str, Any]:
         """Parse MATLAB parameter file into dictionary."""
         file_path = Path(file_path)
         if not file_path.exists():
@@ -393,7 +393,7 @@ class UnifiedParameterManager:
         # Return as string if nothing else matches
         return value_str
 
-    def convert_matlab_to_json(self, matlab_params: Dict[str, Any]) -> Dict[str, Any]:
+    def convert_matlab_to_json(self, matlab_params: dict[str, Any]) -> dict[str, Any]:
         """Convert MATLAB parameters to modern JSON format."""
         json_config = {}
 
@@ -421,11 +421,11 @@ class UnifiedParameterManager:
 
         return json_config
 
-    def convert_json_to_matlab(self, json_config: Dict[str, Any]) -> Dict[str, Any]:
+    def convert_json_to_matlab(self, json_config: dict[str, Any]) -> dict[str, Any]:
         """Convert JSON parameters back to MATLAB format."""
         matlab_params = {}
 
-        def flatten_dict(d: Dict[str, Any], prefix: str = "") -> Dict[str, Any]:
+        def flatten_dict(d: dict[str, Any], prefix: str = "") -> dict[str, Any]:
             """Flatten nested dictionary to dot notation."""
             items = {}
             for key, value in d.items():
@@ -449,21 +449,21 @@ class UnifiedParameterManager:
         return matlab_params
 
     # GUI integration methods (from original parameter_loader)
-    def get_parameter_config(self, name: str) -> Optional[ParameterDefinition]:
+    def get_parameter_config(self, name: str) -> ParameterDefinition | None:
         """Get parameter configuration for GUI use."""
         return self.registry.get_parameter(name)
 
-    def get_all_gui_parameters(self) -> Dict[str, ParameterDefinition]:
+    def get_all_gui_parameters(self) -> dict[str, ParameterDefinition]:
         """Get all parameters formatted for GUI use."""
         return self.registry.get_all_parameters()
 
     def get_parameters_by_category(
         self, category: str
-    ) -> Dict[str, ParameterDefinition]:
+    ) -> dict[str, ParameterDefinition]:
         """Get parameters by category for GUI organization."""
         return self.registry.get_parameters_by_category(category)
 
-    def validate_all_parameters(self, config: Dict[str, Any]) -> List[str]:
+    def validate_all_parameters(self, config: dict[str, Any]) -> list[str]:
         """Validate all parameters in a configuration."""
         errors = []
         flat_config = self._flatten_dict(config)
@@ -484,7 +484,7 @@ class UnifiedParameterManager:
 
         return errors
 
-    def _flatten_dict(self, d: Dict[str, Any], prefix: str = "") -> Dict[str, Any]:
+    def _flatten_dict(self, d: dict[str, Any], prefix: str = "") -> dict[str, Any]:
         """Flatten nested dictionary to dot notation."""
         items = {}
         for key, value in d.items():
@@ -495,7 +495,7 @@ class UnifiedParameterManager:
                 items[new_key] = value
         return items
 
-    def create_json_schema(self) -> Dict[str, Any]:
+    def create_json_schema(self) -> dict[str, Any]:
         """Create JSON schema for validation."""
         # TODO: Implement JSON schema generation
         return {}

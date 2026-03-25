@@ -13,7 +13,6 @@ import pytest
 
 from ..emc_fourier_utils import FourierTransformer
 
-
 NX, NY = 64, 64
 
 

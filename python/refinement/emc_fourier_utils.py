@@ -80,7 +80,7 @@ class FourierTransformer:
         self._inv_trim = 1
 
         # Lazily built helpers (created on first use, cached thereafter)
-        self._checkerboard: Union[NDArray, None] = None
+        self._checkerboard: NDArray | None = None
 
     # ------------------------------------------------------------------
     # Public properties

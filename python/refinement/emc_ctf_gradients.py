@@ -67,7 +67,7 @@ class CTFCalculatorWithDerivatives(Protocol):
         dims: tuple[int, int],
         centered: bool = ...,
     ) -> tuple[NDArray, NDArray, NDArray, NDArray]:
-        """Compute CTF image and its partial derivatives.
+        r"""Compute CTF image and its partial derivatives.
 
         Returns:
             Tuple ``(ctf, dctf_dD, dctf_dA, dctf_dTheta)`` each of shape
@@ -266,12 +266,11 @@ def evaluate_score_and_gradient(
                 dctf_dD = xp.asarray(dctf_dD)
                 dctf_dA = xp.asarray(dctf_dA)
                 dctf_dTheta = xp.asarray(dctf_dTheta)
-        elif HAS_CUPY:
-            if isinstance(ctf_image, cp.ndarray):
-                ctf_image = ctf_image.get()
-                dctf_dD = dctf_dD.get()
-                dctf_dA = dctf_dA.get()
-                dctf_dTheta = dctf_dTheta.get()
+        elif HAS_CUPY and isinstance(ctf_image, cp.ndarray):
+            ctf_image = ctf_image.get()
+            dctf_dD = dctf_dD.get()
+            dctf_dA = dctf_dA.get()
+            dctf_dTheta = dctf_dTheta.get()
 
         # --- Migrate reference FT to correct device if needed ---------------
         ref_ft_i = ref_fts[i]
@@ -350,10 +349,7 @@ def evaluate_score_and_gradient(
         #   d(peak_height)/d(X) = raw_grad - norm_corr
 
         # Score factor accounts for the penalty weight in the gradient
-        if peak_height >= 0:
-            score_factor = combined_weight
-        else:
-            score_factor = 2.0 - combined_weight
+        score_factor = combined_weight if peak_height >= 0 else 2.0 - combined_weight
 
         derivative_kernels = [dctf_dD, dctf_dA, dctf_dTheta]
         # param indices: 0=defocus, 1=half_astig, 2=angle
@@ -369,7 +365,7 @@ def evaluate_score_and_gradient(
         norm_corr_D = 0.0
 
         for k, (dctf_dX, param_idx, unit_fac) in enumerate(
-            zip(derivative_kernels, param_indices, unit_factors)
+            zip(derivative_kernels, param_indices, unit_factors, strict=False)
         ):
             # --- Primary gradient term -----------------------------------
             grad_spectrum = data_ft_i * ref_ft_i * dctf_dX / ref_norm
@@ -539,12 +535,11 @@ def compute_gradient_debug_info(
                 dctf_dD = xp.asarray(dctf_dD)
                 dctf_dA = xp.asarray(dctf_dA)
                 dctf_dTheta = xp.asarray(dctf_dTheta)
-        elif HAS_CUPY:
-            if isinstance(ctf_image, cp.ndarray):
-                ctf_image = ctf_image.get()
-                dctf_dD = dctf_dD.get()
-                dctf_dA = dctf_dA.get()
-                dctf_dTheta = dctf_dTheta.get()
+        elif HAS_CUPY and isinstance(ctf_image, cp.ndarray):
+            ctf_image = ctf_image.get()
+            dctf_dD = dctf_dD.get()
+            dctf_dA = dctf_dA.get()
+            dctf_dTheta = dctf_dTheta.get()
 
         ref_ft_i = ref_fts[i]
         if xp is not np and isinstance(ref_ft_i, np.ndarray):

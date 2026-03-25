@@ -151,10 +151,15 @@ class CTFParams:
         )
 
     def to_kernel_args(self) -> dict[str, object]:
-        """Return a flat dictionary mapping each field name to its value.
+        """Return a flat dictionary of kernel-ready parameters.
 
-        Keys match the field names of this dataclass.  Boolean fields are
-        included as Python bools; numeric fields as np.float32.
+        Returns a subset of the dataclass fields: ``cs_mm`` and
+        ``amplitude_contrast`` are excluded because the kernel uses
+        ``cs_internal`` (pre-computed from cs_mm) and ``amplitude_contrast``
+        is converted to ``amplitude_phase`` via ``atan(ac / sqrt(1 - ac²))``
+        at construction time.
+        Boolean fields are included as Python bools; numeric fields as
+        np.float32.
 
         Note:
             This returns a ``dict``, not a positional argument tuple.  For
@@ -162,7 +167,7 @@ class CTFParams:
             in ``CTFCalculator.compute()``.
 
         Returns:
-            Dictionary mapping parameter names to their values.
+            Dictionary mapping kernel parameter names to their values.
         """
         return {
             "do_half_grid": self.do_half_grid,
@@ -170,7 +175,6 @@ class CTFParams:
             "pixel_size": self.pixel_size,
             "wavelength": self.wavelength,
             "cs_internal": self.cs_internal,
-            "amplitude_contrast": self.amplitude_contrast,
             "amplitude_phase": self.amplitude_phase,
             "mean_defocus": self.mean_defocus,
             "half_astigmatism": self.half_astigmatism,
