@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Python equivalent of BH_runAutoAlign.m
+Python equivalent of BH_runAutoAlign.m.
 
 Auto tilt-series alignment function for emClarity.
 Handles preprocessing, patch tracking, and bead-based refinement.
@@ -12,7 +12,6 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import List, Optional, Union
 
 import numpy as np
 from image_io.mrc_image import OPEN_IMG, SAVE_IMG, MRCImage
@@ -27,11 +26,11 @@ logger = logging.getLogger(__name__)
 
 
 def emc_run_auto_align(
-    parameter_file: Union[str, Path],
-    stack_in: Union[str, Path],
-    tilt_angles: Union[str, Path],
-    img_rotation: Union[str, float],
-    skip_tilts: Union[str, List[int], None] = None,
+    parameter_file: str | Path,
+    stack_in: str | Path,
+    tilt_angles: str | Path,
+    img_rotation: str | float,
+    skip_tilts: str | list[int] | None = None,
 ) -> None:
     """
     Run emClarity auto tilt-series alignment with integrated patch tracking and bead finding.
@@ -66,7 +65,7 @@ def emc_run_auto_align(
     try:
         emc = parse_parameter_file(parameter_file)
     except Exception as e:
-        raise ValueError(f"Error parsing parameter file: {e}")
+        raise ValueError(f"Error parsing parameter file: {e}") from e
 
     # Handle optional skip_tilts argument
     if skip_tilts is not None:
@@ -105,7 +104,7 @@ def emc_run_auto_align(
         input_mrc = MRCImage(stack_in, load_data=False)
         input_stack = OPEN_IMG("single", input_mrc)
     except Exception as e:
-        raise ValueError(f"Error loading input stack: {e}")
+        raise ValueError(f"Error loading input stack: {e}") from e
 
     # Handle skip_tilts
     skip_tilts_logical = _handle_skip_tilts(skip_tilts, input_stack.shape[2])
@@ -209,8 +208,8 @@ def _get_auto_alignment_parameters(emc: dict) -> dict:
 
 
 def _handle_skip_tilts(
-    skip_tilts: Optional[List[int]], total_tilts: int
-) -> Optional[List[bool]]:
+    skip_tilts: list[int] | None, total_tilts: int
+) -> list[bool] | None:
     """Handle skip_tilts parameter and return logical indexing."""
     if skip_tilts is None:
         return None
@@ -219,7 +218,7 @@ def _handle_skip_tilts(
     return [i not in skip_tilts for i in all_indices]
 
 
-def _setup_paths_and_directories(stack_in: Union[str, Path]) -> dict:
+def _setup_paths_and_directories(stack_in: str | Path) -> dict:
     """Setup file paths and create necessary directories."""
     stack_path = Path(stack_in)
     base_name = stack_path.stem
@@ -255,7 +254,7 @@ def _extract_header_info(input_mrc: MRCImage) -> dict:
 
 
 def _process_tilt_angles(
-    tilt_angles: Union[str, Path], skip_tilts_logical: List[bool], base_name: str
+    tilt_angles: str | Path, skip_tilts_logical: list[bool], base_name: str
 ) -> None:
     """Process tilt angles file and write filtered version."""
     os.chdir("fixedStacks")
@@ -270,7 +269,7 @@ def _process_tilt_angles(
             for angle in tilt_angles_data:
                 f.write(f"{angle}\n")
     except Exception as e:
-        raise ValueError(f"Error processing tilt angles: {e}")
+        raise ValueError(f"Error processing tilt angles: {e}") from e
     finally:
         os.chdir("..")
 
@@ -325,7 +324,7 @@ def _save_modified_stack(input_mrc: MRCImage, paths: dict, header_info: dict) ->
     )
 
 
-def _create_stack_symlink(stack_in: Union[str, Path], paths: dict) -> None:
+def _create_stack_symlink(stack_in: str | Path, paths: dict) -> None:
     """Create symbolic link to original stack."""
     os.chdir("fixedStacks")
     try:
@@ -333,12 +332,12 @@ def _create_stack_symlink(stack_in: Union[str, Path], paths: dict) -> None:
             ["ln", "-sf", f"../{stack_in}", f"{paths['base_name']}.fixed"], check=True
         )
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"Failed to create symbolic link: {e}")
+        raise RuntimeError(f"Failed to create symbolic link: {e}") from e
     finally:
         os.chdir("..")
 
 
-def _calculate_rotation_matrix(img_rotation: float) -> List[float]:
+def _calculate_rotation_matrix(img_rotation: float) -> list[float]:
     """Calculate rotation matrix from image rotation angle."""
     rad = np.radians(img_rotation)
     return [np.cos(rad), -np.sin(rad), np.sin(rad), np.cos(rad)]
@@ -395,7 +394,7 @@ def _save_preprocessed_stack(
 
 def _run_integrated_patch_tracking(
     paths: dict,
-    rot_mat: List[float],
+    rot_mat: list[float],
     emc: dict,
     img_rotation: float,
     binning_params: dict,
@@ -516,7 +515,7 @@ def _run_integrated_patch_tracking(
                 logger.error(f"Error in iteration {iteration}: {e}")
                 raise RuntimeError(
                     f"Patch tracking failed at iteration {iteration}: {e}"
-                )
+                ) from e
             finally:
                 os.chdir("..")  # Return to parent directory
 
@@ -565,9 +564,9 @@ def _run_first_iteration_alignment(
         logger.info("tiltxcorr completed successfully")
     except subprocess.CalledProcessError as e:
         logger.error(f"tiltxcorr failed: {e}")
-        raise RuntimeError(f"tiltxcorr failed: {e}")
-    except subprocess.TimeoutExpired:
-        raise RuntimeError("tiltxcorr timed out after 30 minutes")
+        raise RuntimeError(f"tiltxcorr failed: {e}") from e
+    except subprocess.TimeoutExpired as e:
+        raise RuntimeError("tiltxcorr timed out after 30 minutes") from e
 
     # Convert transforms
     cmd = ["xftoxg", "-nfit", "0", f"{p_name}.prexf", f"{p_name}.inpXF"]
@@ -575,7 +574,7 @@ def _run_first_iteration_alignment(
         subprocess.run(cmd, check=True, timeout=60)
         logger.info("Transform conversion completed")
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"xftoxg failed: {e}")
+        raise RuntimeError(f"xftoxg failed: {e}") from e
 
     # Copy tilt angles
     import shutil
@@ -632,7 +631,7 @@ def _run_subsequent_iteration_alignment(
         try:
             subprocess.run(cmd, check=True, timeout=120)
         except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"xfproduct failed: {e}")
+            raise RuntimeError(f"xfproduct failed: {e}") from e
 
     # Create binned stack
     cmd = [
@@ -655,7 +654,7 @@ def _run_subsequent_iteration_alignment(
         subprocess.run(cmd, check=True, timeout=600)
         logger.info(f"Created binned stack with factor {i_bin}")
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"newstack failed: {e}")
+        raise RuntimeError(f"newstack failed: {e}") from e
 
     # Create prealignment transform file
     with open(f"{p_name}.rawtlt") as f:
@@ -711,7 +710,7 @@ def _run_subsequent_iteration_alignment(
         logger.info("Patch tracking tiltxcorr completed")
     except subprocess.CalledProcessError as e:
         logger.error(f"Patch tracking tiltxcorr failed: {e}")
-        raise RuntimeError(f"Patch tracking tiltxcorr failed: {e}")
+        raise RuntimeError(f"Patch tracking tiltxcorr failed: {e}") from e
 
     # Process contours
     cmd = [
@@ -862,9 +861,9 @@ def _run_tiltalign(
         logger.info(f"tiltalign completed for iteration {iteration}")
     except subprocess.CalledProcessError as e:
         logger.error(f"tiltalign failed: {e}")
-        raise RuntimeError(f"tiltalign failed: {e}")
-    except subprocess.TimeoutExpired:
-        raise RuntimeError("tiltalign timed out after 30 minutes")
+        raise RuntimeError(f"tiltalign failed: {e}") from e
+    except subprocess.TimeoutExpired as e:
+        raise RuntimeError("tiltalign timed out after 30 minutes") from e
 
     # Scale transforms
     cmd = f"awk -v BINVAL={i_bin} '{{print $1,$2,$3,$4,BINVAL*$5,BINVAL*$6}}' {p_name}.tltxf_nonScaled > {p_name}.tltxf"
@@ -872,7 +871,7 @@ def _run_tiltalign(
         subprocess.run(cmd, shell=True, check=True, timeout=60)
         logger.info("Transform scaling completed")
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"Transform scaling failed: {e}")
+        raise RuntimeError(f"Transform scaling failed: {e}") from e
 
 
 def _copy_final_alignment_results(paths: dict, final_round: int) -> None:
@@ -915,7 +914,7 @@ def _copy_final_alignment_results(paths: dict, final_round: int) -> None:
 
     except Exception as e:
         logger.error(f"Error copying final results: {e}")
-        raise RuntimeError(f"Failed to copy final alignment results: {e}")
+        raise RuntimeError(f"Failed to copy final alignment results: {e}") from e
 
 
 def _run_integrated_bead_finding(paths: dict, nx: int, ny: int, emc: dict) -> None:
@@ -958,7 +957,7 @@ def _run_integrated_bead_finding(paths: dict, nx: int, ny: int, emc: dict) -> No
             subprocess.run(cmd, check=True, timeout=600)
             logger.info("Created binned stack for 3D bead finding")
         except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"newstack failed: {e}")
+            raise RuntimeError(f"newstack failed: {e}") from e
 
         # Step 2: Create reconstruction for bead finding
         cmd = [
@@ -1001,7 +1000,7 @@ def _run_integrated_bead_finding(paths: dict, nx: int, ny: int, emc: dict) -> No
             subprocess.run(cmd, check=True, timeout=1800)
             logger.info("Created reconstruction for bead finding")
         except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"tilt reconstruction failed: {e}")
+            raise RuntimeError(f"tilt reconstruction failed: {e}") from e
 
         # Step 3: Find beads in 3D
         cmd = [
@@ -1089,7 +1088,7 @@ def _run_integrated_bead_finding(paths: dict, nx: int, ny: int, emc: dict) -> No
 
     except Exception as e:
         logger.error(f"Error in integrated bead finding: {e}")
-        raise RuntimeError(f"Integrated bead finding failed: {e}")
+        raise RuntimeError(f"Integrated bead finding failed: {e}") from e
     finally:
         os.chdir(paths["start_dir"])
 
@@ -1214,8 +1213,8 @@ def main():
     if args.skip_tilts:
         try:
             skip_tilts = [int(x.strip()) for x in args.skip_tilts.split(",")]
-        except ValueError:
-            raise ValueError("Invalid skip_tilts format. Use comma-separated integers.")
+        except ValueError as err:
+            raise ValueError("Invalid skip_tilts format. Use comma-separated integers.") from err
 
     try:
         emc_run_auto_align(

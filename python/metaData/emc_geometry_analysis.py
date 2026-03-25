@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Python emClarity Geometry Analysis Tool
+Python emClarity Geometry Analysis Tool.
 
 This module provides Python equivalents of BH_geometryAnalysis.m functionality,
 with enhanced visualization and analysis capabilities using the star file format.
@@ -19,7 +19,6 @@ Date: September 3, 2025
 import logging
 import sys
 from pathlib import Path
-from typing import List, Optional, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -49,7 +48,7 @@ class EmClarityGeometryAnalyzer:
     - Export results in multiple formats
     """
 
-    def __init__(self, metadata_source: Union[str, Path]):
+    def __init__(self, metadata_source: str | Path):
         """
         Initialize the geometry analyzer.
 
@@ -134,7 +133,7 @@ class EmClarityGeometryAnalyzer:
                 self.tilt_geometry[tomo_name] = tilt_df[data_cols].values
 
         # Determine current cycle
-        cycle_keys = [k for k in self.geometry_data.keys() if "cycle" in k.lower()]
+        cycle_keys = [k for k in self.geometry_data if "cycle" in k.lower()]
         if cycle_keys:
             # Use the highest numbered cycle as current
             cycle_numbers = []
@@ -194,11 +193,11 @@ class EmClarityGeometryAnalyzer:
             cycle_num = subtomo_meta.currentCycle
             self.current_cycle = f"cycle{cycle_num:03d}_geometry"
 
-    def list_available_cycles(self) -> List[str]:
+    def list_available_cycles(self) -> list[str]:
         """List all available analysis cycles."""
         return list(self.geometry_data.keys())
 
-    def list_available_tomograms(self, cycle: Optional[str] = None) -> List[str]:
+    def list_available_tomograms(self, cycle: str | None = None) -> list[str]:
         """List all available tomograms for a given cycle."""
         if cycle is None:
             cycle = self.current_cycle
@@ -209,7 +208,7 @@ class EmClarityGeometryAnalyzer:
         return list(self.geometry_data[cycle].keys())
 
     def get_geometry_data(
-        self, cycle: Optional[str] = None, tomogram: Optional[str] = None
+        self, cycle: str | None = None, tomogram: str | None = None
     ) -> np.ndarray:
         """
         Get geometry data for specified cycle and tomogram.
@@ -237,15 +236,15 @@ class EmClarityGeometryAnalyzer:
 
         return self.geometry_data[cycle][tomogram]
 
-    def get_tilt_data(self, tomogram: str) -> Optional[np.ndarray]:
+    def get_tilt_data(self, tomogram: str) -> np.ndarray | None:
         """Get tilt series data for specified tomogram."""
         return self.tilt_geometry.get(tomogram, None)
 
     def create_tomogram_summary_plot(
         self,
-        cycle: Optional[str] = None,
-        tomogram: Optional[str] = None,
-        save_path: Optional[Union[str, Path]] = None,
+        cycle: str | None = None,
+        tomogram: str | None = None,
+        save_path: str | Path | None = None,
         show_plot: bool = True,
     ) -> plt.Figure:
         """
@@ -517,8 +516,8 @@ class EmClarityGeometryAnalyzer:
 
     def create_cycle_overview_plots(
         self,
-        cycle: Optional[str] = None,
-        output_dir: Optional[Union[str, Path]] = None,
+        cycle: str | None = None,
+        output_dir: str | Path | None = None,
         max_tomograms: int = 20,
     ) -> None:
         """
@@ -734,7 +733,7 @@ Examples:
 
         else:
             # Create single tomogram plot
-            fig = analyzer.create_tomogram_summary_plot(
+            analyzer.create_tomogram_summary_plot(
                 cycle=args.cycle,
                 tomogram=args.tomogram,
                 save_path=args.output,

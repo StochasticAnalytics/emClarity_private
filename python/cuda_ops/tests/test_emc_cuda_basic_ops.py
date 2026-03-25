@@ -1,12 +1,9 @@
-"""
-Tests for CUDA-accelerated basic array operations.
-"""
+"""Tests for CUDA-accelerated basic array operations."""
 
 import unittest
 from unittest import skipIf
 
 import cupy as cp
-import numpy as np
 
 try:
     from ..emc_cuda_basic_ops import CudaBasicOps

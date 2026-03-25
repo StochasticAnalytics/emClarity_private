@@ -264,8 +264,10 @@ class TestDescentDirection:
         base_ctf: CTFParams,
         peak_mask: np.ndarray,
     ) -> None:
-        """Verify descent direction for each of the 3 global parameters
-        independently."""
+        """Verify descent direction for each of the 3 global parameters.
+
+        Tests each parameter independently.
+        """
         n_particles = 3
         data_fts, ref_fts = _make_multi_particle(
             ft, ctf_calc, base_ctf, n_particles,
@@ -620,8 +622,10 @@ class TestPenaltyGradient:
 
 
 class TestPerParticleDzDerivative:
-    """analytical dz gradient = (dScore/dD) * cos(tilt_angle), verified
-    independently via FD on individual particle dz parameters."""
+    """Analytical dz gradient = (dScore/dD) * cos(tilt_angle).
+
+    Verified independently via FD on individual particle dz parameters.
+    """
 
     @pytest.mark.parametrize("tilt_angle", [0.0, 30.0, 60.0])
     def test_dz_equals_dD_times_cos_tilt(
@@ -632,8 +636,11 @@ class TestPerParticleDzDerivative:
         peak_mask: np.ndarray,
         tilt_angle: float,
     ) -> None:
-        """For a single particle, the dz gradient should equal the
-        defocus gradient contribution scaled by cos(tilt)."""
+        """For a single particle, dz gradient equals defocus gradient scaled by cos(tilt).
+
+        The dz gradient should equal the defocus gradient contribution
+        scaled by cos(tilt).
+        """
         data_fts, ref_fts = _make_multi_particle(
             ft, ctf_calc, base_ctf, 1,
         )
@@ -704,8 +711,7 @@ class TestPerParticleDzDerivative:
 
 
 class TestNormCorrectionNonNegligible:
-    """For at least some parameter/particle combinations,
-    |norm_corr| > 0.01 * |raw_grad|.
+    """For at least some parameter/particle combinations, |norm_corr| > 0.01 * |raw_grad|.
 
     We verify this indirectly: if the norm correction were zero, the
     analytical gradient without norm correction would differ from
@@ -719,9 +725,9 @@ class TestNormCorrectionNonNegligible:
         base_ctf: CTFParams,
         peak_mask: np.ndarray,
     ) -> None:
-        """Verify that the normalization correction term is non-negligible
-        for at least some parameter/particle combinations.
+        """Verify that the normalization correction term is non-negligible.
 
+        Checks at least some parameter/particle combinations.
         We check this by comparing the full analytical gradient (which
         includes norm correction) against FD.  Good agreement implies
         the norm correction is correctly computed.  We also verify the
@@ -773,8 +779,7 @@ class TestNormCorrectionNonNegligible:
         base_ctf: CTFParams,
         peak_mask: np.ndarray,
     ) -> None:
-        """Directly assert |norm_corr| > 0.01 * |raw_grad| for at least one
-        particle/parameter combination.
+        """Assert |norm_corr| > 0.01 * |raw_grad| for at least one combination.
 
         This is the acceptance criterion stated in the task specification:
         the normalization correction must be measurably non-negligible
@@ -827,8 +832,7 @@ class TestNormCorrectionNonNegligible:
 
 
 class TestZeroGradientAtTruth:
-    """When CTF parameters exactly match ground truth (delta=0),
-    gradient magnitude < 0.01."""
+    """When CTF parameters exactly match ground truth (delta=0), gradient magnitude < 0.01."""
 
     def test_gradient_near_zero_at_truth(
         self,
@@ -837,9 +841,10 @@ class TestZeroGradientAtTruth:
         base_ctf: CTFParams,
         peak_mask: np.ndarray,
     ) -> None:
-        """At ground truth (delta=0), each gradient component should be
-        near zero.  The angle gradient is in per-radian units (multiplied
-        by 180/pi from per-degree), so its threshold is scaled accordingly.
+        """At ground truth (delta=0), each gradient component should be near zero.
+
+        The angle gradient is in per-radian units (multiplied by 180/pi from
+        per-degree), so its threshold is scaled accordingly.
         """
         n_particles = 3
         data_fts, ref_fts = _make_multi_particle(
@@ -856,8 +861,8 @@ class TestZeroGradientAtTruth:
         # The 0.01 threshold applies to per-unit gradients in the
         # derivative kernel's natural units.  For the angle parameter,
         # the analytical derivative kernel is per-degree, but we
-        # convert to per-radian (×180/π ≈ 57.3), so the threshold
-        # for the angle component is 0.01 × 57.3.
+        # convert to per-radian (x180/pi ~ 57.3), so the threshold
+        # for the angle component is 0.01 x 57.3.
         threshold_per_unit = 0.01
         assert abs(grad[0]) < threshold_per_unit, (
             f"Defocus gradient at truth too large: {grad[0]:.6e}"
@@ -892,8 +897,11 @@ class TestGradientSignConsistency:
         base_ctf: CTFParams,
         peak_mask: np.ndarray,
     ) -> None:
-        """When defocus is offset positively, the score gradient (before
-        negation) should push back toward the optimum."""
+        """When defocus is offset positively, gradient should push back toward optimum.
+
+        The score gradient (before negation) should push back toward
+        the optimum.
+        """
         n_particles = 3
         data_fts, ref_fts = _make_multi_particle(
             ft, ctf_calc, base_ctf, n_particles,
@@ -952,8 +960,10 @@ class TestGradientSignConsistency:
 
 
 class TestScoreMatchesScoring:
-    """Forward pass of evaluate_score_and_gradient produces identical
-    score and shifts as evaluate_score_and_shifts."""
+    """Forward pass of evaluate_score_and_gradient matches evaluate_score_and_shifts.
+
+    Produces identical score and shifts as evaluate_score_and_shifts.
+    """
 
     def test_score_consistency(
         self,

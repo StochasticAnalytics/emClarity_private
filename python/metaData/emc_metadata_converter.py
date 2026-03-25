@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MATLAB to Star File Metadata Converter for emClarity
+MATLAB to Star File Metadata Converter for emClarity.
 
 This module provides functionality to convert emClarity MATLAB .mat files containing
 subTomoMeta structures to a hierarchical directory structure using star files.
@@ -24,7 +24,7 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Union
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -56,7 +56,7 @@ class EmClarityMetadataConverter:
         self.geometry_columns = self._define_geometry_columns()
         self.tilt_geometry_columns = self._define_tilt_geometry_columns()
 
-    def _define_geometry_columns(self) -> List[str]:
+    def _define_geometry_columns(self) -> list[str]:
         """Define standard column names for geometry data (26 columns)."""
         return [
             "correlation_coefficient",  # Column 1
@@ -87,7 +87,7 @@ class EmClarityMetadataConverter:
             "class_label",  # Column 26 - class assignment (-9999 = ignored)
         ]
 
-    def _define_tilt_geometry_columns(self) -> List[str]:
+    def _define_tilt_geometry_columns(self) -> list[str]:
         """Define standard column names for tilt geometry data (23 columns)."""
         return [
             "tilt_angle",  # Column 1
@@ -116,7 +116,7 @@ class EmClarityMetadataConverter:
         ]
 
     def convert_mat_to_star(
-        self, mat_file_path: Union[str, Path], output_dir: Union[str, Path]
+        self, mat_file_path: str | Path, output_dir: str | Path
     ) -> None:
         """
         Convert a MATLAB .mat file to star file directory structure.
@@ -152,14 +152,14 @@ class EmClarityMetadataConverter:
 
         logger.info(f"Conversion complete. Output saved to {output_dir}")
 
-    def _load_mat_file(self, mat_file_path: Path) -> Dict[str, Any]:
+    def _load_mat_file(self, mat_file_path: Path) -> dict[str, Any]:
         """Load MATLAB file with proper settings."""
         try:
             return scipy.io.loadmat(
                 str(mat_file_path), struct_as_record=False, squeeze_me=True
             )
         except Exception as e:
-            raise ValueError(f"Failed to load MATLAB file {mat_file_path}: {e}")
+            raise ValueError(f"Failed to load MATLAB file {mat_file_path}: {e}") from e
 
     def _convert_top_level_metadata(self, subtomo_meta: Any, output_dir: Path) -> None:
         """Convert top-level metadata to metadata.star file."""
@@ -257,7 +257,7 @@ class EmClarityMetadataConverter:
         if len(array.shape) != 2:
             raise ValueError(f"Expected 2D array, got shape {array.shape}")
 
-        n_particles, n_cols = array.shape
+        _n_particles, n_cols = array.shape
 
         # Use standard column names if we have the expected number
         if n_cols == len(self.geometry_columns):
@@ -333,7 +333,7 @@ class EmClarityMetadataConverter:
         if len(array.shape) != 2:
             raise ValueError(f"Expected 2D array, got shape {array.shape}")
 
-        n_tilts, n_cols = array.shape
+        _n_tilts, n_cols = array.shape
 
         # Use standard column names if we have the expected number
         if n_cols == len(self.tilt_geometry_columns):

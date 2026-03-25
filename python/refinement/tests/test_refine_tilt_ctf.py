@@ -357,8 +357,7 @@ class TestZeroIteration:
 
 
 class TestAdamRecovery:
-    """Synthetic 10 particles with +500A defocus offset: ADAM recovers
-    offset to within 100A.
+    """Synthetic 10 particles with +500A defocus offset: ADAM recovers to within 100A.
 
     Uses ``defocus_search_range=1000`` (tighter than default 5000) for a
     well-calibrated ADAM learning rate on this synthetic landscape, and
@@ -480,8 +479,9 @@ class TestLBFGSBRecovery:
 
 
 class TestTwoPhaseOptimization:
-    """First minimum_global_iterations only change params[0:3]; per-particle
-    params[3:] remain zero until unfreeze.
+    """First minimum_global_iterations only change params[0:3].
+
+    Per-particle params[3:] remain zero until unfreeze.
     """
 
     def test_global_only_phase_freezes_per_particle(
@@ -492,8 +492,9 @@ class TestTwoPhaseOptimization:
         truth_ctf: CTFParams,
         peak_mask: np.ndarray,
     ) -> None:
-        """With max_iterations == minimum_global_iterations, per-particle
-        params never unfreeze and delta_z stays zero.
+        """With max_iterations == minimum_global_iterations, delta_z stays zero.
+
+        Per-particle params never unfreeze.
         """
         data_fts, ref_fts = _make_multi_particle_data(
             ft, ctf_calc, truth_ctf, n_particles=N_PARTICLES,
@@ -532,11 +533,10 @@ class TestTwoPhaseOptimization:
         base_ctf: CTFParams,
         peak_mask: np.ndarray,
     ) -> None:
-        """With max_iterations > minimum_global_iterations and per-particle
-        signal present, delta_z becomes non-zero after unfreezing.
+        """With sufficient iterations and per-particle signal, delta_z becomes non-zero.
 
         We generate data with per-particle z-offsets so the optimizer has
-        signal to recover.
+        signal to recover after unfreezing.
         """
         ctf_calc_local = ctf_calc
         ft_local = ft
@@ -598,8 +598,9 @@ class TestConvergenceDetection:
         base_ctf: CTFParams,
         peak_mask: np.ndarray,
     ) -> None:
-        """With zero defocus offset (data matches base CTF), the optimizer
-        should converge quickly since there is nothing to correct.
+        """With zero defocus offset, the optimizer converges quickly.
+
+        Data matches base CTF so there is nothing to correct.
         """
         data_fts, ref_fts = _make_multi_particle_data(
             ft, ctf_calc, base_ctf, n_particles=5,
@@ -666,8 +667,7 @@ class TestConvergenceDetection:
 
 
 class TestScoreHistoryMonotone:
-    """Score history is monotonically non-decreasing after first 2
-    iterations for synthetic data.
+    """Score history is monotonically non-decreasing after first 2 iterations.
 
     Uses ADAM with ``global_only=True`` and ``defocus_search_range=500``
     to avoid (a) the score dip from the freeze/unfreeze transition and
@@ -801,9 +801,7 @@ class TestGlobalOnlyMode:
 
 
 class TestAsymmetricBounds:
-    """Half-astigmatism lower bound prevents base_half + delta from
-    crossing zero.
-    """
+    """Half-astigmatism lower bound prevents base_half + delta from crossing zero."""
 
     def test_half_astig_lower_bound_enforced(
         self,
@@ -811,8 +809,10 @@ class TestAsymmetricBounds:
         ctf_calc: CTFCalculatorCPU,
         peak_mask: np.ndarray,
     ) -> None:
-        """With small base half-astigmatism, the optimizer cannot push
-        eff_half below 1.0A (the intentional 1A margin).
+        """With small base half-astigmatism, eff_half cannot go below 1.0A.
+
+        The intentional 1A margin prevents the optimizer from pushing
+        eff_half below 1.0A.
         """
         # Base CTF with small half-astigmatism (100A)
         small_astig_ctf = CTFParams.from_defocus_pair(
@@ -865,8 +865,9 @@ class TestAsymmetricBounds:
         )
 
     def test_bound_value_correct(self, base_ctf: CTFParams) -> None:
-        """Verify the implementation's lower bound matches the formula from
-        the task specification: ``-base_half + 1.0``.
+        """Verify the lower bound matches the formula: ``-base_half + 1.0``.
+
+        Checks agreement with the task specification formula.
         """
         base_half = float(base_ctf.half_astigmatism)  # (20000-18000)/2 = 1000
         actual_lower = compute_half_astig_lower_bound(base_half)
@@ -883,8 +884,7 @@ class TestAsymmetricBounds:
 
 
 class TestDfSwap:
-    """If final defocus yields df2 > df1, swap is applied and angle
-    rotated by 90 degrees.
+    """If final defocus yields df2 > df1, swap is applied and angle rotated by 90 degrees.
 
     The asymmetric bounds prevent the swap from firing during normal
     optimization.  This test validates the swap logic correctness
@@ -928,8 +928,9 @@ class TestDfSwap:
         truth_ctf: CTFParams,
         peak_mask: np.ndarray,
     ) -> None:
-        """With standard bounds, the swap should not fire because the
-        asymmetric bound prevents eff_half from going negative.
+        """With standard bounds, the swap should not fire.
+
+        The asymmetric bound prevents eff_half from going negative.
         """
         data_fts, ref_fts = _make_multi_particle_data(
             ft, ctf_calc, truth_ctf, n_particles=5,
@@ -970,16 +971,15 @@ class TestDfSwap:
         truth_ctf: CTFParams,
         peak_mask: np.ndarray,
     ) -> None:
-        """Integration test: the df1/df2 swap fires through the full
-        ``refine_tilt_ctf`` codepath.
+        """Integration test: df1/df2 swap fires through the full refine_tilt_ctf codepath.
 
         Because asymmetric bounds prevent the optimizer from naturally
         crossing zero, we mock the optimizer to report converged
         parameters where ``base_half + delta < 0``, exercising the
         post-optimisation canonicalisation path.
         """
-        from .. import emc_refine_tilt_ctf as _rtc_module
         from ...optimizers.emc_adam_optimizer import AdamOptimizer
+        from .. import emc_refine_tilt_ctf as _rtc_module
 
         n_particles = 5
         data_fts, ref_fts = _make_multi_particle_data(
@@ -1042,9 +1042,7 @@ class TestDfSwap:
 
 
 class TestNonConvergenceWarning:
-    """When optimizer does not converge within maximum_iterations,
-    results.converged is False and a warning is logged.
-    """
+    """When optimizer does not converge, results.converged is False and a warning is logged."""
 
     def test_non_convergence_flag(
         self,
@@ -1054,9 +1052,7 @@ class TestNonConvergenceWarning:
         truth_ctf: CTFParams,
         peak_mask: np.ndarray,
     ) -> None:
-        """With very few iterations and a large offset, convergence is
-        not achieved.
-        """
+        """With very few iterations and a large offset, convergence is not achieved."""
         data_fts, ref_fts = _make_multi_particle_data(
             ft, ctf_calc, truth_ctf, n_particles=N_PARTICLES,
         )
@@ -1097,8 +1093,9 @@ class TestNonConvergenceWarning:
 
 
 class TestGradientAtConvergence:
-    """At final parameters, gradient magnitude is below a reasonable
-    threshold (< 0.1 for synthetic data).
+    """At final parameters, gradient magnitude is below a reasonable threshold.
+
+    Threshold is < 0.1 for synthetic data.
     """
 
     def test_gradient_small_at_convergence(
@@ -1108,8 +1105,9 @@ class TestGradientAtConvergence:
         base_ctf: CTFParams,
         peak_mask: np.ndarray,
     ) -> None:
-        """With zero-offset data (data matches base CTF), the gradient
-        at the converged parameters should be near zero.
+        """With zero-offset data, the gradient at converged parameters should be near zero.
+
+        Data matches base CTF.
         """
         data_fts, ref_fts = _make_multi_particle_data(
             ft, ctf_calc, base_ctf, n_particles=5,
@@ -1165,8 +1163,9 @@ class TestGradientAtConvergence:
         truth_ctf: CTFParams,
         peak_mask: np.ndarray,
     ) -> None:
-        """L-BFGS-B should produce small gradients at convergence, even
-        with a 500A offset to recover.
+        """L-BFGS-B should produce small gradients at convergence.
+
+        Even with a 500A offset to recover.
         """
         data_fts, ref_fts = _make_multi_particle_data(
             ft, ctf_calc, truth_ctf, n_particles=5,

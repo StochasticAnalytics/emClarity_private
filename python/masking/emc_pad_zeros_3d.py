@@ -1,5 +1,5 @@
 """
-emClarity 3D padding functions with GPU support via CuPy
+emClarity 3D padding functions with GPU support via CuPy.
 
 This module provides padding functionality for 3D image volumes with options for:
 - CPU and GPU computation
@@ -11,7 +11,7 @@ Original MATLAB equivalent: masking/BH_padZeros3d.m
 """
 
 import logging
-from typing import Any, Literal, Optional, Tuple, Union
+from typing import Any, Literal
 
 import numpy as np
 
@@ -28,14 +28,14 @@ logger = logging.getLogger(__name__)
 
 
 def emc_pad_zeros_3d(
-    image: Union[np.ndarray, Any],
-    pad_low: Union[np.ndarray, Tuple, str],
-    pad_top: Optional[Union[np.ndarray, Tuple]] = None,
+    image: np.ndarray | Any,
+    pad_low: np.ndarray | tuple | str,
+    pad_top: np.ndarray | tuple | None = None,
     method: Literal["GPU", "CPU"] = "CPU",
     precision: Literal["single", "double", "singleTaper", "doubleTaper"] = "single",
-    extrap_val: Optional[float] = None,
+    extrap_val: float | None = None,
     fourier_oversample: bool = False,
-) -> Union[np.ndarray, Any]:
+) -> np.ndarray | Any:
     """
     Pad a 3D image volume with zeros or other values.
 
@@ -221,8 +221,8 @@ def _apply_tapering(image, extrap_val, is_2d):
     inv_taper = 1 - taper
 
     # Get image dimensions
-    d1, d2 = image.shape[:2]
-    d3 = 1 if is_2d else image.shape[2]
+    _d1, _d2 = image.shape[:2]
+    1 if is_2d else image.shape[2]
 
     # Apply tapering to all edges
     if len(image.shape) == 3 or not is_2d:

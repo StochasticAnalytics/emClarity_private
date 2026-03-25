@@ -1,5 +1,5 @@
 """
-test_basic_array_ops.py
+test_basic_array_ops.py.
 
 Comprehensive tests for CUDA basic array operations.
 Tests both functionality and performance against NumPy/CuPy equivalents.

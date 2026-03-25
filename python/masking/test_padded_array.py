@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test and demonstration script for PaddedArray class
+Test and demonstration script for PaddedArray class.
 
 This script demonstrates the key features:
 1. Single-use mode for one-off padding operations

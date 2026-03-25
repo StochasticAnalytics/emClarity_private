@@ -33,7 +33,6 @@ from ..emc_ctf_refine_pipeline import (
 )
 from ..emc_refine_tilt_ctf import RefinementResults
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -420,7 +419,7 @@ class TestEmptyStarFile:
         assert output_path.exists()
 
         # Verify output is parseable and empty
-        out_particles, out_headers = parse_star_file(output_path)
+        out_particles, _out_headers = parse_star_file(output_path)
         assert len(out_particles) == 0
 
 
@@ -529,7 +528,7 @@ class TestSingleTiltGroupPipeline:
             star_5particles, stack_5slices, ref_volume, output_path,
         )
 
-        out_particles, out_headers = parse_star_file(output_path)
+        out_particles, _out_headers = parse_star_file(output_path)
         assert len(out_particles) == 5
 
         # Verify all 30 columns are present
@@ -555,7 +554,7 @@ class TestSingleTiltGroupPipeline:
         # (the optimizer adjusts defocus even with synthetic data)
         any_df1_changed = any(
             abs(inp["defocus_1"] - out["defocus_1"]) > 0.001
-            for inp, out in zip(in_particles, out_particles)
+            for inp, out in zip(in_particles, out_particles, strict=False)
         )
         # Score column should be updated (was 0.0 initially)
         all_scores_set = all(
@@ -587,7 +586,7 @@ class TestSingleTiltGroupPipeline:
             "total_exposure", "original_image_filename", "tilt_angle",
         ]
 
-        for inp, out in zip(in_particles, out_particles):
+        for inp, out in zip(in_particles, out_particles, strict=False):
             for col in preserved_cols:
                 assert inp[col] == out[col], (
                     f"Column '{col}' changed: {inp[col]} -> {out[col]}"

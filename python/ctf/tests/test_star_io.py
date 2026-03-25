@@ -259,10 +259,10 @@ class TestRoundtrip:
         roundtrip_path = tmp_path / "roundtrip.star"
         write_star_file(roundtrip_path, particles_1, headers_1)
 
-        particles_2, headers_2 = parse_star_file(roundtrip_path)
+        particles_2, _headers_2 = parse_star_file(roundtrip_path)
 
         assert len(particles_2) == len(particles_1)
-        for p1, p2 in zip(particles_1, particles_2):
+        for p1, p2 in zip(particles_1, particles_2, strict=False):
             assert p1 == p2, f"Mismatch: {p1} != {p2}"
 
     def test_roundtrip_header_count(
@@ -290,7 +290,7 @@ class TestRoundtrip:
         write_star_file(path_b, particles_a, headers_a)
         particles_b, _ = parse_star_file(path_b)
 
-        for pa, pb in zip(particles_a, particles_b):
+        for pa, pb in zip(particles_a, particles_b, strict=False):
             assert pa == pb
 
 

@@ -208,7 +208,7 @@ class TestPositiveControl:
         base_ctf: CTFParams, peak_mask: np.ndarray,
     ) -> None:
         data_ft, ref_ft = _make_synthetic_particle(ft, ctf_calc, base_ctf)
-        total_score, scores, shifts = _score_one(
+        total_score, _scores, _shifts = _score_one(
             ft, ctf_calc, base_ctf, peak_mask, data_ft, ref_ft,
         )
         assert total_score > 0.95, f"Expected score > 0.95, got {total_score}"
@@ -321,7 +321,7 @@ class TestMultiParticle:
         )
 
         for i in range(n_particles):
-            single_params = np.zeros(4)
+            np.zeros(4)
             single_score, _, _ = _score_one(
                 ft, ctf_calc, base_ctf, peak_mask,
                 data_fts[i], ref_fts[i],
@@ -349,8 +349,10 @@ class TestEffectiveDefocus:
         self, ft: FourierTransformer, ctf_calc: CTFCalculatorCPU,
         peak_mask: np.ndarray,
     ) -> None:
-        """Shifting base CTF by (d, h) and scoring with delta=(0,0) must
-        match the original base CTF scored with delta=(d, h)."""
+        """Shifting base CTF by (d,h) and scoring with delta=(0,0) must match delta=(d,h).
+
+        Verifies score equivalence between pre-shifted base and delta-offset.
+        """
         delta_df = 200.0
         delta_half = 50.0
 
@@ -402,8 +404,7 @@ class TestEffectiveDefocus:
         self, ft: FourierTransformer, ctf_calc: CTFCalculatorCPU,
         base_ctf: CTFParams, peak_mask: np.ndarray,
     ) -> None:
-        """At tilt=0, dz has full effect (cos(0)=1); at tilt=60,
-        contribution is dz*cos(60)=dz/2."""
+        """At tilt=0, dz has full effect (cos(0)=1); at tilt=60, contribution is dz/2."""
         data_ft, ref_ft = _make_synthetic_particle(
             ft, ctf_calc, base_ctf, seed=88,
         )
@@ -458,16 +459,19 @@ class TestEffectiveDefocus:
 
 
 class TestDfSwap:
-    """When computed df2_eff > df1_eff, values are swapped and angle
-    rotated by 90 degrees.  The resulting CTF is physically identical.
+    """When computed df2_eff > df1_eff, values are swapped and angle rotated by 90 degrees.
+
+    The resulting CTF is physically identical.
     """
 
     def test_swap_produces_same_score(
         self, ft: FourierTransformer, ctf_calc: CTFCalculatorCPU,
         peak_mask: np.ndarray,
     ) -> None:
-        """A large negative delta_half_astig that flips df1/df2 should
-        still produce a valid score (the swap corrects the ordering)."""
+        """A large negative delta_half_astig that flips df1/df2 still produces a valid score.
+
+        The swap corrects the ordering.
+        """
         # Base: df1=20000, df2=18000, half_astig=1000
         base = CTFParams.from_defocus_pair(
             df1=20000.0, df2=18000.0, angle_degrees=0.0,
@@ -510,8 +514,7 @@ class TestDfSwap:
         self, ft: FourierTransformer, ctf_calc: CTFCalculatorCPU,
         peak_mask: np.ndarray,
     ) -> None:
-        """When delta_half_astig forces df2>df1, the swap fires and the
-        score remains meaningful (not degenerate)."""
+        """When delta_half_astig forces df2>df1, the swap fires and score remains meaningful."""
         base = CTFParams.from_defocus_pair(
             df1=20000.0, df2=19800.0, angle_degrees=0.0,
             pixel_size=PIXEL_SIZE, wavelength=WAVELENGTH,
@@ -525,7 +528,7 @@ class TestDfSwap:
         #                                   df2=19800-(-200)=20000
         # Swap fires.
         params = np.array([0.0, -200.0, 0.0, 0.0])
-        score, scores, _ = _score_one(
+        score, _scores, _ = _score_one(
             ft, ctf_calc, base, peak_mask, data_ft, ref_ft, params=params,
         )
         # Score should be finite and non-zero (swap handled correctly)
@@ -545,8 +548,7 @@ class TestPeakMaskRestriction:
         self, ft: FourierTransformer, ctf_calc: CTFCalculatorCPU,
         base_ctf: CTFParams,
     ) -> None:
-        """A very small mask (radius=1) centred at the origin still
-        captures zero-shift peaks; a mask of radius=0 blocks everything."""
+        """A very small mask (radius=1) captures zero-shift peaks; radius=0 blocks everything."""
         data_ft, ref_ft = _make_synthetic_particle(ft, ctf_calc, base_ctf)
 
         # Normal mask — captures peak
@@ -558,7 +560,7 @@ class TestPeakMaskRestriction:
         # Tiny mask centred at origin (radius=1) — may still capture
         # zero-shift peak since it is at the centre
         mask_tiny = create_peak_mask(NX, NY, radius=1.0)
-        score_tiny, _, _ = _score_one(
+        _score_tiny, _, _ = _score_one(
             ft, ctf_calc, base_ctf, mask_tiny, data_ft, ref_ft,
         )
 
@@ -608,10 +610,9 @@ class TestPeakMaskRestriction:
 
 
 class TestGaussianPenalty:
-    """Gaussian penalty reduces score proportional to
-    ``exp(-shift^2 / (2*sigma^2))`` for known shift and z-offset values.
+    """Gaussian penalty reduces score proportional to ``exp(-shift^2 / (2*sigma^2))``.
 
-    These are Python-only enhancements not present in the MATLAB reference.
+    Tests known shift and z-offset values. These are Python-only enhancements not present in the MATLAB reference.
     Validation uses finite-difference-style reasoning rather than MATLAB
     comparison.
     """
@@ -735,9 +736,9 @@ class TestGaussianPenalty:
 
 
 class TestCtfMismatch:
-    """Deliberate +500A defocus offset produces lower score than ground
-    truth; sign of offset does not matter (both ±500A produce similar
-    score reduction).
+    """Deliberate +500A defocus offset produces lower score than ground truth.
+
+    Sign of offset does not matter (both +/-500A produce similar score reduction).
     """
 
     def test_defocus_offset_lowers_score(

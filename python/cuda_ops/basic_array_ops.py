@@ -1,5 +1,5 @@
 """
-basic_array_ops.py
+basic_array_ops.py.
 
 Python wrapper for basic CUDA array operations using CuPy RawKernel.
 This establishes the pattern for Python ↔ CUDA integration in emClarity.
@@ -10,7 +10,6 @@ Date: September 2025
 
 import logging
 from pathlib import Path
-from typing import Optional, Tuple
 
 import cupy as cp
 import numpy as np
@@ -83,7 +82,7 @@ class BasicArrayOps:
 
     def _calculate_grid_size(
         self, n_elements: int, block_size: int = 256
-    ) -> Tuple[int, int]:
+    ) -> tuple[int, int]:
         """
         Calculate optimal grid and block sizes for 1D kernels.
 
@@ -98,8 +97,8 @@ class BasicArrayOps:
         return grid_size, block_size
 
     def _calculate_2d_grid_size(
-        self, shape: Tuple[int, int], block_size: Tuple[int, int] = (16, 16)
-    ) -> Tuple[Tuple[int, int], Tuple[int, int]]:
+        self, shape: tuple[int, int], block_size: tuple[int, int] = (16, 16)
+    ) -> tuple[tuple[int, int], tuple[int, int]]:
         """
         Calculate optimal grid and block sizes for 2D kernels.
 
@@ -119,8 +118,8 @@ class BasicArrayOps:
         return (grid_x, grid_y), (block_x, block_y)
 
     def _calculate_3d_grid_size(
-        self, shape: Tuple[int, int, int], block_size: Tuple[int, int, int] = (8, 8, 8)
-    ) -> Tuple[Tuple[int, int, int], Tuple[int, int, int]]:
+        self, shape: tuple[int, int, int], block_size: tuple[int, int, int] = (8, 8, 8)
+    ) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
         """
         Calculate optimal grid and block sizes for 3D kernels.
 
@@ -141,7 +140,7 @@ class BasicArrayOps:
         return (grid_x, grid_y, grid_z), (block_x, block_y, block_z)
 
     def array_add(
-        self, a: cp.ndarray, b: cp.ndarray, output: Optional[cp.ndarray] = None
+        self, a: cp.ndarray, b: cp.ndarray, output: cp.ndarray | None = None
     ) -> cp.ndarray:
         """
         Element-wise addition of two arrays using CUDA.
@@ -184,7 +183,7 @@ class BasicArrayOps:
         self,
         input_array: cp.ndarray,
         scale_factor: float,
-        output: Optional[cp.ndarray] = None,
+        output: cp.ndarray | None = None,
     ) -> cp.ndarray:
         """
         Scale array elements by a constant factor using CUDA.
@@ -223,11 +222,11 @@ class BasicArrayOps:
         return output
 
     def transpose_2d(
-        self, input_array: cp.ndarray, output: Optional[cp.ndarray] = None
+        self, input_array: cp.ndarray, output: cp.ndarray | None = None
     ) -> cp.ndarray:
         """
         Transpose a 2D array using CUDA (tests memory indexing).
-        
+
         Input array shape: (ny, nx) - emClarity convention
         Output array shape: (nx, ny) - transposed
 
@@ -265,7 +264,7 @@ class BasicArrayOps:
         return output
 
     def vector_magnitude_squared(
-        self, input_array: cp.ndarray, output: Optional[cp.ndarray] = None
+        self, input_array: cp.ndarray, output: cp.ndarray | None = None
     ) -> cp.ndarray:
         """
         Compute element-wise squared magnitude using CUDA.

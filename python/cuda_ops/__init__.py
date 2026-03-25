@@ -1,5 +1,5 @@
 """
-cuda_ops package
+cuda_ops package.
 
 CUDA-accelerated operations for emClarity Python conversion.
 Provides high-performance GPU implementations of common array operations.

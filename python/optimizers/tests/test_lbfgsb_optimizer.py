@@ -16,7 +16,6 @@ from ..emc_adam_optimizer import AdamOptimizer
 from ..emc_lbfgsb_optimizer import LBFGSBOptimizer
 from ..emc_optimizer_base import OptimizerBase
 
-
 # ---------------------------------------------------------------------------
 # Helper functions: test objectives and gradients
 # ---------------------------------------------------------------------------
@@ -477,7 +476,7 @@ class TestCurvatureRejection:
     """Curvature pair rejection on non-smooth objective."""
 
     def test_abs_value_convergence(self) -> None:
-        """f = |x - 2| converges toward x=2 without diverging."""
+        """F = |x - 2| converges toward x=2 without diverging."""
         def f(x: np.ndarray) -> float:
             return float(np.abs(x[0] - 2.0))
 
@@ -555,7 +554,7 @@ class TestAnisotropicScaling:
         opt = LBFGSBOptimizer(x0)
         opt.set_objective(f)
 
-        for i in range(50):
+        for _i in range(50):
             params = opt.get_current_parameters()
             opt.step(grad_f(params), score=f(params))
 
@@ -715,7 +714,7 @@ class TestAccessors:
         """History length does not exceed memory_size."""
         opt = LBFGSBOptimizer(np.array([0.0]), memory_size=3)
         opt.set_objective(lambda x: float(x[0] ** 2))
-        for i in range(20):
+        for _i in range(20):
             x = opt.get_current_parameters()
             opt.step(np.array([2.0 * x[0]]), score=float(x[0] ** 2))
         assert opt.get_history_length() <= 3

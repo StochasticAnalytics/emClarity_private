@@ -8,7 +8,7 @@ Uses the Baxter et al. (2009) two-stage noise model:
   4. Renormalize to (0,1)
   5. Add shot noise → SNR_final (power ratio: Var(signal)/Var(noise))
 
-Test matrix: 4 defocus × 2 astigmatism × 3 angles = 24 CTF conditions.
+Test matrix: 4 defocus x 2 astigmatism x 3 angles = 24 CTF conditions.
 Each condition gets 10 particles at one tilt angle (0°) with per-particle dz.
 
 Saves pre-shot-noise images to /tmp/claude-1000/ctf_visual/ for inspection.
@@ -28,17 +28,17 @@ import numpy as np
 PROJECT_ROOT = "/sa_shared/git/emClarity_private/worktrees/build_command_center_dashboard"
 sys.path.insert(0, PROJECT_ROOT)
 
-from python.ctf.emc_ctf_params import CTFParams
-from python.ctf.emc_ctf_cpu import CTFCalculatorCPU
-from python.refinement.emc_fourier_utils import FourierTransformer
-from python.refinement.emc_tile_prep import (
-    spider_zyz_inverse_matrix,
-    rotate_volume_trilinear,
+from python.ctf.emc_ctf_cpu import CTFCalculatorCPU  # noqa: E402
+from python.ctf.emc_ctf_params import CTFParams  # noqa: E402
+from python.ctf.star_io.emc_star_parser import write_star_file  # noqa: E402
+from python.refinement.emc_ctf_refine_pipeline import compute_electron_wavelength  # noqa: E402
+from python.refinement.emc_fourier_utils import FourierTransformer  # noqa: E402
+from python.refinement.emc_tile_prep import (  # noqa: E402
     center_crop_or_pad,
     compute_ctf_friendly_size,
+    rotate_volume_trilinear,
+    spider_zyz_inverse_matrix,
 )
-from python.refinement.emc_ctf_refine_pipeline import compute_electron_wavelength
-from python.ctf.star_io.emc_star_parser import write_star_file
 
 # ---------------------------------------------------------------------------
 # Test matrix parameters (PI-approved)
@@ -159,7 +159,7 @@ def make_star_header() -> list[str]:
         "_cisTEMBeamTiltGroup", "_cisTEMParticleGroup", "_cisTEMPreExposure",
         "_cisTEMTotalExposure", "_cisTEMOriginalImageFilename", "_cisTEMTiltAngle",
     ]
-    return ["", "data_", "", "loop_"] + labels
+    return ["", "data_", "", "loop_", *labels]
 
 
 def make_particle_dict(
@@ -206,7 +206,7 @@ def main():
     with mrcfile.open(str(RIBOSOME_PATH), mode='r') as mrc:
         volume = mrc.data.copy().astype(np.float32)
     vol_size = volume.shape[0]
-    tile_size = vol_size  # Use full 384×384 tiles
+    tile_size = vol_size  # Use full 384x384 tiles
     print(f"  Volume: {volume.shape}, pixel_size={PIXEL_SIZE}A")
 
     # ── Generate one projection (sufficient per PI) ──────────────────────

@@ -12,8 +12,6 @@ Finite-difference step sizes (chosen for float32 precision at typical scales):
 
 from __future__ import annotations
 
-from typing import Tuple
-
 import numpy as np
 import pytest
 
@@ -135,13 +133,13 @@ def _make_params_raw(**kw: object) -> CTFParams:
 def _fd_derivative_defocus(
     calc: CTFCalculatorCPU,
     base_kw: dict,
-    dims: Tuple[int, int],
+    dims: tuple[int, int],
     centered: bool,
     do_sq_ctf: bool,
 ) -> np.ndarray:
     """Central FD derivative w.r.t. mean_defocus (D)."""
     h = FD_STEP_D
-    d1, d2, angle = base_kw["df1"], base_kw["df2"], base_kw["angle_degrees"]
+    d1, d2, _angle = base_kw["df1"], base_kw["df2"], base_kw["angle_degrees"]
     mean_d = 0.5 * (d1 + d2)
     half_a = 0.5 * (d1 - d2)
 
@@ -160,7 +158,7 @@ def _fd_derivative_defocus(
 def _fd_derivative_astigmatism(
     calc: CTFCalculatorCPU,
     base_kw: dict,
-    dims: Tuple[int, int],
+    dims: tuple[int, int],
     centered: bool,
     do_sq_ctf: bool,
 ) -> np.ndarray:
@@ -185,7 +183,7 @@ def _fd_derivative_astigmatism(
 def _fd_derivative_angle(
     calc: CTFCalculatorCPU,
     base_kw: dict,
-    dims: Tuple[int, int],
+    dims: tuple[int, int],
     centered: bool,
     do_sq_ctf: bool,
 ) -> np.ndarray:
@@ -237,7 +235,7 @@ def _check_fd_agreement(
 def _check_fd_peak_stability(
     calc: CTFCalculatorCPU,
     base_kw: dict,
-    dims: Tuple[int, int],
+    dims: tuple[int, int],
     centered: bool,
     do_sq_ctf: bool,
 ) -> None:
@@ -264,7 +262,7 @@ def _check_fd_peak_stability(
     assert np.all(np.isfinite(diff)), "Non-finite values in FD difference"
     # For a 10 Å step at Nyquist (s_max ~ 0.333 Å⁻¹, λ=0.0197 Å):
     #   max |diff| ≤ 2h · π · λ · s_max² ≈ 20 · π · 0.0197 · 0.111 ≈ 0.14
-    # A threshold of 0.5 is ~3.5× the theoretical maximum, providing margin
+    # A threshold of 0.5 is ~3.5x the theoretical maximum, providing margin
     # while still detecting genuinely unstable FD evaluations.
     assert np.max(np.abs(diff)) < 0.5, (
         f"FD difference too large: max |diff| = {np.max(np.abs(diff)):.4f}, "

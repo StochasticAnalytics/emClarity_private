@@ -35,13 +35,13 @@ import pytest
 from ...ctf.emc_ctf_cpu import CTFCalculatorCPU
 from ...ctf.emc_ctf_params import CTFParams
 from ...ctf.star_io.emc_star_parser import parse_star_file
+from ..emc_ctf_gradients import evaluate_score_and_gradient
 from ..emc_ctf_refine_pipeline import (
     PipelineOptions,
     PipelineResults,
     compute_electron_wavelength,
     refine_ctf_from_star,
 )
-from ..emc_ctf_gradients import evaluate_score_and_gradient
 from ..emc_fourier_utils import FourierTransformer
 from ..emc_scoring import create_peak_mask, evaluate_score_and_shifts
 from ..emc_tile_prep import (
@@ -58,7 +58,6 @@ from .fixtures.generate_synthetic_data import (
     compute_snr_of_tiles,
     generate_synthetic_dataset,
 )
-
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -458,7 +457,7 @@ class TestGradientSanityCheck:
         """Gradient at offset parameters has non-zero magnitude."""
         (
             data_fts, ref_fts, base_ctf, tilt_angle, fourier_handler,
-            peak_mask, offset_params, gt_params, ctf_calculator,
+            peak_mask, offset_params, _gt_params, ctf_calculator,
         ) = _prepare_gradient_test_data(synthetic_data)
 
         _, _, _, gradient = evaluate_score_and_gradient(
@@ -523,11 +522,11 @@ class TestGradientSanityCheck:
         """
         (
             data_fts, ref_fts, base_ctf, tilt_angle, fourier_handler,
-            peak_mask, offset_params, gt_params, ctf_calculator,
+            peak_mask, offset_params, _gt_params, ctf_calculator,
         ) = _prepare_gradient_test_data(synthetic_data)
 
         # Compute analytical gradient
-        score_0, _, _, analytical_grad = evaluate_score_and_gradient(
+        _score_0, _, _, analytical_grad = evaluate_score_and_gradient(
             offset_params, data_fts, ref_fts, base_ctf,
             ctf_calculator, fourier_handler, tilt_angle, peak_mask,
         )

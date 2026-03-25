@@ -1,5 +1,5 @@
 """
-emClarity Python utilities package
+emClarity Python utilities package.
 
 This package contains common utilities used across emClarity Python modules.
 """

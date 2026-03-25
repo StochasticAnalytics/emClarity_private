@@ -1,5 +1,5 @@
 """
-emClarity Parameter Converter
+emClarity Parameter Converter.
 
 Converts between MATLAB parameter files (.m) and JSON parameter files (.json)
 with validation, type checking, and backward compatibility.
@@ -11,7 +11,7 @@ import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ class ParameterInfo:
     required: bool = False
     description: str = ""
     units: str = ""
-    validation_range: Optional[tuple] = None
+    validation_range: tuple | None = None
     is_string: bool = False
 
 
@@ -46,7 +46,7 @@ class ParameterConverter:
         self.parameter_mapping = self._create_parameter_mapping()
         self.required_parameters = self._get_required_parameters()
 
-    def _create_parameter_mapping(self) -> Dict[str, ParameterInfo]:
+    def _create_parameter_mapping(self) -> dict[str, ParameterInfo]:
         """Create mapping between old MATLAB names and new JSON names."""
         # I'll start with the most critical parameters and ask for approval on naming
         mapping = {}
@@ -205,7 +205,7 @@ class ParameterConverter:
 
         return mapping
 
-    def _get_required_parameters(self) -> List[str]:
+    def _get_required_parameters(self) -> list[str]:
         """Get list of required parameter names."""
         return [
             info.new_name for info in self.parameter_mapping.values() if info.required
@@ -249,7 +249,7 @@ class ParameterConverter:
             return conversions[param_name](value)
         return value
 
-    def create_json_schema(self) -> Dict[str, Any]:
+    def create_json_schema(self) -> dict[str, Any]:
         """Create JSON schema for parameter validation."""
         schema = {
             "$schema": "http://json-schema.org/draft-07/schema#",
@@ -375,7 +375,7 @@ class ParameterConverter:
         }
         return schema
 
-    def parse_matlab_file(self, file_path: Union[str, Path]) -> Dict[str, Any]:
+    def parse_matlab_file(self, file_path: str | Path) -> dict[str, Any]:
         """Parse a MATLAB parameter file and return a dictionary."""
         file_path = Path(file_path)
         if not file_path.exists():
@@ -474,7 +474,7 @@ class ParameterConverter:
         # Return as string if nothing else works
         return value_str
 
-    def convert_matlab_to_json(self, matlab_params: Dict[str, Any]) -> Dict[str, Any]:
+    def convert_matlab_to_json(self, matlab_params: dict[str, Any]) -> dict[str, Any]:
         """Convert MATLAB parameters to JSON format with proper structure and units."""
         json_config = {
             "metadata": {"format_version": "1.0"},
@@ -526,7 +526,7 @@ class ParameterConverter:
 
         return json_config
 
-    def convert_json_to_matlab(self, json_config: Dict[str, Any]) -> Dict[str, Any]:
+    def convert_json_to_matlab(self, json_config: dict[str, Any]) -> dict[str, Any]:
         """Convert JSON parameters back to MATLAB format."""
         matlab_params = {}
 
