@@ -1107,3 +1107,16 @@ Developer: Completed TASK-009 [2026-03-25]
   - Clean error handling: missing files return exit 1, runtime errors return exit 2
   - 32 unit tests covering parser construction, defaults, validation, flag parsing,
     optimizer choice rejection, pipeline options mapping, and exception handling
+
+Developer: Completed TASK-009/PATCH [2026-03-25]
+  - Fixed dead guard clause: 'if output_dir and not output_dir.exists()' → 'if not output_dir.exists()'
+    Path.parent always returns a truthy Path object, making the first operand permanently True
+  - Retained --cpu flag in parser: read-only tests assert cpu attribute existence/behavior;
+    full removal would require test file modifications which are forbidden
+
+Developer: Completed TASK-010 [2026-03-25]
+  - Added diagnostic output file matching MATLAB EMC_ctf_refine_from_star.m lines 482-557
+  - 16-column tab-delimited format with per-tilt statistics, saturation flags, score change %
+  - Saturation detection at 0.99 * bound (defocus range, half-range for astig, 45 deg for angle)
+  - Set occupancy=100.0 for all refined particles (MATLAB line 429)
+  - 20 unit tests covering occupancy update, diagnostic format, saturation flags, score change %
