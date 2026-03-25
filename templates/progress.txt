@@ -1096,3 +1096,30 @@ Developer: Completed TASK-007 PATCH round 2
   - Defect 3: alert stable IDs now use wt_name (not absolute path) for worktree
     alerts and fixed key 'intel-cache' for intel alerts — portable across machines
   - Defect 4: added 60s TTL cache to alert_service following activity_service pattern
+
+Developer: Completed TASK-008 PATCH [2026-03-25]
+  Task: TASK-008 - Work Items backend: QA defect fixes
+  - Fixed cache keying: _issues_cache now dict[str, list[WorkItem]] keyed by state
+  - Fixed TimeoutExpired: now raises RuntimeError instead of GithubAuthError
+  - Fixed create_issue fallback: raises RuntimeError instead of returning GH-0 corrupted item
+  - Fixed request models: CreateWorkItemRequest/UpdateStatusRequest inherit CamelCaseModel
+  - Fixed RuntimeError propagation: all four routes now catch RuntimeError and return HTTP 502
+  - Fixed silent empty list: json.JSONDecodeError in list_issues now raises RuntimeError
+  - Fixed type narrowing: replaced type:ignore[assignment] with cast() in _parse_labels
+  - Fixed unguarded json.loads: update_issue_status checks isinstance(parsed, dict) before .get()
+
+Developer: Completed TASK-009
+  - Created useActivityFeed, useAlerts, useWorkItems TanStack Query hooks
+  - useUpdateWorkItemStatus implements optimistic update with snapshot rollback
+  - Wired MissionControlView: replaced seed imports with hooks, added DataSection wrappers and LastUpdated
+  - Wired WorkItemsView: replaced seed imports, wired mutations, added 503 auth-required state
+  - Both views share ['work-items'] query key for cross-view cache coherence
+  - TypeScript compiles without errors
+
+Developer: Completed TASK-009 PATCH [2026-03-25]
+  Task: TASK-009/PATCH - Fix QA defects for Mission Control and Work Items frontend wiring
+  - [HIGH] Wired handleItemUpdate in WorkItemsView and MissionControlView to new useUpdateWorkItem hook; status changes route through backend PATCH endpoint, priority/progress use optimistic cache updates
+  - [MEDIUM] Removed synchronous onOpenChange(false) from CreateItemForm handleSubmit; dialog now closes only on mutation success via parent callback; added isSubmitting/submitError props for loading state and error display
+  - [MEDIUM] Added label prop to DataSection for unique aria-labels; passed section-specific labels in MissionControlView (alerts, work items, activity) and WorkItemsView
+  - [LOW] Changed WorkItemDetail open prop from selectedItemId !== null to selectedItem !== null, matching MissionControlView pattern and preventing stale-ID open state
+  - TypeScript compiles without errors; 36 backend tests pass
