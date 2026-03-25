@@ -1,5 +1,5 @@
 """
-Usage examples for PaddedArray class
+Usage examples for PaddedArray class.
 
 This demonstrates how to use PaddedArray following the fourierTransformer.m pattern
 for efficient memory management and reuse in image processing pipelines.
@@ -18,7 +18,7 @@ python_root = Path(__file__).parent.parent
 if str(python_root) not in sys.path:
     sys.path.insert(0, str(python_root))
 
-from masking.padded_array import PaddedArray
+from masking.padded_array import PaddedArray  # noqa: E402
 
 try:
     import cupy as cp
@@ -100,6 +100,7 @@ def example_fourierTransformer_pattern():
     class ImageProcessor:
         """
         Example class following fourierTransformer.m pattern.
+
         Manages persistent PaddedArray instances.
         """
 

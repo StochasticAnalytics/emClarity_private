@@ -2,22 +2,30 @@
   "name": "cisTEMx-${localEnv:USER}-${localWorkspaceFolderBasename}",
   "workspaceMount": "source=${localWorkspaceFolder},target=${localWorkspaceFolder},type=bind,consistency=cached",
   "workspaceFolder": "${localWorkspaceFolder}",
-  // NOTE: Container image must match .vscode/CONTAINER_REPO_NAME and CONTAINER_VERSION_TOP
+  // NOTE: Cont    ainer image must match .vscode/CONTAINER_REPO_NAME and CONTAINER_VERSION_TOP
   // Update all three when changing container version or repository
-  "image": "ghcr.io/stochasticanalytics/cistem_build_env:v4.1.1",
+  "image": "ghcr.io/stochasticanalytics/cistem_build_env:v4.1.2",
   "initializeCommand": ".devcontainer/check-version.sh",
+  // sandbox-runtime + bwrap caps now baked into Docker image (top_image/Dockerfile).
+  // No onCreateCommand needed for sandbox setup.
   // CLAUDE_CONFIG_DIR must be set in the host environment. On container create:
   //   1. Fail fast if unset (prevents silent fallback to ephemeral ~/.claude)
   //   2. Symlink ~/.claude → $CLAUDE_CONFIG_DIR so IDE plugins find config at default path
   //   3. Install fast-moving npm packages that shouldn't be baked into the image:
-  //      - @anthropic-ai/sandbox-runtime: Claude Code's Bash sandbox (bwrap). Iterates faster than Docker image releases.
   //      - @playwright/cli: Headless browser CLI for visual verification of frontend work (screenshots, snapshots).
   //        Required so Claude can self-verify CSS/layout changes without human eyeball per iteration.
-  //        install-browser downloads the bundled Chromium binary (~130MB).
-  // TODO(CuPy): cupy-cuda12x should be added to the base Docker image (cistem_build_env)
-  // rather than installed here. It's here temporarily because the image is built in a
-  // separate repo and we need CuPy now for CTF refinement GPU testing.
-  "postCreateCommand": "bash -c 'if [ -z \"$CLAUDE_CONFIG_DIR\" ]; then echo \"ERROR: CLAUDE_CONFIG_DIR not set in host env. Add export CLAUDE_CONFIG_DIR=... to ~/.bashrc\" >&2; exit 1; fi && rm -rf ~/.claude && ln -sfn \"$CLAUDE_CONFIG_DIR\" ~/.claude && npm install -g @anthropic-ai/sandbox-runtime @playwright/cli@0.1.1 && playwright-cli install-browser && pip install cupy-cuda12x'",
+  //        install-browser downloads the bundled Chromium binary (~280MB).
+  //        Chromium must be installed from the CLI's own package context so the
+  //        playwright version (and therefore browser revision) matches exactly.
+  //        Note: playwright-cli install-browser was removed — it's an interactive
+  //        command that fails headless. npx playwright install chromium handles setup.
+  // bwrap caps, sandbox-runtime, and cupy-cuda12x now baked into Docker image.
+  //   4. Install claude_core in editable mode (pip install -e dot-claude/).
+  //      This must happen here, not in setup_links.sh, because worktree creation
+  //      runs setup_links on the host but opening the worktree in a devcontainer
+  //      is a fresh container that loses the install. Uses DOT_CLAUDE_DIR from
+  //      containerEnv. Fails the build if install fails.
+  "postCreateCommand": "bash -c 'if [ -z \"$CLAUDE_CONFIG_DIR\" ]; then echo \"ERROR: CLAUDE_CONFIG_DIR not set in host env. Add export CLAUDE_CONFIG_DIR=... to ~/.bashrc\" >&2; exit 1; fi && ln -sfn \"$CLAUDE_CONFIG_DIR\" ~/.claude && npm install -g @playwright/cli@0.1.1 && cd $(npm root -g)/@playwright/cli && npx playwright install chromium && if [ -f \"$DOT_CLAUDE_DIR/setup.py\" ]; then pip install -e \"$DOT_CLAUDE_DIR\" --quiet || { echo \"ERROR: pip install -e dot-claude failed\" >&2; exit 1; }; fi'",
   // On every container start: generate env.sh and ensure .bashrc sources it.
   // This makes $PROJECT_ROOT and $DOT_CLAUDE_DIR available in all terminals.
   "postStartCommand": "bash -c 'dot-claude/.claude/scripts/setup_env.sh && grep -q \"dot-claude/.claude/env.sh\" ~/.bashrc 2>/dev/null || echo \"\\n# Project environment from setup_env.sh\\n[ -f \\\"${PWD}/dot-claude/.claude/env.sh\\\" ] && source \\\"${PWD}/dot-claude/.claude/env.sh\\\"\" >> ~/.bashrc'",
@@ -28,7 +36,8 @@
   // containerEnv is available during postCreateCommand (unlike remoteEnv).
   // CLAUDE_CONFIG_DIR must be here so the postCreateCommand symlink succeeds.
   "containerEnv": {
-    "CLAUDE_CONFIG_DIR": "${localEnv:CLAUDE_CONFIG_DIR}"
+    "CLAUDE_CONFIG_DIR": "${localEnv:CLAUDE_CONFIG_DIR}",
+    "DOT_CLAUDE_DIR": "${containerWorkspaceFolder}/dot-claude"
   },
   "remoteEnv": {
     // We need to set this so we can use wxmctrl -lpx | grep ${WORKSPACE_BASENAME} | awk '{print $1}' to find window IDs
@@ -38,7 +47,11 @@
     "WORKSPACE_BASENAME": "${localWorkspaceFolderBasename}",
     "WORKSPACE_CONTAINER_NAME": "cisTEMx-${localEnv:USER}-${localWorkspaceFolderBasename}",
     // Persist Claude Code sessions, plans, and memories across container rebuilds
-    "CLAUDE_CONFIG_DIR": "${localEnv:CLAUDE_CONFIG_DIR}"
+    "CLAUDE_CONFIG_DIR": "${localEnv:CLAUDE_CONFIG_DIR}",
+    // Project environment — available to all processes (orchestrator, scripts, Claude sessions)
+    "PROJECT_ROOT": "${containerWorkspaceFolder}",
+    "DOT_CLAUDE_DIR": "${containerWorkspaceFolder}/dot-claude",
+    "REPO_NAME": "${localWorkspaceFolderBasename}"
   },
   // To add mounts, enable smudge/clean filters, define variable in bashrc ... cistem_mounts=("source=/scratch,target=/scratch,type=bind" "source=/sa_shared,target=/sa_shared,type=bind")"
   // Leave the following line comment, it is used as a placeholder for the devcontainer-filter.sh script to insert the mounts.
@@ -50,21 +63,22 @@
   // end_mounts
   // UID is 1000 in base container (default)
   "updateRemoteUserUID": false,
-  // Network configuration: Using host networking for X11 forwarding and bwrap sandbox compatibility.
-  // NET_ADMIN required for bwrap to create network namespaces (CLONE_NEWNET).
-  // Physical firewall restricts access to 172.16.10.0/24 VLAN.
+  // Network configuration: Using host networking for X11 forwarding.
+  // bwrap needs SYS_ADMIN to call mount --make-slave / when root propagation
+  // is "private" (the Docker/containerd default). Without it, bwrap sandbox
+  // (used by Claude Code's Bash tool) fails with "Failed to make / slave: Permission denied".
+  // The following overrides remain disabled — add back if needed:
+  //   "--cap-add=NET_ADMIN",       // was for bwrap CLONE_NEWNET
+  //   "--security-opt", "apparmor=unconfined",  // was for bwrap
   "runArgs": [
     "--gpus",
     "all",
-    "--security-opt",
-    "apparmor=unconfined",
-    "--security-opt", 
-    "seccomp=unconfined",
-    "--cap-add",
-     "NET_ADMIN",
     "-it",
     "--net",
     "host",
+    "--cap-add=SYS_ADMIN",
+    "--security-opt",
+    "seccomp=unconfined",
     "-e",
     "DISPLAY=${env:DISPLAY}",
     "-v",

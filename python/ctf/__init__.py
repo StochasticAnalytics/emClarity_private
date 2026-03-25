@@ -1,5 +1,5 @@
 """
-emClarity CTF package
+emClarity CTF package.
 
 Modules for Contrast Transfer Function estimation, correction, and refinement
 in cryo-electron microscopy data processing.
@@ -13,12 +13,14 @@ try:
 
     HAS_CTF_CUDA = True
 except ImportError:
-    from .emc_ctf_cpu import CTFCalculatorCPU as CTFCalculator  # type: ignore[assignment,misc]
+    from .emc_ctf_cpu import (
+        CTFCalculatorCPU as CTFCalculator,  # type: ignore[assignment,misc]
+    )
 
     HAS_CTF_CUDA = False
 
 __all__ = [
+    "HAS_CTF_CUDA",
     "CTFCalculator",
     "CTFParams",
-    "HAS_CTF_CUDA",
 ]

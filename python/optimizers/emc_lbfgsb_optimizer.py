@@ -15,7 +15,7 @@ Algorithm references:
 from __future__ import annotations
 
 from collections import deque
-from typing import Callable
+from collections.abc import Callable
 
 import numpy as np
 
@@ -401,10 +401,7 @@ class LBFGSBOptimizer(OptimizerBase):
         s_last = self._s_history[-1]
         y_last = self._y_history[-1]
         yy = float(np.dot(y_last, y_last))
-        if yy > 0.0:
-            gamma = float(np.dot(s_last, y_last)) / yy
-        else:
-            gamma = 1.0
+        gamma = float(np.dot(s_last, y_last)) / yy if yy > 0.0 else 1.0
         r = gamma * q
 
         # Forward pass: recover search direction

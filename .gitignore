@@ -168,5 +168,6 @@ testScripts/*.logy
 CLAUDE.md
 .claude
 dot-claude
+.mcp.json
 
 worktrees/

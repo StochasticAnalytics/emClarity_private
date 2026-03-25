@@ -23,8 +23,8 @@ are imperfect and the refinement pipeline must recover improved values.
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 import mrcfile
 import numpy as np
@@ -35,13 +35,12 @@ from ....ctf.star_io.emc_star_parser import write_star_file
 from ...emc_ctf_refine_pipeline import compute_electron_wavelength
 from ...emc_fourier_utils import FourierTransformer
 from ...emc_tile_prep import (
-    spider_zyz_inverse_matrix,
-    rotate_volume_trilinear,
     center_crop_or_pad,
     compute_ctf_friendly_size,
     create_2d_soft_mask,
+    rotate_volume_trilinear,
+    spider_zyz_inverse_matrix,
 )
-
 
 # ---------------------------------------------------------------------------
 # Configuration dataclasses
@@ -429,7 +428,7 @@ def generate_synthetic_dataset(
 
     # Soft mask for the tile
     mask_radius = tile_size / 2.0 - 1.0
-    soft_mask = create_2d_soft_mask(
+    create_2d_soft_mask(
         tile_size, tile_size, radius=mask_radius, edge_width=7.0,
     )
 

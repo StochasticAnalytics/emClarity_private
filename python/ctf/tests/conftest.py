@@ -14,7 +14,7 @@ _FIXTURES_DIR = Path(__file__).parent / "fixtures"
 _PARAMS_FILE = _FIXTURES_DIR / "ctf_baseline_params.json"
 
 
-def pytest_configure(config: object) -> None:  # noqa: ARG001
+def pytest_configure(config: object) -> None:
     """Warn at collection time if the baseline fixture file is absent.
 
     Without this guard the module-level try/except in test_ctf_calculator.py

@@ -1,22 +1,14 @@
-"""
-Tests for CUDA-accelerated basic array operations.
-"""
+"""Tests for CUDA-accelerated basic array operations."""
 
 import unittest
-from unittest import skipIf
 
-import cupy as cp
-import numpy as np
+import pytest
 
-try:
-    from ..emc_cuda_basic_ops import CudaBasicOps
+cp = pytest.importorskip("cupy")
 
-    CUPY_AVAILABLE = True
-except ImportError:
-    CUPY_AVAILABLE = False
+from ..emc_cuda_basic_ops import CudaBasicOps  # noqa: E402
 
 
-@skipIf(not CUPY_AVAILABLE, "CuPy not available")
 class TestCudaBasicOps(unittest.TestCase):
     """Test CUDA basic operations implementation."""
 
@@ -80,7 +72,6 @@ class TestCudaBasicOps(unittest.TestCase):
 
         result = self.cuda_ops.transpose_2d(a)
         expected = cp.array([[1.0, 4.0], [2.0, 5.0], [3.0, 6.0]], dtype=cp.float32)
-        print("test print\n")
         cp.testing.assert_array_equal(result, expected)
 
         # Test larger random matrix

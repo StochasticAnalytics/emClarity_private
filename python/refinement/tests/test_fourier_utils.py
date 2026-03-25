@@ -11,7 +11,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from ..emc_fourier_utils import FourierTransformer, HAS_CUPY, _xp_for
+from ..emc_fourier_utils import HAS_CUPY, FourierTransformer, _xp_for
 
 if HAS_CUPY:
     import cupy as cp
@@ -27,7 +27,7 @@ PIXEL_SIZE = 1.0  # Angstroms, for simplicity in bandpass tests
 
 @pytest.fixture()
 def ft() -> FourierTransformer:
-    """Standard 256×256 transformer (CPU)."""
+    """Standard 256x256 transformer (CPU)."""
     return FourierTransformer(NX, NY, use_gpu=False)
 
 
@@ -58,10 +58,9 @@ class TestForwardFFT:
     """Forward FFT of single-frequency cosine produces correct peak."""
 
     def test_cosine_peak_position(self, ft: FourierTransformer) -> None:
-        """Acceptance criterion: peak at correct position for frequency-10
-        cosine in a 256×256 image.
+        """Acceptance criterion: peak at correct position for frequency-10 cosine.
 
-        A cosine with frequency k=10 along axis 0:
+        Tests a 256x256 image. A cosine with frequency k=10 along axis 0:
             cos(2*pi*10*x/256)
         should produce peaks at frequency index 10 along the halved axis.
         """
@@ -141,7 +140,7 @@ class TestInverseFFT:
         numpy.fft computes internally in float64, so the recovered array
         is float64.  Near-zero values have large *relative* error but
         tiny absolute error.  We add atol=1e-6 (well within float32
-        machine epsilon × sqrt(N)) to handle the near-zero case.
+        machine epsilon x sqrt(N)) to handle the near-zero case.
         """
         rng = np.random.default_rng(99)
         image = rng.standard_normal((NX, NY)).astype(np.float32)
@@ -255,7 +254,7 @@ class TestApplyBandpass:
     def test_interior_unchanged(self, ft: FourierTransformer) -> None:
         """Frequencies well inside the passband are not attenuated.
 
-        With pixel_size=1.0 Å for a 256×256 image, frequency index k
+        With pixel_size=1.0 Å for a 256x256 image, frequency index k
         has resolution 256/k Å.  Passband [8, 128] Å corresponds to
         frequency indices ~[2, 32].  Index 16 (resolution=16 Å) is
         well inside the band.
@@ -453,12 +452,12 @@ class TestArrayDispatch:
     """Acceptance criterion: dispatch uses isinstance(x, cp.ndarray)."""
 
     def test_xp_for_numpy(self) -> None:
-        """numpy array dispatches to numpy module."""
+        """Numpy array dispatches to numpy module."""
         arr = np.zeros(5)
         assert _xp_for(arr) is np
 
     @pytest.mark.skipif(not HAS_CUPY, reason="CuPy not available")
     def test_xp_for_cupy(self) -> None:
-        """cupy array dispatches to cupy module."""
+        """Cupy array dispatches to cupy module."""
         arr = cp.zeros(5)
         assert _xp_for(arr) is cp

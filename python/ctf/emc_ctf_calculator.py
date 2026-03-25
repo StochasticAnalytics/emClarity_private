@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
-from typing import Tuple
 
 import cupy as cp
 import numpy as np
@@ -86,7 +85,7 @@ class CTFCalculator:
         nx: int,
         threads_x: int = 16,
         threads_y: int = 16,
-    ) -> Tuple[Tuple[int, int], Tuple[int, int]]:
+    ) -> tuple[tuple[int, int], tuple[int, int]]:
         """Calculate 2-D grid and block dimensions for kernel launch.
 
         Args:
@@ -105,7 +104,7 @@ class CTFCalculator:
     def compute(
         self,
         params: CTFParams,
-        dims: Tuple[int, int],
+        dims: tuple[int, int],
         centered: bool = False,
     ) -> cp.ndarray:
         """Compute a 2-D CTF image on the GPU.
@@ -194,9 +193,9 @@ class CTFCalculator:
     def compute_with_derivatives(
         self,
         params: CTFParams,
-        dims: Tuple[int, int],
+        dims: tuple[int, int],
         centered: bool = False,
-    ) -> Tuple[cp.ndarray, cp.ndarray, cp.ndarray, cp.ndarray]:
+    ) -> tuple[cp.ndarray, cp.ndarray, cp.ndarray, cp.ndarray]:
         """Compute CTF and analytical derivatives on the GPU.
 
         Returns the CTF image and its partial derivatives with respect to

@@ -1,5 +1,5 @@
 """
-Unit tests for emClarity Parameter Converter
+Unit tests for emClarity Parameter Converter.
 
 Tests parameter conversion between MATLAB and JSON formats,
 validation, and unit conversions.

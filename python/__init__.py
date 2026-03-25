@@ -1,5 +1,5 @@
 """
-emClarity Python Package
+emClarity Python Package.
 
 This package contains Python conversions of emClarity's cryo-EM processing
 functionality.

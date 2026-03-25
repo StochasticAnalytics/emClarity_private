@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Python MRCImage Class - emClarity Equivalent
+Python MRCImage Class - emClarity Equivalent.
 
 This module provides a Python equivalent of the emClarity MRCImage class,
 optimized for memory efficiency and performance based on BAH's modifications
@@ -19,7 +19,7 @@ Based on: PEET MRCImage class with BAH performance optimizations
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any
 
 import mrcfile
 import numpy as np
@@ -53,7 +53,7 @@ class MRCImage:
 
     def __init__(
         self,
-        filename: Optional[Union[str, Path]] = None,
+        filename: str | Path | None = None,
         flg_load: bool = False,
         debug: bool = False,
     ):
@@ -82,7 +82,7 @@ class MRCImage:
             self.open(filename, flg_load, debug)
 
     def open(
-        self, filename: Union[str, Path], flg_load: bool = False, debug: bool = False
+        self, filename: str | Path, flg_load: bool = False, debug: bool = False
     ) -> None:
         """
         Open MRC file and load header.
@@ -173,7 +173,7 @@ class MRCImage:
                 f"Loaded data: shape={self._data.shape}, dtype={self._data.dtype}"
             )
 
-    def get_header(self) -> Dict[str, Any]:
+    def get_header(self) -> dict[str, Any]:
         """
         Get header information.
 
@@ -185,7 +185,7 @@ class MRCImage:
 
         return self._header.copy()  # Return copy to prevent modification
 
-    def get_data(self, force_load: bool = True) -> Optional[np.ndarray]:
+    def get_data(self, force_load: bool = True) -> np.ndarray | None:
         """
         Get volume data.
 
@@ -253,7 +253,7 @@ class MRCImage:
         """Get cell dimension Z."""
         return self._header["cell_c"] if self._header else 0.0
 
-    def get_pixel_size(self) -> Tuple[float, float, float]:
+    def get_pixel_size(self) -> tuple[float, float, float]:
         """
         Get pixel sizes in X, Y, Z.
 
@@ -269,7 +269,7 @@ class MRCImage:
             self._header["pixel_size_z"] or 0.0,
         )
 
-    def get_filename(self) -> Optional[Path]:
+    def get_filename(self) -> Path | None:
         """Get associated filename."""
         return self._filename
 
@@ -288,7 +288,7 @@ class MRCImage:
 
     @classmethod
     def from_header(
-        cls, header_dict: Dict[str, Any], filename: Optional[Union[str, Path]] = None
+        cls, header_dict: dict[str, Any], filename: str | Path | None = None
     ) -> "MRCImage":
         """
         Create empty MRCImage from header information.
@@ -316,7 +316,7 @@ class MRCImage:
         """Destructor - ensure memory is freed."""
         self.close()
 
-    def save(self, filename: Union[str, Path], pixel_size=None, origin=None) -> None:
+    def save(self, filename: str | Path, pixel_size=None, origin=None) -> None:
         """
         Save the MRC image to a file (MATLAB SAVE_IMG equivalent).
 
@@ -445,7 +445,7 @@ class MRCImage:
 
 
 def SAVE_IMG(
-    mrc_image: MRCImage, filename: Union[str, Path], pixel_size=None, origin=None
+    mrc_image: MRCImage, filename: str | Path, pixel_size=None, origin=None
 ) -> None:
     """
     Save MRC image to file (MATLAB SAVE_IMG equivalent).
@@ -505,8 +505,8 @@ def OPEN_IMG(dtype_str: str, mrc_image: MRCImage) -> np.ndarray:
 
 
 def create_test_mrc(
-    filename: Union[str, Path],
-    shape: Tuple[int, int, int] = (10, 20, 30),
+    filename: str | Path,
+    shape: tuple[int, int, int] = (10, 20, 30),
     pixel_size: float = 1.0,
 ) -> Path:
     """

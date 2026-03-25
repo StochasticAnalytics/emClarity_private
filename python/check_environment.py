@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-emClarity Python Environment Checker
+emClarity Python Environment Checker.
 
 Quick dependency verification for emClarity Python development.
 Run this to verify all required packages are available.
@@ -12,10 +12,9 @@ Usage:
 
 import argparse
 import sys
-from typing import Dict
 
 
-def check_dependencies(verbose: bool = False) -> Dict[str, bool]:
+def check_dependencies(verbose: bool = False) -> dict[str, bool]:
     """Check all emClarity dependencies and return status."""
     # Core dependencies with correct import names
     required_packages = [

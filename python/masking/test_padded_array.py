@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test and demonstration script for PaddedArray class
+Test and demonstration script for PaddedArray class.
 
 This script demonstrates the key features:
 1. Single-use mode for one-off padding operations
@@ -12,9 +12,12 @@ Author: emClarity Python Conversion
 Date: September 2025
 """
 
+import logging
 import time
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 from masking.emc_pad_zeros_3d import emc_pad_zeros_3d
 from masking.padded_array import PaddedArray, create_padded_array_once
@@ -27,11 +30,11 @@ try:
     import cupy as cp
 
     HAS_CUPY = True
-    print("✅ CuPy available - GPU tests enabled")
+    logger.info("CuPy available - GPU tests enabled")
 except ImportError:
     HAS_CUPY = False
     cp = None
-    print("⚠️  CuPy not available - CPU tests only")
+    logger.warning("CuPy not available - CPU tests only")
 
 
 def test_single_use_mode():
