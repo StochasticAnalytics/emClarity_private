@@ -145,6 +145,7 @@ skips = ["B101", "B601"]  # Skip assert_used and shell=True warnings for now
 
 [tool.pytest.ini_options]
 testpaths = ["python"]
+pythonpath = ["python"]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]

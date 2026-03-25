@@ -40,9 +40,9 @@ if TYPE_CHECKING:
 else:
     NDArray = np.ndarray
 
-from ..ctf.emc_ctf_params import CTFParams
-from ..optimizers.emc_adam_optimizer import AdamOptimizer
-from ..optimizers.emc_lbfgsb_optimizer import LBFGSBOptimizer
+from ctf.emc_ctf_params import CTFParams
+from optimizers.emc_adam_optimizer import AdamOptimizer
+from optimizers.emc_lbfgsb_optimizer import LBFGSBOptimizer
 from .emc_ctf_gradients import (
     CTFCalculatorWithDerivatives,
     evaluate_score_and_gradient,
@@ -323,7 +323,7 @@ def refine_tilt_ctf(
 
     # --- Infer / create helpers -------------------------------------------
     if ctf_calculator is None:
-        from ..ctf.emc_ctf_cpu import CTFCalculatorCPU
+        from ctf.emc_ctf_cpu import CTFCalculatorCPU
 
         ctf_calculator = CTFCalculatorCPU()
 

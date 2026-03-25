@@ -45,7 +45,7 @@ if TYPE_CHECKING:
 else:
     NDArray = np.ndarray
 
-from ..ctf.emc_ctf_params import CTFParams
+from ctf.emc_ctf_params import CTFParams
 from .emc_fourier_utils import FourierTransformer
 
 

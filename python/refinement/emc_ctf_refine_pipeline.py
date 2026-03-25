@@ -41,13 +41,13 @@ except ImportError:
     HAS_CUPY = False
     cp = None
 
-from ..ctf.emc_ctf_params import CTFParams
-from ..ctf.star_io.emc_star_parser import (
+from ctf.emc_ctf_params import CTFParams
+from ctf.star_io.emc_star_parser import (
     group_particles_by_tilt,
     parse_star_file,
     write_star_file,
 )
-from ..image_io.mrc_image import MRCImage
+from image_io.mrc_image import MRCImage
 from .emc_fourier_utils import FourierTransformer
 from .emc_refine_tilt_ctf import RefinementOptions, RefinementResults, refine_tilt_ctf
 from .emc_tile_prep import (
