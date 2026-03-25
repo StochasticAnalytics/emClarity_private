@@ -388,10 +388,8 @@ class MRCImage:
             mrc.header.ispg = 1  # Space group (1 for volume, not stack)
 
             # Update statistics if they're not set (following MATLAB logic)
-            if mrc.header.dmin == 0.0 and mrc.header.dmax == 0.0:
-                # Only compute stats for reasonable sized volumes
-                if output_data.size < 768**3:
-                    mrc.update_header_stats()
+            if mrc.header.dmin == 0.0 and mrc.header.dmax == 0.0 and output_data.size < 768**3:
+                mrc.update_header_stats()
 
         if self._debug:
             logger.info(f"Saved MRC image to: {filename}")

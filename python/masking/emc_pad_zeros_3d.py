@@ -81,12 +81,10 @@ def emc_pad_zeros_3d(
     is_2d = len(image.shape) == 2
     original_is_2d = is_2d
 
-    if is_2d:
-        # Convert 2D to 3D with singleton dimension for processing
-        if len(pad_low_vals) == 2:
-            pad_low_vals = np.array([*pad_low_vals, 0])
-            pad_top_vals = np.array([*pad_top_vals, 0])
-        # Don't modify the image shape yet - keep it 2D for now
+    if is_2d and len(pad_low_vals) == 2:
+        # Convert 2D padding to 3D with singleton dimension for processing
+        pad_low_vals = np.array([*pad_low_vals, 0])
+        pad_top_vals = np.array([*pad_top_vals, 0])
 
     # Parse precision and tapering
     use_taper, dtype = _parse_precision(precision)
@@ -118,10 +116,7 @@ def emc_pad_zeros_3d(
     pad_top_vals = np.maximum(pad_top_vals, 0)
 
     # Get image dimensions
-    if is_2d:
-        img_shape = np.array([*image.shape, 1])  # Add singleton Z dimension
-    else:
-        img_shape = np.array(image.shape)
+    img_shape = np.array([*image.shape, 1]) if is_2d else np.array(image.shape)
     pad_shape = tuple(img_shape + pad_low_vals + pad_top_vals)
 
     # Handle extrapolation value
@@ -141,6 +136,10 @@ def emc_pad_zeros_3d(
         image = _apply_tapering(
             image, extrap_val if extrap_val is not None else 0, is_2d
         )
+
+    # Ensure image array matches padded array backend (NumPy vs CuPy)
+    if method == "GPU" and not isinstance(image, cp.ndarray):
+        image = cp.asarray(image)
 
     # Place original image in padded array
     if fourier_oversample:
@@ -309,19 +308,22 @@ def _apply_fourier_oversampling(padded_img, image, is_2d):
 def _place_image_standard(padded_img, image, pad_low, pad_top, is_2d):
     """Place image in padded array using standard padding."""
     pad_shape = padded_img.shape
+    # Convert to Python ints so slices work with both NumPy and CuPy arrays.
+    lo = [int(v) for v in pad_low]
+    hi = [int(v) for v in pad_top]
 
     if is_2d:
         # For 2D images, place directly in the 2D slice of 3D padded array
         padded_img[
-            pad_low[0] : pad_shape[0] - pad_top[0],
-            pad_low[1] : pad_shape[1] - pad_top[1],
+            lo[0] : pad_shape[0] - hi[0],
+            lo[1] : pad_shape[1] - hi[1],
             0,  # Place in first Z slice
         ] = image
     else:
         padded_img[
-            pad_low[0] : pad_shape[0] - pad_top[0],
-            pad_low[1] : pad_shape[1] - pad_top[1],
-            pad_low[2] : pad_shape[2] - pad_top[2],
+            lo[0] : pad_shape[0] - hi[0],
+            lo[1] : pad_shape[1] - hi[1],
+            lo[2] : pad_shape[2] - hi[2],
         ] = image
 
 

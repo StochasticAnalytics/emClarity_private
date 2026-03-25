@@ -43,6 +43,7 @@ class ParameterConverter:
     """
 
     def __init__(self):
+        """Initialize converter with default MATLAB-to-JSON parameter mapping."""
         self.parameter_mapping = self._create_parameter_mapping()
         self.required_parameters = self._get_required_parameters()
 
@@ -498,7 +499,7 @@ class ParameterConverter:
                 param_info = self.parameter_mapping[matlab_name]
 
                 # Convert units if needed
-                if param_info.param_type == float and matlab_name in [
+                if param_info.param_type is float and matlab_name in [
                     "PIXEL_SIZE",
                     "Cs",
                     "VOLTAGE",
@@ -517,7 +518,7 @@ class ParameterConverter:
                     converted_value = matlab_value
 
                 # Handle boolean conversion
-                if param_info.param_type == bool:
+                if param_info.param_type is bool:
                     converted_value = bool(converted_value)
 
                 # Set the value in the nested structure
@@ -550,7 +551,7 @@ class ParameterConverter:
                         matlab_name = param_info.old_name
 
                         # Convert units back to MATLAB format
-                        if param_info.param_type == float and matlab_name in [
+                        if param_info.param_type is float and matlab_name in [
                             "PIXEL_SIZE",
                             "Cs",
                             "VOLTAGE",

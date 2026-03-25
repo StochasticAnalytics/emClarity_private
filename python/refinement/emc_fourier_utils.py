@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import logging
 import types
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -34,7 +34,7 @@ except ImportError:
 if TYPE_CHECKING:
     import cupy
 
-    NDArray = Union[np.ndarray, cupy.ndarray]
+    NDArray = np.ndarray | cupy.ndarray
 else:
     NDArray = np.ndarray
 
@@ -66,6 +66,7 @@ class FourierTransformer:
     """
 
     def __init__(self, nx: int, ny: int, use_gpu: bool = True) -> None:
+        """Initialize transformer for images of shape (nx, ny)."""
         self._nx = nx
         self._ny = ny
         self._use_gpu = use_gpu and HAS_CUPY
@@ -93,10 +94,12 @@ class FourierTransformer:
 
     @property
     def nx(self) -> int:
+        """Number of rows in the real-space image."""
         return self._nx
 
     @property
     def ny(self) -> int:
+        """Number of columns in the real-space image."""
         return self._ny
 
     # ------------------------------------------------------------------
@@ -196,6 +199,8 @@ class FourierTransformer:
         """Build or retrieve the cached ``(-1)^(i+j)`` checkerboard.
 
         Args:
+            xp: Array module (numpy or cupy) for allocation.
+            shape: 2-D shape ``(rows, cols)`` of the target array.
             dtype: Real dtype of the calling array; the checkerboard is cast
                 to this dtype so that ``image * checkerboard`` does not
                 silently upcast (e.g. complex64 → complex128).
@@ -303,6 +308,11 @@ class FourierTransformer:
         """Construct the bandpass mask with cosine-edge rolloff.
 
         Args:
+            xp: Array module (numpy or cupy) for allocation.
+            shape: 2-D shape ``(half_nx, ny)`` of the half-grid spectrum.
+            pixel_size: Pixel size in Angstroms.
+            highpass_angstrom: High-pass cutoff in Angstroms.
+            lowpass_angstrom: Low-pass cutoff in Angstroms.
             dtype: Real dtype of the spectrum; the mask is built in this
                 dtype so that ``spectrum * mask`` does not silently upcast.
         """

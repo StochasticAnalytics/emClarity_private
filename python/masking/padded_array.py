@@ -332,10 +332,7 @@ class PaddedArray:
         elif isinstance(self.extrap_val, str) and self.extrap_val.lower() == "random":
             # Random extrapolation - use image statistics if available
             if image is not None:
-                if hasattr(image, "get"):  # CuPy array
-                    img_cpu = image.get()
-                else:
-                    img_cpu = image
+                img_cpu = image.get() if hasattr(image, "get") else image
                 mean_val = float(np.mean(img_cpu))
                 std_val = float(np.std(img_cpu))
             else:

@@ -92,11 +92,15 @@ ignore = [
     "N803",     # Argument name should be lowercase — mathematical notation
     "PLC0415",  # import outside toplevel — conditional CuPy/GPU imports are intentional
     "E501",     # Line too long — not a priority for scientific code readability
+    "PLR0911",  # Too many return statements — parsers and value converters need many returns
+    "PLW0603",  # Global statement — singleton pattern for parameter manager
+    "PLW2901",  # Loop variable overwritten — common strip/normalize pattern in parsers
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# Test files: complexity rules don't apply to test setups
-"**/tests/**" = ["D102", "D103", "D107", "PLR0915", "PLR0912"]
+# Test files: complexity/style rules relaxed for test setups
+"**/tests/**" = ["D102", "D103", "D107", "PLR0915", "PLR0912", "RUF012", "B007", "E721", "F401", "I001"]
+"**/test_*.py" = ["D102", "D103", "D107", "PLR0915", "PLR0912", "RUF012", "B007", "E721", "F401"]
 # __init__.py: re-exports and package docstrings
 "**/__init__.py" = ["F401", "D104"]
 

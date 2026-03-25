@@ -21,7 +21,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 import warnings
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -36,7 +36,7 @@ except ImportError:
 if TYPE_CHECKING:
     import cupy
 
-    NDArray = Union[np.ndarray, cupy.ndarray]
+    NDArray = np.ndarray | cupy.ndarray
 else:
     NDArray = np.ndarray
 
@@ -164,8 +164,7 @@ def _convergence_lookback(
     ADAM oscillates during joint tilt-global + per-particle optimisation,
     so needs a longer lookback window to avoid triggering convergence on
     a transient dip.  L-BFGS-B converges monotonically and can detect
-    plateaus with a shorter window; using too long a window lets it drift
-    along flat ridges in the defocus-z landscape.
+    plateaus with a shorter window.
     """
     if global_only:
         return 3
@@ -173,6 +172,64 @@ def _convergence_lookback(
         return 5
     # ADAM: scale lookback with iteration budget
     return max(5, maximum_iterations // 3)
+
+
+# ---------------------------------------------------------------------------
+# Stagnation recovery helper
+# ---------------------------------------------------------------------------
+
+
+@dataclasses.dataclass
+class _StagnationState:
+    """Mutable state for L-BFGS-B stagnation recovery."""
+
+    resets_remaining: int = 2
+    last_reset_iter: int = 0
+    cooldown: int = 5
+    df_threshold: float = 20.0      # Angstroms
+    ha_threshold: float = 10.0      # Angstroms
+    angle_threshold: float = 0.02   # radians (~1.1 degrees)
+
+
+def _reset_lbfgsb_if_stagnated(
+    optimizer: AdamOptimizer | LBFGSBOptimizer,
+    optimizer_type: str,
+    global_only: bool,
+    stag: _StagnationState,
+    iteration: int,
+) -> bool:
+    """Check whether L-BFGS-B should reset its Hessian history.
+
+    Returns True (and performs the reset) when the optimizer has converged
+    but the tilt-global parameters indicate genuine correction is still
+    underway.  Returns False if convergence should be trusted.
+    """
+    if optimizer_type != "lbfgsb" or global_only:
+        return False
+    if stag.resets_remaining <= 0:
+        return False
+    if not hasattr(optimizer, "reset_history"):
+        return False
+
+    cur_params = optimizer.get_current_parameters()
+    params_indicate_correction = (
+        abs(cur_params[0]) > stag.df_threshold
+        or abs(cur_params[1]) > stag.ha_threshold
+        or abs(cur_params[2]) > stag.angle_threshold
+    )
+    if not params_indicate_correction:
+        return False
+
+    optimizer.reset_history()  # type: ignore[attr-defined]
+    stag.last_reset_iter = iteration
+    stag.resets_remaining -= 1
+    logger.debug(
+        "L-BFGS-B history reset #%d at iter %d (params=[%.1f, %.1f, %.4f])",
+        2 - stag.resets_remaining,
+        iteration,
+        cur_params[0], cur_params[1], cur_params[2],
+    )
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -362,6 +419,8 @@ def refine_tilt_ctf(
     convergence_n_lookback = _convergence_lookback(
         optimizer_type, options.global_only, options.maximum_iterations,
     )
+    # L-BFGS-B stagnation recovery state (see _reset_lbfgsb_if_stagnated).
+    stag = _StagnationState()
 
     for iteration in range(1, options.maximum_iterations + 1):
         params = optimizer.get_current_parameters()
@@ -405,8 +464,21 @@ def refine_tilt_ctf(
         # score is natural positive CC; optimizer handles sign via bool
         optimizer.step(gradient, score=total_score, score_is_maximized=True)
 
-        if optimizer.has_converged(
-            n_lookback=convergence_n_lookback, threshold=0.001,
+        # After a history reset, skip convergence checking for cooldown
+        # iterations so the Hessian has time to rebuild from fresh curvature.
+        in_cooldown = (
+            stag.last_reset_iter > 0
+            and (iteration - stag.last_reset_iter) < stag.cooldown
+        )
+        if (
+            not in_cooldown
+            and optimizer.has_converged(
+                n_lookback=convergence_n_lookback, threshold=0.001,
+            )
+            and not _reset_lbfgsb_if_stagnated(
+                optimizer, optimizer_type, options.global_only,
+                stag, iteration,
+            )
         ):
             converged = True
             break

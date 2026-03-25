@@ -392,6 +392,18 @@ class LBFGSBOptimizer(OptimizerBase):
         self._prev_gradient = None
         self._prev_parameters = None
 
+    def reset_history(self) -> None:
+        """Clear all L-BFGS curvature history.
+
+        Forces the optimizer to restart Hessian approximation from scratch.
+        Useful when the accumulated curvature is stale or degenerate, such
+        as when the optimizer stagnates on a flat ridge.
+        """
+        self._s_history.clear()
+        self._y_history.clear()
+        self._prev_gradient = None
+        self._prev_parameters = None
+
     # ------------------------------------------------------------------
     # Bounds (override base to add immediate clamping)
     # ------------------------------------------------------------------

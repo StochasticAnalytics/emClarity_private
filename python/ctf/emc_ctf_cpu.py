@@ -1,27 +1,55 @@
 """
-Pure-NumPy CPU implementation of the CTF computation.
+CPU-interface CTF computation.
 
-Serves as a fallback when CuPy / CUDA is unavailable.  The math
-replicates mexFiles/utils/ctf.cu lines 12-65 exactly, using the
-pre-computed derived quantities stored in CTFParams.
+When CuPy / CUDA is available, delegates to the GPU kernel and transfers
+results to NumPy arrays — this guarantees bit-identical agreement with
+``CTFCalculator`` since both run the same CUDA code.
+
+When no GPU is available, falls back to a pure-NumPy implementation that
+replicates mexFiles/utils/ctf.cu lines 12-65 using the pre-computed
+derived quantities stored in CTFParams.
 
 Output layout: C-contiguous float32, shape (ny, out_nx).
 """
 
 from __future__ import annotations
 
+import logging
 import numpy as np
 
+logger = logging.getLogger(__name__)
+
 from .emc_ctf_params import CTFParams
+
+try:
+    from .emc_ctf_calculator import CTFCalculator as _GPUCalc
+
+    _HAS_GPU = True
+except ImportError:
+    _HAS_GPU = False
 
 __all__ = ["CTFCalculatorCPU"]
 
 
 class CTFCalculatorCPU:
-    """CPU-only CTF calculator using NumPy.
+    """CTF calculator that returns NumPy arrays.
 
-    Drop-in replacement for ``CTFCalculator`` when no GPU is available.
+    When a GPU is available the computation is delegated to the same CUDA
+    kernel used by ``CTFCalculator``, ensuring bit-identical results.
+    Falls back to a pure-NumPy implementation otherwise.
     """
+
+    def __init__(self) -> None:
+        """Initialise calculator, optionally loading GPU delegate."""
+        self._gpu = None
+        if _HAS_GPU:
+            try:
+                self._gpu = _GPUCalc()  # type: ignore[possibly-undefined]
+            except Exception as exc:
+                logger.warning(
+                    "GPU CTF calculator unavailable; falling back to NumPy: %s", exc
+                )
+                self._gpu = None
 
     def compute(
         self,
@@ -29,7 +57,11 @@ class CTFCalculatorCPU:
         dims: tuple[int, int],
         centered: bool = False,
     ) -> np.ndarray:
-        """Compute a 2-D CTF image on the CPU.
+        """Compute a 2-D CTF image, returning a NumPy array.
+
+        When a GPU is available, delegates to the CUDA kernel for
+        bit-identical agreement with ``CTFCalculator``.  Falls back to
+        pure-NumPy otherwise.
 
         Args:
             params: Pre-computed CTF parameters.
@@ -44,6 +76,10 @@ class CTFCalculatorCPU:
         Raises:
             ValueError: If *pixel_size* or *wavelength* is zero.
         """
+        if self._gpu is not None:
+            result = self._gpu.compute(params, dims, centered)
+            return np.asarray(result.get())
+
         nx, ny = dims
 
         if float(params.pixel_size) == 0.0:
@@ -91,22 +127,23 @@ class CTFCalculatorCPU:
         radius_sq = (xv * xv + yv * yv).astype(np.float32)
 
         # CTF phase (matches ctf.cu formula)
-        cs_term = float(params.cs_term)
-        df_term = float(params.df_term)
-        mean_df = float(params.mean_defocus)
-        half_astig = float(params.half_astigmatism)
-        astig_angle = float(params.astigmatism_angle_rad)
-        amp_phase = float(params.amplitude_phase)
+        # Use float32 scalars directly from CTFParams to avoid float64 round-tripping
+        cs_term = params.cs_term
+        df_term = params.df_term
+        mean_df = params.mean_defocus
+        half_astig = params.half_astigmatism
+        astig_angle = params.astigmatism_angle_rad
+        amp_phase = params.amplitude_phase
 
-        defocus_eff = np.float32(mean_df) + np.float32(half_astig) * np.cos(
-            np.float32(2.0) * (phi - np.float32(astig_angle))
-        ).astype(np.float32)
+        defocus_eff = mean_df + half_astig * np.cos(
+            f32(2.0) * (phi - astig_angle)
+        ).astype(f32)
 
         phase = (
-            np.float32(cs_term) * (radius_sq * radius_sq)
-            - np.float32(df_term) * radius_sq * defocus_eff
-            - np.float32(amp_phase)
-        ).astype(np.float32)
+            cs_term * (radius_sq * radius_sq)
+            - df_term * radius_sq * defocus_eff
+            - amp_phase
+        ).astype(f32)
 
         if params.do_sq_ctf:
             ctf_val = np.sin(phase).astype(np.float32)
@@ -122,11 +159,10 @@ class CTFCalculatorCPU:
         dims: tuple[int, int],
         centered: bool = False,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """Compute CTF and analytical derivatives on the CPU.
+        """Compute CTF and analytical derivatives, returning NumPy arrays.
 
-        Returns the CTF image and its partial derivatives with respect to
-        mean_defocus (D), half_astigmatism (A), and astigmatism_angle (theta).
-        The theta derivative is in per-degree units.
+        When a GPU is available, delegates to the CUDA kernel for
+        bit-identical agreement with ``CTFCalculator``.
 
         Args:
             params: Pre-computed CTF parameters.
@@ -140,6 +176,17 @@ class CTFCalculatorCPU:
         Raises:
             ValueError: If *pixel_size* or *wavelength* is zero.
         """
+        if self._gpu is not None:
+            ctf, dD, dA, dT = self._gpu.compute_with_derivatives(
+                params, dims, centered
+            )
+            return (
+                np.asarray(ctf.get()),
+                np.asarray(dD.get()),
+                np.asarray(dA.get()),
+                np.asarray(dT.get()),
+            )
+
         nx, ny = dims
 
         if float(params.pixel_size) == 0.0:
@@ -183,43 +230,44 @@ class CTFCalculatorCPU:
         phi = np.arctan2(yv, xv).astype(np.float32)
         radius_sq = (xv * xv + yv * yv).astype(np.float32)
 
-        # Extract scalar params
-        cs_term = float(params.cs_term)
-        df_term = float(params.df_term)
-        mean_df = float(params.mean_defocus)
-        half_astig = float(params.half_astigmatism)
-        astig_angle = float(params.astigmatism_angle_rad)
-        amp_phase = float(params.amplitude_phase)
+        # Extract scalar params — use float32 directly to match GPU precision
+        f32 = np.float32
+        cs_term = params.cs_term
+        df_term = params.df_term
+        mean_df = params.mean_defocus
+        half_astig = params.half_astigmatism
+        astig_angle = params.astigmatism_angle_rad
+        amp_phase = params.amplitude_phase
 
         # Angle terms for astigmatism
-        two_phi_theta = np.float32(2.0) * (phi - np.float32(astig_angle))
-        cos2pt = np.cos(two_phi_theta).astype(np.float32)
-        sin2pt = np.sin(two_phi_theta).astype(np.float32)
+        two_phi_theta = f32(2.0) * (phi - astig_angle)
+        cos2pt = np.cos(two_phi_theta).astype(f32)
+        sin2pt = np.sin(two_phi_theta).astype(f32)
 
         # CTF phase (identical to compute())
-        defocus_eff = np.float32(mean_df) + np.float32(half_astig) * cos2pt
+        defocus_eff = mean_df + half_astig * cos2pt
         phase = (
-            np.float32(cs_term) * (radius_sq * radius_sq)
-            - np.float32(df_term) * radius_sq * defocus_eff
-            - np.float32(amp_phase)
-        ).astype(np.float32)
+            cs_term * (radius_sq * radius_sq)
+            - df_term * radius_sq * defocus_eff
+            - amp_phase
+        ).astype(f32)
 
         # Phase derivatives w.r.t. defocus parameters
-        neg_df_s2 = (-np.float32(df_term) * radius_sq).astype(np.float32)
+        neg_df_s2 = (-df_term * radius_sq).astype(f32)
         dphase_dD = neg_df_s2
-        dphase_dA = (neg_df_s2 * cos2pt).astype(np.float32)
+        dphase_dA = (neg_df_s2 * cos2pt).astype(f32)
         # Sign: d/dtheta[cos(2(phi-theta))] = +2*sin(2(phi-theta)),
         # multiplied by outer -df_term*s^2*A = neg_df_s2*A gives overall
         # -2*df_term*s^2*A. Since neg_df_s2 carries the minus, factor is +2.
         dphase_dTheta = (
-            neg_df_s2 * np.float32(half_astig)
-            * np.float32(2.0) * sin2pt
-        ).astype(np.float32)
+            neg_df_s2 * half_astig
+            * f32(2.0) * sin2pt
+        ).astype(f32)
 
         # Convert theta derivative to per-degree units
         dphase_dTheta = (
-            dphase_dTheta * np.float32(np.pi / 180.0)
-        ).astype(np.float32)
+            dphase_dTheta * f32(np.pi / 180.0)
+        ).astype(f32)
 
         # CTF value and chain-rule derivatives
         sin_phase = np.sin(phase).astype(np.float32)

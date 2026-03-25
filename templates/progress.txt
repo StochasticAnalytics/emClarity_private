@@ -1131,3 +1131,20 @@ Developer: Completed TASK-011 [2026-03-25]
     _apply_refinement_to_particles only called on processed tilt groups
   - 20 tests: healthy/unhealthy convergence, score decrease, defocus threshold,
     saturation detection, multiple warnings, debug filtering with occupancy preservation
+
+Developer: Completed 2026-03-25
+TASK-012: Full CPU test suite validation
+  - Fixed CuPy GPU padding: numpy→CuPy array conversion before slice assignment
+    in emc_pad_zeros_3d.py (all 10 pad_zeros tests pass)
+  - Fixed L-BFGS-B half-astigmatism recovery: added stagnation recovery with
+    parameter-magnitude guard — resets Hessian history only when tilt-global
+    parameter deltas indicate genuine correction (not near-optimal state)
+  - Added reset_history() method to LBFGSBOptimizer for Hessian clearing
+  - Extracted _StagnationState dataclass and _should_reset_lbfgsb helper to
+    reduce McCabe complexity of refine_tilt_ctf below C901 threshold
+  - Fixed ruff linting across 18 files (UP007, SIM102, D102/D107, E721, etc.)
+  - Final results: 850 passed, 7 unfixable failures (environment/hardware):
+    4x CuPy/CUDA version mismatch (libcublas.so.12/libcufft.so.11),
+    2x FFT GPU/CPU equivalence (same root cause),
+    1x RTX 5090 Blackwell __sinf precision
+  - ruff check python/ exits 0, 0 collection errors, 0 unknown mark warnings

@@ -112,7 +112,7 @@ class EmClarityGeometryAnalyzer:
                 for tomo_name, group in geom_df.groupby("tomogram_name"):
                     # Convert to numpy array (remove tomogram_name column)
                     data_cols = [col for col in group.columns if col != "tomogram_name"]
-                    self.geometry_data[cycle_name][tomo_name] = group[data_cols].values
+                    self.geometry_data[cycle_name][tomo_name] = group[data_cols].to_numpy()
 
         # Load tilt geometry
         tilt_dir = self.metadata_source / "tilt_geometry"
@@ -130,7 +130,7 @@ class EmClarityGeometryAnalyzer:
                     for col in tilt_df.columns
                     if col not in ["tilt_series_name", "tilt_index"]
                 ]
-                self.tilt_geometry[tomo_name] = tilt_df[data_cols].values
+                self.tilt_geometry[tomo_name] = tilt_df[data_cols].to_numpy()
 
         # Determine current cycle
         cycle_keys = [k for k in self.geometry_data if "cycle" in k.lower()]

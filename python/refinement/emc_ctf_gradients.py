@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import logging
 import types as _types
-from typing import TYPE_CHECKING, Protocol, Union
+from typing import TYPE_CHECKING, Protocol
 
 import numpy as np
 
@@ -44,7 +44,7 @@ except ImportError:
 if TYPE_CHECKING:
     import cupy
 
-    NDArray = Union[np.ndarray, cupy.ndarray]
+    NDArray = np.ndarray | cupy.ndarray
 else:
     NDArray = np.ndarray
 
