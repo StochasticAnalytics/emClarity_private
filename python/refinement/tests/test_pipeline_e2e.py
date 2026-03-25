@@ -361,7 +361,6 @@ def _prepare_gradient_test_data(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.slow
 class TestSNRVerification:
     """Verify that synthetic tiles have the specified signal-to-noise ratio."""
 
@@ -442,7 +441,6 @@ class TestSNRVerification:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.slow
 class TestGradientSanityCheck:
     """Verify gradient validity at the initial (offset) parameters.
 
@@ -573,8 +571,6 @@ class TestGradientSanityCheck:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.slow
-@pytest.mark.gpu
 class TestCTFRecoveryLBFGSB:
     """Verify L-BFGS-B recovers CTF parameters from +300A/+100A/+5deg offset."""
 
@@ -632,8 +628,6 @@ class TestCTFRecoveryLBFGSB:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.slow
-@pytest.mark.gpu
 class TestCTFRecoveryADAM:
     """Verify ADAM recovers CTF parameters from +300A/+100A/+5deg offset."""
 
@@ -690,8 +684,6 @@ class TestCTFRecoveryADAM:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.slow
-@pytest.mark.gpu
 class TestOptimizerComparison:
     """Compare L-BFGS-B and ADAM convergence on the same synthetic data."""
 
@@ -730,8 +722,6 @@ class TestOptimizerComparison:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.slow
-@pytest.mark.gpu
 class TestPerParticleDeltaZ:
     """Verify per-particle z-offset refinement on well-posed synthetic data."""
 
@@ -771,8 +761,6 @@ class TestPerParticleDeltaZ:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.slow
-@pytest.mark.gpu
 class TestPositiveControl:
     """Positive control: ground-truth CTF input produces near-zero corrections.
 
@@ -823,8 +811,6 @@ class TestPositiveControl:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.slow
-@pytest.mark.gpu
 class TestNegativeControl:
     """Negative control: large offset (+5000A) converges in correct direction.
 
@@ -889,7 +875,6 @@ class TestNegativeControl:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.slow
 class TestDatasetIntegrity:
     """Verify the synthetic dataset is well-formed."""
 

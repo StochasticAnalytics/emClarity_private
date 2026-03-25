@@ -1,3 +1,19 @@
+Developer: Completed TASK-000a [2026-03-24]
+  Task: TASK-000a - Register pytest markers and consolidate config into pyproject.toml
+  - Added markers list (slow, gpu, cuda, integration, unit, known_failure) to pyproject.toml
+  - Added --strict-markers and --color=yes to addopts
+  - Merged settings from python/pytest.ini and removed the file
+  - Removed @pytest.mark.slow and @pytest.mark.gpu decorators from test_pipeline_e2e.py
+  - All 688 tests collected, zero unknown marker warnings
+
+Developer: Completed TASK-001 [2026-03-24]
+  Task: TASK-001 - Backend scaffold: FastAPI app, config, and base model
+  - Created dot-claude/backend/ with FastAPI app, config, models, API router
+  - Two-tier PROJECT_ROOT resolution (env var -> .git walk) with startup assertions
+  - CamelCaseModel base class for camelCase JSON serialization matching TS frontend
+  - Startup capability checks (gh CLI, ANTHROPIC_API_KEY, paths) with graceful degradation
+  - Committed in dot-claude sub-repo (separate git history)
+
 Developer: Completed TASK-013 PATCH round 4 [2026-03-22]
   Task: TASK-013 - End-to-end synthetic validation (QA patch round 4)
   - Refactored TestOptimizerComparison to reuse module-scoped fixtures (eliminated 2 redundant pipeline runs)
@@ -992,3 +1008,19 @@ Developer: Patch Completed
   - Fix 2: Created tests symlink (dot-claude/tests -> ../tests); created emclarity_e2e_plugin as pytest11 plugin that auto-starts FastAPI server; 35 e2e tests pass
   - Fix 3: Assert count restored to 83 via tests/ symlink (grep -r assert tests/ now finds real files)
   - Key insight: pytest resolves symlinks to real paths for conftest.py discovery, so a conftest.py at dot-claude/ level is NOT found. Used pytest11 entry_point mechanism instead (loaded globally by pytest regardless of rootdir).
+
+Developer: Completed TASK-001/PATCH 2026-03-24
+  - Stripped anthropic_api_key fragment from /api/health public response
+  - Added serialize_by_alias=True to CamelCaseModel for correct camelCase .model_dump()
+  - Typed ApiError.details as dict[str, object] to eliminate implicit Any
+  - Deferred config.py logger calls into log_config_summary() called from lifespan
+  - Changed _service_status from {} to None as pre-lifespan sentinel
+  - Documented APIRouter prefix convention in router.py to prevent double-prefix trap
+
+
+Developer: Completed TASK-002 2026-03-24
+  - Created 5 model files in dot-claude/backend/models/ (anatomy, activity, work_item, intel, decision)
+  - Models mirror TypeScript interfaces in types.ts with CamelCaseModel inheritance
+  - Added id field to ChangelogEntry in both Python model and TypeScript interface
+  - Used AlternativeConsidered as nested CamelCaseModel for type-safe dict serialization
+  - Verified model_dump(by_alias=True) produces camelCase keys matching TS contract
