@@ -1091,3 +1091,19 @@ Developer: Completed TASK-008 [2026-03-25]
   - Guards against silent regression if penalty logic is added to
     compute_gradient_debug_info
   - Both tests pass, ruff check clean
+
+Developer: Completed TASK-009 [2026-03-25]
+  Task: TASK-009 - CLI entry point with argparse for CTF refinement
+  - Created python/refinement/__main__.py with argparse CLI wrapping refine_ctf_from_star()
+  - Required args: --star, --stack, --ref, --output
+  - Optional args with MATLAB-matching defaults: --defocus-search-range (5000),
+    --maximum-iterations (15), --lowpass-cutoff (10), --highpass-cutoff (400),
+    --optimizer (adam|lbfgsb), --global-only
+  - Debug options: --debug-tilt-list, --exit-after-n-tilts, --verbose, --cpu
+  - Added debug_tilt_list and exit_after_n_tilts fields to PipelineOptions dataclass
+    with simple conditional filtering in the tilt group loop
+  - Added [project.scripts] entry to pyproject.toml: emclarity-ctf-refine
+  - Deferred heavy imports so --help and input validation work without full package context
+  - Clean error handling: missing files return exit 1, runtime errors return exit 2
+  - 32 unit tests covering parser construction, defaults, validation, flag parsing,
+    optimizer choice rejection, pipeline options mapping, and exception handling

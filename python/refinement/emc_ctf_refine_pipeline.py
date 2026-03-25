@@ -88,6 +88,10 @@ class PipelineOptions:
             (Angstroms).
         soft_mask_edge_width: Edge width in pixels for the 2D soft circular
             mask applied to tiles before processing.
+        debug_tilt_list: Comma-separated list of tilt names to process.
+            Empty string means process all tilts.
+        exit_after_n_tilts: Stop after processing this many tilt groups.
+            Zero means process all tilt groups.
     """
 
     optimizer_type: str = "adam"
@@ -100,6 +104,8 @@ class PipelineOptions:
     shift_sigma: float = 5.0
     z_offset_sigma: float = 100.0
     soft_mask_edge_width: float = 7.0
+    debug_tilt_list: str = ""
+    exit_after_n_tilts: int = 0
 
 
 @dataclasses.dataclass
@@ -372,6 +378,27 @@ def refine_ctf_from_star(
     tilt_groups = group_particles_by_tilt(particles)
     n_tilt_groups_total = len(tilt_groups)
     logger.info("  %d tilt groups", n_tilt_groups_total)
+
+    # ── Debug filtering: restrict to named tilts or first N ───────────
+    if options.debug_tilt_list:
+        selected = {
+            name.strip()
+            for name in options.debug_tilt_list.split(",")
+            if name.strip()
+        }
+        tilt_groups = {k: v for k, v in tilt_groups.items() if k in selected}
+        logger.info(
+            "  debug_tilt_list: processing %d / %d tilt groups",
+            len(tilt_groups), n_tilt_groups_total,
+        )
+
+    if options.exit_after_n_tilts > 0:
+        kept = dict(list(tilt_groups.items())[: options.exit_after_n_tilts])
+        logger.info(
+            "  exit_after_n_tilts=%d: processing %d / %d tilt groups",
+            options.exit_after_n_tilts, len(kept), len(tilt_groups),
+        )
+        tilt_groups = kept
 
     # Extract microscope parameters from first particle (constant across stack)
     first_p = particles[0]

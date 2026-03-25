@@ -44,6 +44,9 @@ test = [
     "pytest-cov>=3.0.0",
 ]
 
+[project.scripts]
+emclarity-ctf-refine = "refinement.__main__:main"
+
 [project.urls]
 "Homepage" = "https://github.com/StochasticAnalytics/emClarity"
 "Bug Reports" = "https://github.com/StochasticAnalytics/emClarity/issues"
