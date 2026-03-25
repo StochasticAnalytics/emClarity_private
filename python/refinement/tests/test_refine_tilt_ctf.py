@@ -181,7 +181,10 @@ def _make_synthetic_particle(
     # Preprocess reference: bandpass -> conjugate (pre-conjugated storage)
     if apply_bandpass:
         ref_spectrum = ft.apply_bandpass(
-            ref_spectrum, PIXEL_SIZE, HIGHPASS_CUTOFF, LOWPASS_CUTOFF,
+            ref_spectrum,
+            PIXEL_SIZE,
+            HIGHPASS_CUTOFF,
+            LOWPASS_CUTOFF,
         )
     ref_ft = np.conj(ref_spectrum)
 
@@ -206,7 +209,10 @@ def _make_multi_particle_data(
     ref_fts: list[np.ndarray] = []
     for i in range(n_particles):
         d, r = _make_synthetic_particle(
-            ft, ctf_calc, ctf_params, seed=base_seed + i,
+            ft,
+            ctf_calc,
+            ctf_params,
+            seed=base_seed + i,
             apply_bandpass=apply_bandpass,
         )
         data_fts.append(d)
@@ -231,7 +237,10 @@ class TestResultsShape:
         peak_mask: np.ndarray,
     ) -> None:
         data_fts, ref_fts = _make_multi_particle_data(
-            ft, ctf_calc, truth_ctf, n_particles=3,
+            ft,
+            ctf_calc,
+            truth_ctf,
+            n_particles=3,
         )
         options = RefinementOptions(
             optimizer_type="adam",
@@ -239,7 +248,9 @@ class TestResultsShape:
             minimum_global_iterations=1,
         )
         result = refine_tilt_ctf(
-            data_fts, ref_fts, base_ctf,
+            data_fts,
+            ref_fts,
+            base_ctf,
             tilt_angle_degrees=0.0,
             options=options,
             ctf_calculator=ctf_calc,
@@ -268,7 +279,10 @@ class TestResultsShape:
     ) -> None:
         n = 5
         data_fts, ref_fts = _make_multi_particle_data(
-            ft, ctf_calc, truth_ctf, n_particles=n,
+            ft,
+            ctf_calc,
+            truth_ctf,
+            n_particles=n,
         )
         options = RefinementOptions(
             optimizer_type="adam",
@@ -276,7 +290,9 @@ class TestResultsShape:
             minimum_global_iterations=1,
         )
         result = refine_tilt_ctf(
-            data_fts, ref_fts, base_ctf,
+            data_fts,
+            ref_fts,
+            base_ctf,
             tilt_angle_degrees=0.0,
             options=options,
             ctf_calculator=ctf_calc,
@@ -299,7 +315,9 @@ class TestResultsShape:
         """Zero-particle case returns empty arrays and converged=True."""
         options = RefinementOptions(maximum_iterations=5)
         result = refine_tilt_ctf(
-            [], [], base_ctf,
+            [],
+            [],
+            base_ctf,
             tilt_angle_degrees=0.0,
             options=options,
             ctf_calculator=ctf_calc,
@@ -331,11 +349,16 @@ class TestZeroIteration:
         peak_mask: np.ndarray,
     ) -> None:
         data_fts, ref_fts = _make_multi_particle_data(
-            ft, ctf_calc, truth_ctf, n_particles=3,
+            ft,
+            ctf_calc,
+            truth_ctf,
+            n_particles=3,
         )
         options = RefinementOptions(maximum_iterations=0)
         result = refine_tilt_ctf(
-            data_fts, ref_fts, base_ctf,
+            data_fts,
+            ref_fts,
+            base_ctf,
             tilt_angle_degrees=0.0,
             options=options,
             ctf_calculator=ctf_calc,
@@ -373,7 +396,10 @@ class TestAdamRecovery:
         peak_mask: np.ndarray,
     ) -> None:
         data_fts, ref_fts = _make_multi_particle_data(
-            ft, ctf_calc, truth_ctf, n_particles=N_PARTICLES,
+            ft,
+            ctf_calc,
+            truth_ctf,
+            n_particles=N_PARTICLES,
         )
         options = RefinementOptions(
             optimizer_type="adam",
@@ -382,7 +408,9 @@ class TestAdamRecovery:
             minimum_global_iterations=3,
         )
         result = refine_tilt_ctf(
-            data_fts, ref_fts, base_ctf,
+            data_fts,
+            ref_fts,
+            base_ctf,
             tilt_angle_degrees=0.0,
             options=options,
             ctf_calculator=ctf_calc,
@@ -407,7 +435,10 @@ class TestAdamRecovery:
     ) -> None:
         """Score at final parameters should exceed score at initial params."""
         data_fts, ref_fts = _make_multi_particle_data(
-            ft, ctf_calc, truth_ctf, n_particles=N_PARTICLES,
+            ft,
+            ctf_calc,
+            truth_ctf,
+            n_particles=N_PARTICLES,
         )
         options = RefinementOptions(
             optimizer_type="adam",
@@ -416,7 +447,9 @@ class TestAdamRecovery:
             minimum_global_iterations=3,
         )
         result = refine_tilt_ctf(
-            data_fts, ref_fts, base_ctf,
+            data_fts,
+            ref_fts,
+            base_ctf,
             tilt_angle_degrees=0.0,
             options=options,
             ctf_calculator=ctf_calc,
@@ -448,7 +481,10 @@ class TestLBFGSBRecovery:
         peak_mask: np.ndarray,
     ) -> None:
         data_fts, ref_fts = _make_multi_particle_data(
-            ft, ctf_calc, truth_ctf, n_particles=N_PARTICLES,
+            ft,
+            ctf_calc,
+            truth_ctf,
+            n_particles=N_PARTICLES,
         )
         options = RefinementOptions(
             optimizer_type="lbfgsb",
@@ -457,7 +493,9 @@ class TestLBFGSBRecovery:
             minimum_global_iterations=3,
         )
         result = refine_tilt_ctf(
-            data_fts, ref_fts, base_ctf,
+            data_fts,
+            ref_fts,
+            base_ctf,
             tilt_angle_degrees=0.0,
             options=options,
             ctf_calculator=ctf_calc,
@@ -478,13 +516,16 @@ class TestLBFGSBRecovery:
 # =========================================================================
 
 
-class TestTwoPhaseOptimization:
-    """First minimum_global_iterations only change params[0:3].
+class TestAllParamsFromStart:
+    """All parameters (global + per-particle) optimise from iteration 1.
 
-    Per-particle params[3:] remain zero until unfreeze.
+    The two-phase freeze/unfreeze design was removed in TASK-002b.  All
+    parameters are now optimised jointly from the start (matching Warp/M
+    by Tegunov).  When ``global_only=True``, per-particle parameters are
+    permanently frozen.
     """
 
-    def test_global_only_phase_freezes_per_particle(
+    def test_all_params_optimised_from_start(
         self,
         ft: FourierTransformer,
         ctf_calc: CTFCalculatorCPU,
@@ -492,21 +533,25 @@ class TestTwoPhaseOptimization:
         truth_ctf: CTFParams,
         peak_mask: np.ndarray,
     ) -> None:
-        """With max_iterations == minimum_global_iterations, delta_z stays zero.
+        """With 3 iterations, both global and per-particle params change.
 
-        Per-particle params never unfreeze.
+        All parameters optimise from iteration 1 — no freeze phase.
         """
         data_fts, ref_fts = _make_multi_particle_data(
-            ft, ctf_calc, truth_ctf, n_particles=N_PARTICLES,
+            ft,
+            ctf_calc,
+            truth_ctf,
+            n_particles=N_PARTICLES,
         )
         options = RefinementOptions(
             optimizer_type="adam",
             defocus_search_range=1000.0,
-            maximum_iterations=3,  # == minimum_global_iterations
-            minimum_global_iterations=3,
+            maximum_iterations=3,
         )
         result = refine_tilt_ctf(
-            data_fts, ref_fts, base_ctf,
+            data_fts,
+            ref_fts,
+            base_ctf,
             tilt_angle_degrees=0.0,
             options=options,
             ctf_calculator=ctf_calc,
@@ -514,29 +559,21 @@ class TestTwoPhaseOptimization:
             peak_mask=peak_mask,
         )
 
-        # Per-particle params should remain zero — never unfrozen
-        np.testing.assert_array_equal(
-            result.delta_z,
-            np.zeros(N_PARTICLES),
-            err_msg="Per-particle delta_z should remain zero during global-only phase",
-        )
-
         # Global params should have moved (data has +500A offset)
-        assert result.delta_defocus_tilt != 0.0, (
-            "Global defocus param should change during global-only phase"
-        )
+        assert result.delta_defocus_tilt != 0.0, "Global defocus param should change"
 
-    def test_per_particle_unfreezes_after_global_phase(
+    def test_per_particle_params_active_from_start(
         self,
         ft: FourierTransformer,
         ctf_calc: CTFCalculatorCPU,
         base_ctf: CTFParams,
         peak_mask: np.ndarray,
     ) -> None:
-        """With sufficient iterations and per-particle signal, delta_z becomes non-zero.
+        """Per-particle delta_z becomes non-zero from the first iteration.
 
         We generate data with per-particle z-offsets so the optimizer has
-        signal to recover after unfreezing.
+        signal to recover.  With all parameters active from iteration 1,
+        delta_z should be non-zero after optimisation.
         """
         ctf_calc_local = ctf_calc
         ft_local = ft
@@ -555,7 +592,10 @@ class TestTwoPhaseOptimization:
                 amplitude_contrast=AMP_CONTRAST,
             )
             d, r = _make_synthetic_particle(
-                ft_local, ctf_calc_local, particle_truth, seed=100 + i,
+                ft_local,
+                ctf_calc_local,
+                particle_truth,
+                seed=100 + i,
             )
             data_fts.append(d)
             ref_fts.append(r)
@@ -568,7 +608,9 @@ class TestTwoPhaseOptimization:
             z_offset_sigma=500.0,  # wide sigma to allow z recovery
         )
         result = refine_tilt_ctf(
-            data_fts, ref_fts, base_ctf,
+            data_fts,
+            ref_fts,
+            base_ctf,
             tilt_angle_degrees=0.0,
             options=options,
             ctf_calculator=ctf_calc_local,
@@ -603,7 +645,10 @@ class TestConvergenceDetection:
         Data matches base CTF so there is nothing to correct.
         """
         data_fts, ref_fts = _make_multi_particle_data(
-            ft, ctf_calc, base_ctf, n_particles=5,
+            ft,
+            ctf_calc,
+            base_ctf,
+            n_particles=5,
         )
         options = RefinementOptions(
             optimizer_type="adam",
@@ -612,7 +657,9 @@ class TestConvergenceDetection:
             minimum_global_iterations=3,
         )
         result = refine_tilt_ctf(
-            data_fts, ref_fts, base_ctf,
+            data_fts,
+            ref_fts,
+            base_ctf,
             tilt_angle_degrees=0.0,
             options=options,
             ctf_calculator=ctf_calc,
@@ -639,7 +686,10 @@ class TestConvergenceDetection:
     ) -> None:
         """L-BFGS-B converges on zero-offset data."""
         data_fts, ref_fts = _make_multi_particle_data(
-            ft, ctf_calc, base_ctf, n_particles=5,
+            ft,
+            ctf_calc,
+            base_ctf,
+            n_particles=5,
         )
         options = RefinementOptions(
             optimizer_type="lbfgsb",
@@ -647,7 +697,9 @@ class TestConvergenceDetection:
             minimum_global_iterations=3,
         )
         result = refine_tilt_ctf(
-            data_fts, ref_fts, base_ctf,
+            data_fts,
+            ref_fts,
+            base_ctf,
             tilt_angle_degrees=0.0,
             options=options,
             ctf_calculator=ctf_calc,
@@ -684,7 +736,10 @@ class TestScoreHistoryMonotone:
         peak_mask: np.ndarray,
     ) -> None:
         data_fts, ref_fts = _make_multi_particle_data(
-            ft, ctf_calc, truth_ctf, n_particles=N_PARTICLES,
+            ft,
+            ctf_calc,
+            truth_ctf,
+            n_particles=N_PARTICLES,
         )
         options = RefinementOptions(
             optimizer_type="adam",
@@ -694,7 +749,9 @@ class TestScoreHistoryMonotone:
             global_only=True,
         )
         result = refine_tilt_ctf(
-            data_fts, ref_fts, base_ctf,
+            data_fts,
+            ref_fts,
+            base_ctf,
             tilt_angle_degrees=0.0,
             options=options,
             ctf_calculator=ctf_calc,
@@ -709,7 +766,7 @@ class TestScoreHistoryMonotone:
         for i in range(2, len(history)):
             assert history[i] >= history[i - 1] - 1e-6, (
                 f"Score decreased at iteration {i}: "
-                f"{history[i]:.6f} < {history[i-1]:.6f} "
+                f"{history[i]:.6f} < {history[i - 1]:.6f} "
                 f"(full history: {[f'{s:.4f}' for s in history]})"
             )
 
@@ -731,7 +788,10 @@ class TestGlobalOnlyMode:
         peak_mask: np.ndarray,
     ) -> None:
         data_fts, ref_fts = _make_multi_particle_data(
-            ft, ctf_calc, truth_ctf, n_particles=N_PARTICLES,
+            ft,
+            ctf_calc,
+            truth_ctf,
+            n_particles=N_PARTICLES,
         )
         options = RefinementOptions(
             optimizer_type="adam",
@@ -741,7 +801,9 @@ class TestGlobalOnlyMode:
             global_only=True,
         )
         result = refine_tilt_ctf(
-            data_fts, ref_fts, base_ctf,
+            data_fts,
+            ref_fts,
+            base_ctf,
             tilt_angle_degrees=0.0,
             options=options,
             ctf_calculator=ctf_calc,
@@ -771,7 +833,10 @@ class TestGlobalOnlyMode:
     ) -> None:
         """global_only mode works with L-BFGS-B as well."""
         data_fts, ref_fts = _make_multi_particle_data(
-            ft, ctf_calc, truth_ctf, n_particles=5,
+            ft,
+            ctf_calc,
+            truth_ctf,
+            n_particles=5,
         )
         options = RefinementOptions(
             optimizer_type="lbfgsb",
@@ -780,7 +845,9 @@ class TestGlobalOnlyMode:
             global_only=True,
         )
         result = refine_tilt_ctf(
-            data_fts, ref_fts, base_ctf,
+            data_fts,
+            ref_fts,
+            base_ctf,
             tilt_angle_degrees=0.0,
             options=options,
             ctf_calculator=ctf_calc,
@@ -837,7 +904,10 @@ class TestAsymmetricBounds:
             amplitude_contrast=AMP_CONTRAST,
         )
         data_fts, ref_fts = _make_multi_particle_data(
-            ft, ctf_calc, push_neg_ctf, n_particles=5,
+            ft,
+            ctf_calc,
+            push_neg_ctf,
+            n_particles=5,
         )
 
         options = RefinementOptions(
@@ -847,7 +917,9 @@ class TestAsymmetricBounds:
             minimum_global_iterations=3,
         )
         result = refine_tilt_ctf(
-            data_fts, ref_fts, small_astig_ctf,
+            data_fts,
+            ref_fts,
+            small_astig_ctf,
             tilt_angle_degrees=0.0,
             options=options,
             ctf_calculator=ctf_calc,
@@ -933,7 +1005,10 @@ class TestDfSwap:
         The asymmetric bound prevents eff_half from going negative.
         """
         data_fts, ref_fts = _make_multi_particle_data(
-            ft, ctf_calc, truth_ctf, n_particles=5,
+            ft,
+            ctf_calc,
+            truth_ctf,
+            n_particles=5,
         )
         options = RefinementOptions(
             optimizer_type="adam",
@@ -942,7 +1017,9 @@ class TestDfSwap:
             minimum_global_iterations=3,
         )
         result = refine_tilt_ctf(
-            data_fts, ref_fts, base_ctf,
+            data_fts,
+            ref_fts,
+            base_ctf,
             tilt_angle_degrees=0.0,
             options=options,
             ctf_calculator=ctf_calc,
@@ -953,9 +1030,7 @@ class TestDfSwap:
         # Effective half_astig should be positive (swap not needed)
         base_half = float(base_ctf.half_astigmatism)
         eff_half = base_half + result.delta_half_astigmatism
-        assert eff_half >= 0.0, (
-            f"Swap should not have fired: eff_half={eff_half:.1f}"
-        )
+        assert eff_half >= 0.0, f"Swap should not have fired: eff_half={eff_half:.1f}"
 
         # Angle change should be small (no 90-degree rotation)
         assert abs(result.delta_astigmatism_angle) < np.pi / 4.0, (
@@ -983,7 +1058,10 @@ class TestDfSwap:
 
         n_particles = 5
         data_fts, ref_fts = _make_multi_particle_data(
-            ft, ctf_calc, truth_ctf, n_particles=n_particles,
+            ft,
+            ctf_calc,
+            truth_ctf,
+            n_particles=n_particles,
         )
 
         base_half = float(base_ctf.half_astigmatism)  # 1000.0
@@ -1006,7 +1084,9 @@ class TestDfSwap:
 
         with patch.object(_rtc_module, "AdamOptimizer", _SwapTriggeringOptimizer):
             result = refine_tilt_ctf(
-                data_fts, ref_fts, base_ctf,
+                data_fts,
+                ref_fts,
+                base_ctf,
                 tilt_angle_degrees=0.0,
                 options=options,
                 ctf_calculator=ctf_calc,
@@ -1023,13 +1103,13 @@ class TestDfSwap:
         # Verify the swap negated the effective half-astigmatism
         old_eff_half = base_half + forced_delta_half  # -500
         assert eff_half == pytest.approx(-old_eff_half, abs=1e-10), (
-            f"Swap should negate eff_half: "
-            f"old={old_eff_half}, new={eff_half}"
+            f"Swap should negate eff_half: old={old_eff_half}, new={eff_half}"
         )
 
         # Verify angle was rotated by pi/2
         assert result.delta_astigmatism_angle == pytest.approx(
-            np.pi / 2.0, abs=1e-10,
+            np.pi / 2.0,
+            abs=1e-10,
         ), (
             f"Swap should rotate angle by pi/2, "
             f"got {result.delta_astigmatism_angle:.4f} rad"
@@ -1054,7 +1134,10 @@ class TestNonConvergenceWarning:
     ) -> None:
         """With very few iterations and a large offset, convergence is not achieved."""
         data_fts, ref_fts = _make_multi_particle_data(
-            ft, ctf_calc, truth_ctf, n_particles=N_PARTICLES,
+            ft,
+            ctf_calc,
+            truth_ctf,
+            n_particles=N_PARTICLES,
         )
         options = RefinementOptions(
             optimizer_type="adam",
@@ -1064,7 +1147,9 @@ class TestNonConvergenceWarning:
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             result = refine_tilt_ctf(
-                data_fts, ref_fts, base_ctf,
+                data_fts,
+                ref_fts,
+                base_ctf,
                 tilt_angle_degrees=0.0,
                 options=options,
                 ctf_calculator=ctf_calc,
@@ -1078,8 +1163,7 @@ class TestNonConvergenceWarning:
 
             # Check that a warning was emitted
             convergence_warnings = [
-                x for x in w
-                if "did not converge" in str(x.message)
+                x for x in w if "did not converge" in str(x.message)
             ]
             assert len(convergence_warnings) >= 1, (
                 f"Expected a non-convergence warning. Warnings captured: "
@@ -1110,7 +1194,10 @@ class TestGradientAtConvergence:
         Data matches base CTF.
         """
         data_fts, ref_fts = _make_multi_particle_data(
-            ft, ctf_calc, base_ctf, n_particles=5,
+            ft,
+            ctf_calc,
+            base_ctf,
+            n_particles=5,
         )
         options = RefinementOptions(
             optimizer_type="lbfgsb",
@@ -1118,7 +1205,9 @@ class TestGradientAtConvergence:
             minimum_global_iterations=3,
         )
         result = refine_tilt_ctf(
-            data_fts, ref_fts, base_ctf,
+            data_fts,
+            ref_fts,
+            base_ctf,
             tilt_angle_degrees=0.0,
             options=options,
             ctf_calculator=ctf_calc,
@@ -1127,14 +1216,18 @@ class TestGradientAtConvergence:
         )
 
         # Re-compute gradient at the final parameters
-        final_params = np.concatenate([
-            np.array([
-                result.delta_defocus_tilt,
-                result.delta_half_astigmatism,
-                result.delta_astigmatism_angle,
-            ]),
-            result.delta_z,
-        ])
+        final_params = np.concatenate(
+            [
+                np.array(
+                    [
+                        result.delta_defocus_tilt,
+                        result.delta_half_astigmatism,
+                        result.delta_astigmatism_angle,
+                    ]
+                ),
+                result.delta_z,
+            ]
+        )
 
         _, _, _, gradient = evaluate_score_and_gradient(
             final_params,
@@ -1168,7 +1261,10 @@ class TestGradientAtConvergence:
         Even with a 500A offset to recover.
         """
         data_fts, ref_fts = _make_multi_particle_data(
-            ft, ctf_calc, truth_ctf, n_particles=5,
+            ft,
+            ctf_calc,
+            truth_ctf,
+            n_particles=5,
         )
         options = RefinementOptions(
             optimizer_type="lbfgsb",
@@ -1176,7 +1272,9 @@ class TestGradientAtConvergence:
             minimum_global_iterations=3,
         )
         result = refine_tilt_ctf(
-            data_fts, ref_fts, base_ctf,
+            data_fts,
+            ref_fts,
+            base_ctf,
             tilt_angle_degrees=0.0,
             options=options,
             ctf_calculator=ctf_calc,
@@ -1184,14 +1282,18 @@ class TestGradientAtConvergence:
             peak_mask=peak_mask,
         )
 
-        final_params = np.concatenate([
-            np.array([
-                result.delta_defocus_tilt,
-                result.delta_half_astigmatism,
-                result.delta_astigmatism_angle,
-            ]),
-            result.delta_z,
-        ])
+        final_params = np.concatenate(
+            [
+                np.array(
+                    [
+                        result.delta_defocus_tilt,
+                        result.delta_half_astigmatism,
+                        result.delta_astigmatism_angle,
+                    ]
+                ),
+                result.delta_z,
+            ]
+        )
 
         _, _, _, gradient = evaluate_score_and_gradient(
             final_params,

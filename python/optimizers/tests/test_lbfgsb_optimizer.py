@@ -80,9 +80,9 @@ class TestOptimizerBaseInterface:
         """step() accepts same args as AdamOptimizer.step()."""
         opt = LBFGSBOptimizer(np.array([1.0, 2.0]))
         # gradient only
-        opt.step(np.array([0.1, 0.2]))
+        opt.step(np.array([0.1, 0.2]), score_is_maximized=True)
         # gradient + score
-        opt.step(np.array([0.1, 0.2]), score=1.0)
+        opt.step(np.array([0.1, 0.2]), score=1.0, score_is_maximized=True)
 
 
 # ---------------------------------------------------------------------------
@@ -113,7 +113,7 @@ class TestConstructor:
 
     def test_memory_size_default(self) -> None:
         opt = LBFGSBOptimizer(np.array([1.0]))
-        assert opt.get_memory_size() == 7
+        assert opt.get_memory_size() == 20
 
     def test_custom_memory_size(self) -> None:
         opt = LBFGSBOptimizer(np.array([1.0]), memory_size=3)
@@ -134,28 +134,53 @@ class TestConstructor:
 
 
 class TestGradientValidation:
-    """Negative control: invalid gradients must raise ValueError."""
+    """Regression tests for gradient NaN/Inf guards (KI-218/222).
+
+    Negative controls: NaN and Inf gradients must raise ValueError.
+    Positive control: large but finite gradients must be accepted.
+    """
 
     def test_nan_gradient_raises(self) -> None:
         opt = LBFGSBOptimizer(np.array([1.0, 2.0]))
         with pytest.raises(ValueError, match="NaN"):
-            opt.step(np.array([np.nan, 0.5]))
+            opt.step(np.array([np.nan, 0.5]), score_is_maximized=True)
 
     def test_inf_gradient_raises(self) -> None:
         opt = LBFGSBOptimizer(np.array([1.0]))
         with pytest.raises(ValueError, match="Inf"):
-            opt.step(np.array([np.inf]))
+            opt.step(np.array([np.inf]), score_is_maximized=True)
+
+    def test_mixed_inf_gradient_raises(self) -> None:
+        """Inf mixed with finite values must be caught (parity with ADAM KI-218/222)."""
+        opt = LBFGSBOptimizer(np.array([1.0, 2.0]))
+        with pytest.raises(ValueError, match="Inf"):
+            opt.step(np.array([np.inf, 0.5]), score_is_maximized=True)
+
+    def test_neg_inf_gradient_raises(self) -> None:
+        """Negative Inf gradient must also be caught."""
+        opt = LBFGSBOptimizer(np.array([1.0]))
+        with pytest.raises(ValueError, match="Inf"):
+            opt.step(np.array([-np.inf]), score_is_maximized=True)
+
+    def test_large_finite_gradient_accepted(self) -> None:
+        """Large but finite gradient (1e15) must not raise (positive control)."""
+        opt = LBFGSBOptimizer(np.array([0.0, 0.0]))
+        # Should complete without raising — on step 1 with no history (m=0),
+        # the two-loop recursion is skipped and H0=I is applied directly.
+        opt.step(np.array([1e15, -1e15]), score=0.5, score_is_maximized=True)
+        params = opt.get_current_parameters()
+        assert np.all(np.isfinite(params))
 
     def test_length_mismatch_raises(self) -> None:
         opt = LBFGSBOptimizer(np.array([1.0, 2.0]))
         with pytest.raises(ValueError, match="Gradient length"):
-            opt.step(np.array([1.0]))
+            opt.step(np.array([1.0]), score_is_maximized=True)
 
     def test_parameters_unchanged_after_nan(self) -> None:
         opt = LBFGSBOptimizer(np.array([1.0, 2.0]))
         initial = opt.get_current_parameters().copy()
         with pytest.raises(ValueError):
-            opt.step(np.array([np.nan, 0.5]))
+            opt.step(np.array([np.nan, 0.5]), score_is_maximized=True)
         np.testing.assert_array_equal(opt.get_current_parameters(), initial)
 
 
@@ -178,7 +203,7 @@ class TestRosenbrockConvergence:
             params = opt.get_current_parameters()
             grad = rosenbrock_grad(params)
             score = rosenbrock(params)
-            opt.step(grad, score=score)
+            opt.step(grad, score=score, score_is_maximized=False)
 
         final = opt.get_current_parameters()
         np.testing.assert_allclose(final, [1.0, 1.0], atol=1e-4)
@@ -193,7 +218,8 @@ class TestRosenbrockConvergence:
             params = opt.get_current_parameters()
             grad = rosenbrock_grad(params)
             score = rosenbrock(params)
-            opt.step(grad, score=score)
+            # Rosenbrock is a minimisation objective, not a maximisation score
+            opt.step(grad, score=score, score_is_maximized=False)
 
         history = opt.get_score_history()
         assert history[-1] < history[0] * 0.001
@@ -221,7 +247,7 @@ class TestBoundedQuadratic:
             params = opt.get_current_parameters()
             grad = np.array([2.0 * (params[0] - 3.0)])
             score = f(params)
-            opt.step(grad, score=score)
+            opt.step(grad, score=score, score_is_maximized=False)
 
         final = opt.get_current_parameters()
         np.testing.assert_allclose(final, [2.0], atol=1e-6)
@@ -238,7 +264,7 @@ class TestBoundedQuadratic:
         for _ in range(50):
             params = opt.get_current_parameters()
             grad = np.array([2.0 * (params[0] - 3.0)])
-            opt.step(grad, score=f(params))
+            opt.step(grad, score=f(params), score_is_maximized=False)
             current = opt.get_current_parameters()
             assert current[0] >= -10.0
             assert current[0] <= 2.0
@@ -282,7 +308,7 @@ class TestHighDimBounded:
 
         for _ in range(200):
             params = opt.get_current_parameters()
-            opt.step(grad_f(params), score=f(params))
+            opt.step(grad_f(params), score=f(params), score_is_maximized=False)
 
         final = opt.get_current_parameters()
         max_error = float(np.max(np.abs(final - expected)))
@@ -323,7 +349,7 @@ class TestFreezeUnfreeze:
 
         for _ in range(50):
             params = opt.get_current_parameters()
-            opt.step(grad_f(params), score=f(params))
+            opt.step(grad_f(params), score=f(params), score_is_maximized=False)
 
         after_frozen = opt.get_current_parameters()
         np.testing.assert_array_equal(after_frozen[[3, 4]], frozen_vals)
@@ -349,7 +375,7 @@ class TestFreezeUnfreeze:
 
         for _ in range(50):
             params = opt.get_current_parameters()
-            opt.step(grad_f(params), score=f(params))
+            opt.step(grad_f(params), score=f(params), score_is_maximized=False)
 
         after_frozen = opt.get_current_parameters()
         # Dims 0,1,2 should have moved toward 1.0
@@ -378,14 +404,14 @@ class TestFreezeUnfreeze:
 
         for _ in range(50):
             params = opt.get_current_parameters()
-            opt.step(grad_f(params), score=f(params))
+            opt.step(grad_f(params), score=f(params), score_is_maximized=False)
 
         # Unfreeze and continue
         opt.unfreeze_parameters(np.array([3, 4]))
 
         for _ in range(50):
             params = opt.get_current_parameters()
-            opt.step(grad_f(params), score=f(params))
+            opt.step(grad_f(params), score=f(params), score_is_maximized=False)
 
         final = opt.get_current_parameters()
         np.testing.assert_allclose(final, b, atol=1e-3)
@@ -399,7 +425,7 @@ class TestFreezeUnfreeze:
         # Build some history
         for i in range(5):
             grad = np.random.default_rng(i).standard_normal(n)
-            opt.step(grad)
+            opt.step(grad, score_is_maximized=True)
 
         assert opt.get_history_length() > 0
 
@@ -417,10 +443,15 @@ class TestFreezeUnfreeze:
 
 
 class TestH0Initialization:
-    """Bounds-based diagonal scaling for H_0 after unfreeze."""
+    """H0 uses identity when no curvature history, gamma_k scaling otherwise.
 
-    def test_h0_diagonal_formula(self) -> None:
-        """After unfreeze, H_0 diagonal matches the specified formula."""
+    Bounds-based H0 diagonal was removed in TASK-002b.  After unfreeze
+    (which clears history), H0 is identity.  The two-loop recursion
+    applies gamma_k = (s'y)/(y'y) * I once curvature pairs are available.
+    """
+
+    def test_h0_returns_none_after_unfreeze(self) -> None:
+        """get_h0_diagonal returns None (no explicit diagonal override)."""
         n = 5
         lower = np.array([-5.0, -3.0, -1.0, 0.0, -10.0])
         upper = np.array([5.0, 3.0, 1.0, 2.0, 10.0])
@@ -428,41 +459,48 @@ class TestH0Initialization:
         opt = LBFGSBOptimizer(np.zeros(n))
         opt.set_bounds(lower, upper)
 
-        # Freeze and unfreeze to trigger H_0 initialization
+        # Freeze and unfreeze
         opt.freeze_parameters(np.array([0]))
         opt.unfreeze_parameters(np.array([0]))
 
-        h0 = opt.get_h0_diagonal()
-        assert h0 is not None
+        assert opt.get_h0_diagonal() is None
 
-        expected = (upper - lower) ** 2 / (4.0 * n)
-        np.testing.assert_allclose(h0, expected, rtol=1e-12)
-
-    def test_h0_not_set_without_bounds(self) -> None:
-        """H_0 diagonal is not set when bounds are absent."""
+    def test_h0_none_without_bounds(self) -> None:
+        """H_0 diagonal is None regardless of bounds."""
         opt = LBFGSBOptimizer(np.array([1.0, 2.0]))
         opt.freeze_parameters(np.array([0]))
         opt.unfreeze_parameters(np.array([0]))
         assert opt.get_h0_diagonal() is None
 
-    def test_h0_handles_infinite_bounds(self) -> None:
-        """Infinite bounds get a default scale of 1.0."""
+    def test_convergence_after_unfreeze_uses_identity_then_gamma(self) -> None:
+        """Optimizer converges after unfreeze using identity H0 then gamma_k scaling."""
         n = 3
-        lower = np.array([-np.inf, -5.0, -2.0])
-        upper = np.array([np.inf, 5.0, 2.0])
+        a = np.array([1.0, 2.0, 3.0])
+        b = np.array([1.0, 1.0, 1.0])
+
+        def f(x: np.ndarray) -> float:
+            return float(np.sum(a * (x - b) ** 2))
+
+        def grad_f(x: np.ndarray) -> np.ndarray:
+            return 2.0 * a * (x - b)
 
         opt = LBFGSBOptimizer(np.zeros(n))
-        opt.set_bounds(lower, upper)
-        opt.freeze_parameters(np.array([0]))
-        opt.unfreeze_parameters(np.array([0]))
+        opt.set_bounds(-5.0 * np.ones(n), 5.0 * np.ones(n))
+        opt.set_objective(f)
 
-        h0 = opt.get_h0_diagonal()
-        assert h0 is not None
-        # Infinite range → default 1.0
-        assert h0[0] == 1.0
-        # Finite ranges → formula
-        assert abs(h0[1] - (10.0 ** 2 / 12.0)) < 1e-12
-        assert abs(h0[2] - (4.0 ** 2 / 12.0)) < 1e-12
+        # Freeze, run, unfreeze, continue — should still converge
+        opt.freeze_parameters(np.array([2]))
+        for _ in range(20):
+            params = opt.get_current_parameters()
+            opt.step(grad_f(params), score=f(params), score_is_maximized=False)
+
+        opt.unfreeze_parameters(np.array([2]))
+        for _ in range(30):
+            params = opt.get_current_parameters()
+            opt.step(grad_f(params), score=f(params), score_is_maximized=False)
+
+        final = opt.get_current_parameters()
+        np.testing.assert_allclose(final, b, atol=1e-3)
 
 
 # ---------------------------------------------------------------------------
@@ -495,7 +533,7 @@ class TestCurvatureRejection:
         for _ in range(100):
             params = opt.get_current_parameters()
             score = f(params)
-            opt.step(grad_f(params), score=score)
+            opt.step(grad_f(params), score=score, score_is_maximized=False)
 
         final = opt.get_current_parameters()
         final_score = f(final)
@@ -523,7 +561,7 @@ class TestCurvatureRejection:
 
         for _ in range(100):
             params = opt.get_current_parameters()
-            opt.step(grad_f(params), score=f(params))
+            opt.step(grad_f(params), score=f(params), score_is_maximized=False)
             current = opt.get_current_parameters()
             assert -10.0 <= current[0] <= 10.0
 
@@ -556,7 +594,7 @@ class TestAnisotropicScaling:
 
         for _i in range(50):
             params = opt.get_current_parameters()
-            opt.step(grad_f(params), score=f(params))
+            opt.step(grad_f(params), score=f(params), score_is_maximized=False)
 
         final = opt.get_current_parameters()
         np.testing.assert_allclose(final, minimum, atol=1e-4)
@@ -597,8 +635,8 @@ class TestHasConvergedMatchesAdam:
         lbfgsb = LBFGSBOptimizer(np.array([0.0]))
 
         for s in scores:
-            adam.step(np.array([0.0]), score=s)
-            lbfgsb.step(np.array([0.0]), score=s)
+            adam.step(np.array([0.0]), score=s, score_is_maximized=True)
+            lbfgsb.step(np.array([0.0]), score=s, score_is_maximized=True)
 
         adam_result = adam.has_converged(n_lookback, threshold)
         lbfgsb_result = lbfgsb.has_converged(n_lookback, threshold)
@@ -633,7 +671,7 @@ class TestBoundsClamping:
     def test_inf_bounds_unconstrained(self) -> None:
         opt = LBFGSBOptimizer(np.array([0.0]))
         opt.set_bounds(np.array([-np.inf]), np.array([np.inf]))
-        opt.step(np.array([1.0]))
+        opt.step(np.array([1.0]), score_is_maximized=True)
         assert opt.get_current_parameters()[0] != 0.0
 
 
@@ -647,20 +685,22 @@ class TestScoreHistory:
 
     def test_scores_recorded(self) -> None:
         opt = LBFGSBOptimizer(np.array([0.0]))
-        opt.step(np.array([1.0]), score=10.0)
-        opt.step(np.array([1.0]), score=5.0)
+        # Pass score_is_maximized=False since these are raw test values,
+        # not maximisation scores — stored as-is.
+        opt.step(np.array([1.0]), score=10.0, score_is_maximized=False)
+        opt.step(np.array([1.0]), score=5.0, score_is_maximized=False)
         assert opt.get_score_history() == [10.0, 5.0]
 
     def test_no_score_not_recorded(self) -> None:
         opt = LBFGSBOptimizer(np.array([0.0]))
-        opt.step(np.array([1.0]))
-        opt.step(np.array([1.0]), score=5.0)
-        opt.step(np.array([1.0]))
+        opt.step(np.array([1.0]), score_is_maximized=True)
+        opt.step(np.array([1.0]), score=5.0, score_is_maximized=False)
+        opt.step(np.array([1.0]), score_is_maximized=True)
         assert opt.get_score_history() == [5.0]
 
     def test_history_is_copy(self) -> None:
         opt = LBFGSBOptimizer(np.array([0.0]))
-        opt.step(np.array([1.0]), score=5.0)
+        opt.step(np.array([1.0]), score=5.0, score_is_maximized=True)
         history = opt.get_score_history()
         history.append(999.0)
         assert len(opt.get_score_history()) == 1
@@ -680,14 +720,13 @@ class TestReturnValueIsolation:
         params[0] = 999.0
         assert opt.get_current_parameters()[0] == 1.0
 
-    def test_h0_diagonal_copy(self) -> None:
+    def test_h0_diagonal_returns_none(self) -> None:
+        """get_h0_diagonal returns None (no bounds-based H₀ after TASK-002b)."""
         opt = LBFGSBOptimizer(np.array([1.0, 2.0]))
         opt.set_bounds(np.array([-5.0, -5.0]), np.array([5.0, 5.0]))
         opt.freeze_parameters(np.array([0]))
         opt.unfreeze_parameters(np.array([0]))
-        h0 = opt.get_h0_diagonal()
-        h0[0] = 999.0
-        assert opt.get_h0_diagonal()[0] != 999.0
+        assert opt.get_h0_diagonal() is None
 
 
 # ---------------------------------------------------------------------------
@@ -701,9 +740,9 @@ class TestAccessors:
     def test_timestep_increments(self) -> None:
         opt = LBFGSBOptimizer(np.array([0.0]))
         assert opt.get_timestep() == 0
-        opt.step(np.array([1.0]))
+        opt.step(np.array([1.0]), score_is_maximized=True)
         assert opt.get_timestep() == 1
-        opt.step(np.array([1.0]))
+        opt.step(np.array([1.0]), score_is_maximized=True)
         assert opt.get_timestep() == 2
 
     def test_history_length(self) -> None:
@@ -716,5 +755,5 @@ class TestAccessors:
         opt.set_objective(lambda x: float(x[0] ** 2))
         for _i in range(20):
             x = opt.get_current_parameters()
-            opt.step(np.array([2.0 * x[0]]), score=float(x[0] ** 2))
+            opt.step(np.array([2.0 * x[0]]), score=float(x[0] ** 2), score_is_maximized=False)
         assert opt.get_history_length() <= 3

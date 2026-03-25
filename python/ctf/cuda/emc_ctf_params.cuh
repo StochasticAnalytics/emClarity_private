@@ -62,6 +62,27 @@ struct ctfParams {
                           - (PI * (float)lrintf(astigmatism_angle / 180.0f))),
         cs_term(PI * 0.5f * CS * 1e7f * powf(waveLength, 3)),
         df_term(PI * waveLength) {}
+
+  /* Pre-computed constructor: accepts values already derived by Python
+   * CTFParams, so GPU and CPU share identical parameter values.  This
+   * eliminates float32 non-associativity between Python and CUDA
+   * derivation paths. */
+  __host__ __device__ ctfParams(bool doHalfGrid, bool doSqCTF,
+                                float pixelSize, float waveLength,
+                                float cs_internal, float amplitude_phase,
+                                float mean_defocus, float half_astigmatism,
+                                float astigmatism_angle,
+                                float cs_term, float df_term,
+                                bool /*precomputed_tag*/)
+      : doHalfGrid(doHalfGrid), doSqCTF(doSqCTF),
+        pixelSize(pixelSize), waveLength(waveLength),
+        CS(cs_internal),
+        amplitudeContrast(amplitude_phase),
+        mean_defocus(mean_defocus),
+        half_astigmatism(half_astigmatism),
+        astigmatism_angle(astigmatism_angle),
+        cs_term(cs_term),
+        df_term(df_term) {}
 };
 
 #endif /* EMC_CTF_PARAMS_CUH */

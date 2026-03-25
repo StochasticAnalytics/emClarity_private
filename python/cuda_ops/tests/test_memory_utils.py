@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-cp = pytest.importorskip("cupy")
+cp = pytest.importorskip("cupy", reason="CuPy required for memory utils tests")
 
 # Add the python package root to path for proper imports
 python_root = Path(__file__).parent.parent.parent

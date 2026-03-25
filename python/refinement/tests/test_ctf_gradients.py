@@ -1029,3 +1029,107 @@ class TestScoreMatchesScoring:
         np.testing.assert_allclose(score_grad, score_ref, rtol=1e-10)
         np.testing.assert_allclose(scores_grad, scores_ref, rtol=1e-10)
         np.testing.assert_allclose(shifts_grad, shifts_ref, rtol=1e-10)
+
+
+# =========================================================================
+# Test: Dead-variable coverage for gradient debug info
+# =========================================================================
+
+
+class TestDebugInfoIgnoresUnusedSigmas:
+    """Verify shift_sigma and z_offset_sigma do NOT affect debug output.
+
+    ``compute_gradient_debug_info`` accepts these parameters for API
+    symmetry with ``evaluate_score_and_gradient`` but must not use them.
+    These tests guard against silent regression if someone later adds
+    penalty logic to the diagnostic function.
+    """
+
+    def test_debug_info_ignores_shift_sigma(
+        self,
+        ft: FourierTransformer,
+        ctf_calc: CTFCalculatorCPU,
+        base_ctf: CTFParams,
+        peak_mask: np.ndarray,
+    ) -> None:
+        """Output identical within 1e-12 for shift_sigma=1.0 vs 100.0."""
+        n_particles = 3
+        data_fts, ref_fts = _make_multi_particle(
+            ft, ctf_calc, base_ctf, n_particles,
+        )
+
+        # Non-zero params so the computation is non-trivial
+        params = np.zeros(3 + n_particles)
+        params[0] = 150.0  # defocus offset
+        params[1] = 30.0  # astig offset
+        params[2] = 0.01  # angle offset (radians)
+        params[3] = 50.0  # particle 0 dz
+        params[4] = -40.0  # particle 1 dz
+
+        common_kwargs = dict(
+            params=params,
+            data_fts=data_fts,
+            ref_fts=ref_fts,
+            base_ctf_params=base_ctf,
+            ctf_calculator=ctf_calc,
+            fourier_handler=ft,
+            tilt_angle_degrees=20.0,
+            peak_mask=peak_mask,
+            z_offset_sigma=100.0,
+        )
+
+        raw_a, norm_a = compute_gradient_debug_info(**common_kwargs, shift_sigma=1.0)
+        raw_b, norm_b = compute_gradient_debug_info(**common_kwargs, shift_sigma=100.0)
+
+        np.testing.assert_array_equal(
+            raw_a, raw_b,
+            err_msg="shift_sigma affected raw_grads in debug info",
+        )
+        np.testing.assert_array_equal(
+            norm_a, norm_b,
+            err_msg="shift_sigma affected norm_corrs in debug info",
+        )
+
+    def test_debug_info_ignores_z_offset_sigma(
+        self,
+        ft: FourierTransformer,
+        ctf_calc: CTFCalculatorCPU,
+        base_ctf: CTFParams,
+        peak_mask: np.ndarray,
+    ) -> None:
+        """Output identical within 1e-12 for z_offset_sigma=1.0 vs 100.0."""
+        n_particles = 3
+        data_fts, ref_fts = _make_multi_particle(
+            ft, ctf_calc, base_ctf, n_particles,
+        )
+
+        params = np.zeros(3 + n_particles)
+        params[0] = 150.0
+        params[1] = 30.0
+        params[2] = 0.01
+        params[3] = 50.0
+        params[4] = -40.0
+
+        common_kwargs = dict(
+            params=params,
+            data_fts=data_fts,
+            ref_fts=ref_fts,
+            base_ctf_params=base_ctf,
+            ctf_calculator=ctf_calc,
+            fourier_handler=ft,
+            tilt_angle_degrees=20.0,
+            peak_mask=peak_mask,
+            shift_sigma=5.0,
+        )
+
+        raw_a, norm_a = compute_gradient_debug_info(**common_kwargs, z_offset_sigma=1.0)
+        raw_b, norm_b = compute_gradient_debug_info(**common_kwargs, z_offset_sigma=100.0)
+
+        np.testing.assert_array_equal(
+            raw_a, raw_b,
+            err_msg="z_offset_sigma affected raw_grads in debug info",
+        )
+        np.testing.assert_array_equal(
+            norm_a, norm_b,
+            err_msg="z_offset_sigma affected norm_corrs in debug info",
+        )

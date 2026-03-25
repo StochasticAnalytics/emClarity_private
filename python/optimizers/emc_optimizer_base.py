@@ -37,12 +37,23 @@ class OptimizerBase(ABC):
         self._score_history: list[float] = []
 
     @abstractmethod
-    def step(self, gradient: np.ndarray, score: float | None = None) -> None:
+    def step(
+        self,
+        gradient: np.ndarray,
+        score: float | None = None,
+        *,
+        score_is_maximized: bool,
+    ) -> None:
         """Perform one optimization step given the current gradient.
 
         Args:
             gradient: Gradient vector with same length as parameters.
             score: Optional objective score to record for convergence tracking.
+            score_is_maximized: If True, the score represents a quantity to
+                maximise (e.g. cross-correlation).  Each optimizer converts
+                to its own internal convention before storing in the score
+                history.  ADAM (maximiser) stores as-is; L-BFGS-B (minimiser)
+                negates to track the minimisation objective.
         """
         ...
 

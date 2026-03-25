@@ -20,12 +20,7 @@
   //        Note: playwright-cli install-browser was removed — it's an interactive
   //        command that fails headless. npx playwright install chromium handles setup.
   // bwrap caps, sandbox-runtime, and cupy-cuda12x now baked into Docker image.
-  //   4. Install claude_core in editable mode (pip install -e dot-claude/).
-  //      This must happen here, not in setup_links.sh, because worktree creation
-  //      runs setup_links on the host but opening the worktree in a devcontainer
-  //      is a fresh container that loses the install. Uses DOT_CLAUDE_DIR from
-  //      containerEnv. Fails the build if install fails.
-  "postCreateCommand": "bash -c 'if [ -z \"$CLAUDE_CONFIG_DIR\" ]; then echo \"ERROR: CLAUDE_CONFIG_DIR not set in host env. Add export CLAUDE_CONFIG_DIR=... to ~/.bashrc\" >&2; exit 1; fi && ln -sfn \"$CLAUDE_CONFIG_DIR\" ~/.claude && npm install -g @playwright/cli@0.1.1 && cd $(npm root -g)/@playwright/cli && npx playwright install chromium && if [ -f \"$DOT_CLAUDE_DIR/setup.py\" ]; then pip install -e \"$DOT_CLAUDE_DIR\" --quiet || { echo \"ERROR: pip install -e dot-claude failed\" >&2; exit 1; }; fi'",
+  "postCreateCommand": "bash -c 'if [ -z \"$CLAUDE_CONFIG_DIR\" ]; then echo \"ERROR: CLAUDE_CONFIG_DIR not set in host env. Add export CLAUDE_CONFIG_DIR=... to ~/.bashrc\" >&2; exit 1; fi && ln -sfn \"$CLAUDE_CONFIG_DIR\" ~/.claude && npm install -g @playwright/cli@0.1.1 && cd $(npm root -g)/@playwright/cli && npx playwright install chromium'",
   // PROJECT_ROOT, DOT_CLAUDE_DIR, REPO_NAME are set via remoteEnv below.
   // No postStartCommand needed for environment setup.
   "remoteUser": "cisTEMdev",

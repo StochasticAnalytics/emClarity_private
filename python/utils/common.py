@@ -36,6 +36,7 @@ class GPUContext:
     """Manages GPU context and provides fallback to CPU when needed."""
 
     def __init__(self):
+        """Initialize GPU context and detect available devices."""
         self.has_gpu = HAS_CUPY
         self.device_count = 0
         self.current_device = 0

@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import logging
 import types as _types
-from typing import TYPE_CHECKING, Protocol, Union
+from typing import TYPE_CHECKING, Protocol
 
 import numpy as np
 
@@ -44,11 +44,11 @@ except ImportError:
 if TYPE_CHECKING:
     import cupy
 
-    NDArray = Union[np.ndarray, cupy.ndarray]
+    NDArray = np.ndarray | cupy.ndarray
 else:
     NDArray = np.ndarray
 
-from ..ctf.emc_ctf_params import CTFParams
+from ctf.emc_ctf_params import CTFParams
 from .emc_fourier_utils import FourierTransformer
 
 logger = logging.getLogger(__name__)
@@ -410,7 +410,7 @@ def evaluate_score_and_gradient(
 
     total_score = float(np.sum(per_particle_scores))
 
-    # --- Negate gradient (maximize score, optimizer minimizes) -------------
+    # Negate: optimizer minimizes, we maximize CC
     gradient = -gradient
 
     return total_score, per_particle_scores, shifts, gradient

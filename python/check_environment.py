@@ -116,6 +116,7 @@ def check_dependencies(verbose: bool = False) -> dict[str, bool]:
 
 
 def main():
+    """Run environment checks and report dependency status."""
     parser = argparse.ArgumentParser(description="Check emClarity Python environment")
     parser.add_argument(
         "--verbose", "-v", action="store_true", help="Show detailed output"

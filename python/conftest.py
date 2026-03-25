@@ -1,9 +1,9 @@
-"""
-Shared pytest configuration for emClarity Python test suites.
+"""Shared pytest configuration for emClarity Python test suites.
 
-Place project-wide fixtures here when they are consumed by multiple
-test modules.  Tolerance constants should be added as fixtures only
-when at least one test imports or requests them.
+Provides:
+- Session-scoped GPU/CuPy consistency check: fails loudly when GPU hardware
+  is detected but CuPy cannot be imported or initialized.
+- Project-wide fixtures consumed by multiple test modules.
 """
 
 import shutil
@@ -32,6 +32,7 @@ def _assert_cupy_when_gpu_present():
         gpu_present = result.returncode == 0 and bool(result.stdout.strip())
     except Exception as exc:
         import warnings
+
         warnings.warn(f"nvidia-smi query failed: {exc}", stacklevel=1)
         gpu_present = False
 

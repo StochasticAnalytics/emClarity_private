@@ -19,8 +19,11 @@
 extern "C" __global__ void ctf_basic(
     float* output, int nx, int ny, int ox, int oy,
     bool do_half_grid, bool do_sq_ctf,
-    float pixel_size, float wavelength, float cs_mm,
-    float amp_contrast, float df1, float df2, float angle_deg,
+    float pixel_size, float wavelength,
+    float cs_internal, float amplitude_phase,
+    float mean_defocus, float half_astigmatism,
+    float astigmatism_angle,
+    float cs_term, float df_term,
     bool calc_centered)
 {
     /* --- Derive output dimensions from real-space dims --- */
@@ -33,10 +36,13 @@ extern "C" __global__ void ctf_basic(
     int y = blockIdx.y * blockDim.y + threadIdx.y;
     if (y >= out_ny) return;
 
-    /* --- Construct ctfParams (unit conversions happen here) --- */
+    /* --- Construct ctfParams from pre-computed values --- */
     ctfParams params(do_half_grid, do_sq_ctf,
-                     pixel_size, wavelength, cs_mm,
-                     amp_contrast, df1, df2, angle_deg);
+                     pixel_size, wavelength,
+                     cs_internal, amplitude_phase,
+                     mean_defocus, half_astigmatism,
+                     astigmatism_angle, cs_term, df_term,
+                     true /*precomputed_tag*/);
 
     /* --- Fourier-space voxel sizes (1 / (pixel_size * N)) --- */
     float fvx = 1.0f / (pixel_size * (float)nx);
@@ -66,7 +72,7 @@ extern "C" __global__ void ctf_basic(
     /* --- CTF evaluation (matches ctf.cu lines 56-63) --- */
     if (params.doSqCTF) {
         tmp_coord = sinf(
-            params.cs_term * powf(radius_sq, 2)
+            params.cs_term * (radius_sq * radius_sq)
             - params.df_term * radius_sq
               * (params.mean_defocus
                  + params.half_astigmatism
@@ -75,7 +81,7 @@ extern "C" __global__ void ctf_basic(
         output[output_IDX] = tmp_coord * tmp_coord;
     } else {
         output[output_IDX] = sinf(
-            params.cs_term * powf(radius_sq, 2)
+            params.cs_term * (radius_sq * radius_sq)
             - params.df_term * radius_sq
               * (params.mean_defocus
                  + params.half_astigmatism
@@ -111,8 +117,11 @@ extern "C" __global__ void ctf_with_derivatives(
     float* ctf_out, float* dctf_dD, float* dctf_dA, float* dctf_dTheta,
     int nx, int ny, int ox, int oy,
     bool do_half_grid, bool do_sq_ctf,
-    float pixel_size, float wavelength, float cs_mm,
-    float amp_contrast, float df1, float df2, float angle_deg,
+    float pixel_size, float wavelength,
+    float cs_internal, float amplitude_phase,
+    float mean_defocus, float half_astigmatism,
+    float astigmatism_angle,
+    float cs_term, float df_term,
     bool calc_centered)
 {
     /* --- Derive output dimensions from real-space dims --- */
@@ -125,10 +134,13 @@ extern "C" __global__ void ctf_with_derivatives(
     int y = blockIdx.y * blockDim.y + threadIdx.y;
     if (y >= out_ny) return;
 
-    /* --- Construct ctfParams (unit conversions happen here) --- */
+    /* --- Construct ctfParams from pre-computed values --- */
     ctfParams params(do_half_grid, do_sq_ctf,
-                     pixel_size, wavelength, cs_mm,
-                     amp_contrast, df1, df2, angle_deg);
+                     pixel_size, wavelength,
+                     cs_internal, amplitude_phase,
+                     mean_defocus, half_astigmatism,
+                     astigmatism_angle, cs_term, df_term,
+                     true /*precomputed_tag*/);
 
     /* --- Fourier-space voxel sizes (1 / (pixel_size * N)) --- */
     float fvx = 1.0f / (pixel_size * (float)nx);
@@ -175,7 +187,7 @@ extern "C" __global__ void ctf_with_derivatives(
     sincosf(two_phi_theta, &sin2pt, &cos2pt);
 
     /* --- CTF phase (identical to ctf_basic) --- */
-    float phase = params.cs_term * powf(radius_sq, 2)
+    float phase = params.cs_term * (radius_sq * radius_sq)
                   - params.df_term * radius_sq
                     * (params.mean_defocus
                        + params.half_astigmatism * cos2pt)

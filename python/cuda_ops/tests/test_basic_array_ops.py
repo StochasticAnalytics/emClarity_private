@@ -17,6 +17,9 @@ import pytest
 
 cp = pytest.importorskip("cupy")
 import numpy as np
+import pytest
+
+cp = pytest.importorskip("cupy", reason="CuPy required for CUDA array ops tests")
 
 # Add the python package root to path for proper imports
 python_root = Path(__file__).parent.parent.parent

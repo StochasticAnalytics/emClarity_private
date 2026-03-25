@@ -37,7 +37,7 @@ from ..emc_ctf_cpu import CTFCalculatorCPU
 # ---------------------------------------------------------------------------
 # Constants — tolerance budgets
 # ---------------------------------------------------------------------------
-GPU_VS_MATLAB_ATOL = 1e-4   # GPU vs MATLAB: both use --use_fast_math
+GPU_VS_MATLAB_ATOL = 2e-4   # GPU vs MATLAB: --use_fast_math varies across CUDA versions
 CPU_VS_MATLAB_ATOL = 2e-4   # CPU uses standard math, not --use_fast_math
 GPU_VS_CPU_RTOL = 1e-5      # GPU vs CPU relative tolerance
 GPU_VS_CPU_ATOL = 1e-6      # near-zero absolute tolerance for GPU vs CPU

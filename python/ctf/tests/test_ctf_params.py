@@ -279,7 +279,6 @@ class TestToKernelArgs:
         "pixel_size",
         "wavelength",
         "cs_internal",
-        "amplitude_contrast",
         "amplitude_phase",
         "mean_defocus",
         "half_astigmatism",

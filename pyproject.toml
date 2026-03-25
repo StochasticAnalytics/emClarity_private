@@ -44,6 +44,9 @@ test = [
     "pytest-cov>=3.0.0",
 ]
 
+[project.scripts]
+emclarity-ctf-refine = "refinement.__main__:main"
+
 [project.urls]
 "Homepage" = "https://github.com/StochasticAnalytics/emClarity"
 "Bug Reports" = "https://github.com/StochasticAnalytics/emClarity/issues"
@@ -89,11 +92,15 @@ ignore = [
     "N803",     # Argument name should be lowercase — mathematical notation
     "PLC0415",  # import outside toplevel — conditional CuPy/GPU imports are intentional
     "E501",     # Line too long — not a priority for scientific code readability
+    "PLR0911",  # Too many return statements — parsers and value converters need many returns
+    "PLW0603",  # Global statement — singleton pattern for parameter manager
+    "PLW2901",  # Loop variable overwritten — common strip/normalize pattern in parsers
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# Test files: complexity rules don't apply to test setups
-"**/tests/**" = ["D102", "D103", "D107", "PLR0915", "PLR0912"]
+# Test files: complexity/style rules relaxed for test setups
+"**/tests/**" = ["D102", "D103", "D107", "PLR0915", "PLR0912", "RUF012", "B007", "E721", "F401", "I001"]
+"**/test_*.py" = ["D102", "D103", "D107", "PLR0915", "PLR0912", "RUF012", "B007", "E721", "F401"]
 # __init__.py: re-exports and package docstrings
 "**/__init__.py" = ["F401", "D104"]
 
@@ -138,11 +145,17 @@ skips = ["B101", "B601"]  # Skip assert_used and shell=True warnings for now
 
 [tool.pytest.ini_options]
 testpaths = ["python"]
+pythonpath = ["python"]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --tb=short --strict-markers"
+addopts = "-v --tb=short --strict-markers --color=yes"
+asyncio_mode = "auto"
 markers = [
-    "gpu: marks tests that require NVIDIA GPU hardware and CuPy",
-    "slow: marks tests with long runtimes (deselect with '-m not slow')",
+    "slow: marks tests as slow-running",
+    "gpu: marks tests as requiring a GPU device",
+    "cuda: marks tests as requiring CUDA",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+    "known_failure: marks tests with known issues (deselect with '-m \"not known_failure\"')",
 ]

@@ -111,12 +111,15 @@ class ParameterDefinition:
         elif self.param_type == "string" and not isinstance(value, str):
             return False, f"Parameter {self.json_name} must be a string"
 
-        elif self.param_type == "choice":
-            if self.choices and str(value) not in self.choices:
-                return (
-                    False,
-                    f"Parameter {self.json_name} must be one of: {', '.join(self.choices)}",
-                )
+        elif (
+            self.param_type == "choice"
+            and self.choices
+            and str(value) not in self.choices
+        ):
+            return (
+                False,
+                f"Parameter {self.json_name} must be one of: {', '.join(self.choices)}",
+            )
 
         # Range validation for numeric types
         if self.param_type in ("int", "float"):
@@ -136,6 +139,7 @@ class ParameterRegistry:
     """
 
     def __init__(self):
+        """Initialize registry with default emClarity parameter definitions."""
         self._parameters: dict[str, ParameterDefinition] = {}
         self._matlab_lookup: dict[str, str] = {}
         self._json_lookup: dict[str, str] = {}
@@ -305,6 +309,7 @@ class UnifiedParameterManager:
     """
 
     def __init__(self, config_path: str | None = None):
+        """Initialize manager with optional extended config file."""
         self.registry = ParameterRegistry()
         self.config_path = config_path
 
@@ -322,10 +327,10 @@ class UnifiedParameterManager:
         try:
             with open(config_path) as f:
                 json.load(f)
-            logger.debug(
-                "Validated extended config at %s (loading not yet implemented)",
-                config_path,
-            )
+
+            # TODO: Implement loading additional parameters from JSON
+            # This would extend the default registry with user-defined parameters
+
         except Exception as e:
             logger.warning(f"Could not parse extended config from {config_path}: {e}")
 

@@ -35,6 +35,7 @@ try:
 
     HAS_CUPY = True
 except ImportError:
+    cp = None  # type: ignore[assignment]
     HAS_CUPY = False
 
 

@@ -145,3 +145,36 @@ class TestComputeRefNormInvTrimZero:
 
         # trim0 includes the last row, so should be larger
         assert norm_trim0 > norm_trim1
+
+
+# ---------------------------------------------------------------------------
+# KI-244: apply_bandpass pixel_size validation guard (line 260)
+# ---------------------------------------------------------------------------
+
+
+class TestBandpassPixelSizeGuard:
+    """apply_bandpass rejects non-positive pixel_size values."""
+
+    def test_zero_pixel_size_raises(self, ft: FourierTransformer) -> None:
+        """pixel_size=0.0 must raise ValueError (division by zero hazard)."""
+        spectrum = np.ones((NX // 2 + 1, NY), dtype=complex)
+        with pytest.raises(ValueError, match="pixel_size must be positive"):
+            ft.apply_bandpass(spectrum, pixel_size=0.0, highpass_angstrom=128.0, lowpass_angstrom=8.0)
+
+    def test_negative_pixel_size_raises(self, ft: FourierTransformer) -> None:
+        """pixel_size=-1.0 must raise ValueError (physically meaningless)."""
+        spectrum = np.ones((NX // 2 + 1, NY), dtype=complex)
+        with pytest.raises(ValueError, match="pixel_size must be positive"):
+            ft.apply_bandpass(spectrum, pixel_size=-1.0, highpass_angstrom=128.0, lowpass_angstrom=8.0)
+
+    def test_nan_pixel_size_raises(self, ft: FourierTransformer) -> None:
+        """pixel_size=NaN must raise ValueError (NaN bypasses <= 0 guard silently)."""
+        spectrum = np.ones((NX // 2 + 1, NY), dtype=complex)
+        with pytest.raises(ValueError, match="pixel_size must be positive"):
+            ft.apply_bandpass(spectrum, pixel_size=float("nan"), highpass_angstrom=128.0, lowpass_angstrom=8.0)
+
+    def test_valid_pixel_size_passes(self, ft: FourierTransformer) -> None:
+        """Positive control: pixel_size=1.34 does not raise."""
+        spectrum = np.ones((NX // 2 + 1, NY), dtype=complex)
+        result = ft.apply_bandpass(spectrum, pixel_size=1.34, highpass_angstrom=128.0, lowpass_angstrom=8.0)
+        assert result.shape == spectrum.shape

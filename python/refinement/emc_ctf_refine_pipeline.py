@@ -41,13 +41,13 @@ except ImportError:
     HAS_CUPY = False
     cp = None
 
-from ..ctf.emc_ctf_params import CTFParams
-from ..ctf.star_io.emc_star_parser import (
+from ctf.emc_ctf_params import CTFParams
+from ctf.star_io.emc_star_parser import (
     group_particles_by_tilt,
     parse_star_file,
     write_star_file,
 )
-from ..image_io.mrc_image import MRCImage
+from image_io.mrc_image import MRCImage
 from .emc_fourier_utils import FourierTransformer
 from .emc_refine_tilt_ctf import RefinementOptions, RefinementResults, refine_tilt_ctf
 from .emc_tile_prep import (
@@ -76,9 +76,11 @@ class PipelineOptions:
         optimizer_type: Optimiser algorithm — ``'adam'`` or ``'lbfgsb'``.
         defocus_search_range: Symmetric bound on delta defocus (Angstroms).
         maximum_iterations: Hard iteration cap per tilt group.
-        minimum_global_iterations: Iterations with only tilt-global parameters
-            before unfreezing per-particle delta-z.
-        global_only: When True, per-particle parameters are never unfrozen.
+        minimum_global_iterations: Deprecated — retained for backward
+            compatibility but ignored.  All parameters are optimised
+            from the first iteration.
+        global_only: When True, per-particle parameters are permanently
+            frozen; only tilt-global parameters are optimised.
         lowpass_cutoff: Low-pass cutoff in Angstroms.
         highpass_cutoff: High-pass cutoff in Angstroms.
         shift_sigma: Gaussian penalty sigma for X/Y shifts (pixels).
@@ -86,6 +88,10 @@ class PipelineOptions:
             (Angstroms).
         soft_mask_edge_width: Edge width in pixels for the 2D soft circular
             mask applied to tiles before processing.
+        debug_tilt_list: Comma-separated list of tilt names to process.
+            Empty string means process all tilts.
+        exit_after_n_tilts: Stop after processing this many tilt groups.
+            Zero means process all tilt groups.
     """
 
     optimizer_type: str = "adam"
@@ -98,6 +104,8 @@ class PipelineOptions:
     shift_sigma: float = 5.0
     z_offset_sigma: float = 100.0
     soft_mask_edge_width: float = 7.0
+    debug_tilt_list: str = ""
+    exit_after_n_tilts: int = 0
 
 
 @dataclasses.dataclass
@@ -255,6 +263,201 @@ def _apply_refinement_to_particles(
         if not np.isnan(score):
             p["score"] = float(score)
 
+        # Occupancy: mark as refined (MATLAB line 429)
+        p["occupancy"] = 100.0
+
+
+# Saturation detection threshold (MATLAB line 443)
+_SATURATION_BOUND_TOL = 0.99
+
+# Fixed angle search range in degrees (supplement specification)
+_ANGLE_SEARCH_RANGE_DEG = 45.0
+
+# Large defocus correction warning threshold (MATLAB line 33-34: >= 2000 A)
+_DEFOCUS_WARNING_THRESHOLD = 2000.0
+
+# Diagnostic file column header (16 tab-delimited columns)
+_DIAG_HEADER = (
+    "tilt_name\ttilt_angle\tn_particles\tn_iters\tconverged\t"
+    "delta_df\tdelta_astig\tdelta_angle_deg\t"
+    "score_mean\tscore_std\tscore_min\tscore_max\tscore_change_pct\t"
+    "df_sat\tastig_sat\tangle_sat"
+)
+
+
+def _write_diagnostics(
+    output_star_path: Path,
+    tilt_group_results: list[TiltGroupResult],
+    defocus_search_range: float,
+) -> Path:
+    """Write per-tilt diagnostic file alongside the output star file.
+
+    Produces a tab-delimited file matching the MATLAB reference at
+    ``ctf/EMC_ctf_refine_from_star.m`` lines 482-557.  Each row is one
+    tilt group with 16 columns: tilt metadata, parameter deltas, score
+    statistics, and saturation flags.
+
+    Args:
+        output_star_path: Path to the output star file (used to derive
+            the diagnostics filename).
+        tilt_group_results: Per-tilt summaries from the pipeline.
+        defocus_search_range: Symmetric defocus search range (Angstroms)
+            used for saturation detection.
+
+    Returns:
+        Path to the written diagnostics file.
+    """
+    diag_path = output_star_path.with_name(
+        output_star_path.stem + "_diagnostics.txt"
+    )
+
+    bound_tol = _SATURATION_BOUND_TOL
+    df_range = defocus_search_range
+    astig_range = defocus_search_range / 2.0
+    angle_range_deg = _ANGLE_SEARCH_RANGE_DEG
+
+    lines: list[str] = [_DIAG_HEADER]
+
+    for tgr in tilt_group_results:
+        rr = tgr.refinement_results
+        scores = rr.per_particle_scores
+        valid_scores = scores[~np.isnan(scores)]
+
+        if len(valid_scores) > 0:
+            s_mean = float(np.mean(valid_scores))
+            s_std = float(np.std(valid_scores, ddof=min(1, len(valid_scores) - 1)))
+            s_min = float(np.min(valid_scores))
+            s_max = float(np.max(valid_scores))
+        else:
+            s_mean = s_std = s_min = s_max = 0.0
+
+        # Score change %: (final - initial) / final * 100
+        # NOTE: MATLAB lines 535-538 divide by s_final (not s_init).
+        # The PRD spec table says /initial, but MATLAB is authoritative here.
+        # Uses per-particle mean from score_history (MATLAB lines 535-538)
+        n_p = tgr.n_particles
+        if len(rr.score_history) >= 2 and n_p > 0:
+            s_init = rr.score_history[0] / n_p
+            s_final = rr.score_history[-1] / n_p
+            if s_final != 0.0:
+                score_change_pct = 100.0 * (s_final - s_init) / s_final
+            else:
+                score_change_pct = 0.0
+        else:
+            score_change_pct = 0.0
+
+        # Delta angle in degrees for output and saturation check
+        delta_angle_deg = float(np.degrees(rr.delta_astigmatism_angle))
+
+        # Saturation flags (MATLAB lines 532-534)
+        df_sat = int(abs(rr.delta_defocus_tilt) >= bound_tol * df_range)
+        astig_sat = int(
+            abs(rr.delta_half_astigmatism) >= bound_tol * astig_range
+        )
+        angle_sat = int(abs(delta_angle_deg) >= bound_tol * angle_range_deg)
+
+        line = (
+            f"{tgr.tilt_name}\t"
+            f"{tgr.tilt_angle:.2f}\t"
+            f"{tgr.n_particles:d}\t"
+            f"{tgr.n_iterations:d}\t"
+            f"{int(tgr.converged):d}\t"
+            f"{rr.delta_defocus_tilt:.1f}\t"
+            f"{rr.delta_half_astigmatism:.1f}\t"
+            f"{delta_angle_deg:.1f}\t"
+            f"{s_mean:.6f}\t"
+            f"{s_std:.6f}\t"
+            f"{s_min:.6f}\t"
+            f"{s_max:.6f}\t"
+            f"{score_change_pct:.1f}\t"
+            f"{df_sat:d}\t"
+            f"{astig_sat:d}\t"
+            f"{angle_sat:d}"
+        )
+        lines.append(line)
+
+    diag_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    logger.info("  Diagnostics: %s (%d tilt groups)", diag_path, len(tilt_group_results))
+    return diag_path
+
+
+def check_convergence_health(
+    results: RefinementResults,
+    options: PipelineOptions,
+) -> list[str]:
+    """Check refinement results for convergence health issues.
+
+    Inspects per-tilt refinement results for warning conditions that indicate
+    potential problems — without aborting the pipeline.  Mirrors the MATLAB
+    convergence warnings at ``ctf/EMC_ctf_refine_from_star.m`` lines 31-35.
+
+    Warning conditions checked:
+        (a) **Score decrease**: total score at the last iteration is lower
+            than at the first iteration, suggesting divergence.
+        (b) **Large defocus correction**: ``abs(delta_defocus_tilt) >= 2000 A``,
+            which often indicates a wrong starting defocus or sign convention
+            error (MATLAB line 34).
+        (c) **Parameter saturation**: any refined parameter is at >= 99% of
+            its search range bound, suggesting the true optimum lies outside
+            the allowed range.
+
+    Args:
+        results: Refinement results from :func:`refine_tilt_ctf`.
+        options: Pipeline configuration (provides search range bounds).
+
+    Returns:
+        List of human-readable warning strings.  Empty list means healthy.
+    """
+    warnings_list: list[str] = []
+
+    # (a) Score decreased between first and last iteration — compare per-particle
+    # normalized values to match the scale used in the diagnostic file output.
+    n_particles = len(results.per_particle_scores)
+    if len(results.score_history) >= 2 and results.score_history[-1] < results.score_history[0]:
+        norm = float(n_particles) if n_particles > 0 else 1.0
+        first_pp = results.score_history[0] / norm
+        last_pp = results.score_history[-1] / norm
+        warnings_list.append(
+            f"Score decreased from {first_pp:.4f} "
+            f"to {last_pp:.4f} "
+            f"(delta={last_pp - first_pp:.4f}) per particle"
+        )
+
+    # (b) Large defocus correction (MATLAB line 34: >= 2000 A)
+    if abs(results.delta_defocus_tilt) >= _DEFOCUS_WARNING_THRESHOLD:
+        warnings_list.append(
+            f"Large defocus correction: {results.delta_defocus_tilt:.1f} A "
+            f"(threshold: {_DEFOCUS_WARNING_THRESHOLD:.0f} A)"
+        )
+
+    # (c) Parameter saturation at 99% of search range bound
+    bound_tol = _SATURATION_BOUND_TOL
+    df_range = options.defocus_search_range
+    astig_range = df_range / 2.0
+    angle_range_deg = _ANGLE_SEARCH_RANGE_DEG
+
+    if abs(results.delta_defocus_tilt) >= bound_tol * df_range:
+        warnings_list.append(
+            f"Defocus at search bound: {results.delta_defocus_tilt:.1f} A "
+            f"(bound: +/-{df_range:.0f} A)"
+        )
+
+    if abs(results.delta_half_astigmatism) >= bound_tol * astig_range:
+        warnings_list.append(
+            f"Half-astigmatism at search bound: "
+            f"{results.delta_half_astigmatism:.1f} A "
+            f"(bound: +/-{astig_range:.0f} A)"
+        )
+
+    delta_angle_deg = float(np.degrees(results.delta_astigmatism_angle))
+    if abs(delta_angle_deg) >= bound_tol * angle_range_deg:
+        warnings_list.append(
+            f"Astigmatism angle at search bound: {delta_angle_deg:.1f} deg "
+            f"(bound: +/-{angle_range_deg:.0f} deg)"
+        )
+
+    return warnings_list
+
 
 def _free_gpu_memory() -> None:
     """Release GPU memory pools to prevent OOM across tilt groups."""
@@ -371,6 +574,32 @@ def refine_ctf_from_star(
     n_tilt_groups_total = len(tilt_groups)
     logger.info("  %d tilt groups", n_tilt_groups_total)
 
+    # ── Debug filtering: restrict to named tilts or first N ───────────
+    if options.debug_tilt_list:
+        selected = {
+            name.strip()
+            for name in options.debug_tilt_list.split(",")
+            if name.strip()
+        }
+        tilt_groups = {k: v for k, v in tilt_groups.items() if k in selected}
+        if not tilt_groups:
+            logger.warning(
+                "debug_tilt_list produced no matches: none of %s found in tilt groups",
+                list(selected),
+            )
+        logger.info(
+            "  debug_tilt_list: processing %d / %d tilt groups",
+            len(tilt_groups), n_tilt_groups_total,
+        )
+
+    if options.exit_after_n_tilts > 0:
+        kept = dict(list(tilt_groups.items())[: options.exit_after_n_tilts])
+        logger.info(
+            "  exit_after_n_tilts=%d: processing %d / %d tilt groups",
+            options.exit_after_n_tilts, len(kept), len(tilt_groups),
+        )
+        tilt_groups = kept
+
     # Extract microscope parameters from first particle (constant across stack)
     first_p = particles[0]
     pixel_size = first_p["pixel_size"]
@@ -462,6 +691,11 @@ def refine_ctf_from_star(
             tilt_particles, results, tilt_angle, pixel_size,
         )
 
+        # ── Convergence health warnings ───────────────────────────────
+        health_warnings = check_convergence_health(results, options)
+        for warn_msg in health_warnings:
+            logger.warning("    [%s] %s", tilt_name, warn_msg)
+
         # ── Per-tilt summary logging ─────────────────────────────────
         n_iters = len(results.score_history)
         _scores = results.per_particle_scores
@@ -491,6 +725,14 @@ def refine_ctf_from_star(
 
     # ── Stage 6: Write refined star file ─────────────────────────────────
     write_star_file(Path(output_star_path), particles, header_lines)
+
+    # ── Stage 7: Write per-tilt diagnostics ───────────────────────────────
+    if tilt_group_results:
+        _write_diagnostics(
+            Path(output_star_path),
+            tilt_group_results,
+            options.defocus_search_range,
+        )
 
     n_processed = sum(r.n_particles for r in tilt_group_results)
     logger.info("=== CTF Refinement Complete ===")

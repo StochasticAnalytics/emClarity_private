@@ -2,15 +2,23 @@
 
 import unittest
 
-import cupy as cp
 import pytest
-import numpy as np
 
-cp = pytest.importorskip("cupy")
+# Guard 1: skip entire module at collection time if CuPy is not installed.
+# This is a different failure mode from Guard 2 — CuPy absent means no GPU runtime at all.
+cp = pytest.importorskip("cupy", reason="CuPy required for CUDA basic ops tests")
 
-from ..emc_cuda_basic_ops import CudaBasicOps  # noqa: E402
+# Guard 2: CuPy may be present but the compiled kernel binary (.so) may be missing.
+# importorskip cannot catch this because the error occurs inside our package, not cupy itself.
+try:
+    from ..emc_cuda_basic_ops import CudaBasicOps
+
+    CUDA_BASIC_OPS_AVAILABLE = True
+except ImportError:
+    CUDA_BASIC_OPS_AVAILABLE = False
 
 
+@skipIf(not CUDA_BASIC_OPS_AVAILABLE, "CudaBasicOps kernel loading not available")
 class TestCudaBasicOps(unittest.TestCase):
     """Test CUDA basic operations implementation."""
 

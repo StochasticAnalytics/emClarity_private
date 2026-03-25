@@ -11,7 +11,6 @@ lines 12-65 (basic CTF without exposure weighting).
 
 from __future__ import annotations
 
-import math
 from pathlib import Path
 
 import cupy as cp
@@ -144,28 +143,14 @@ class CTFCalculator:
         ox = nx // 2
         oy = ny // 2
 
-        # Recover raw values that the kernel constructor expects.
-        # CTFParams stores derived quantities; we invert to get the
-        # original constructor arguments so the CUDA ctfParams struct
-        # performs its own unit conversions identically.
-        cs_mm = np.float32(float(params.cs_internal) / 1e7)
-        df1 = np.float32(
-            float(params.mean_defocus) + float(params.half_astigmatism)
-        )
-        df2 = np.float32(
-            float(params.mean_defocus) - float(params.half_astigmatism)
-        )
-        angle_deg = np.float32(
-            float(params.astigmatism_angle_rad) * 180.0 / math.pi
-        )
-
         # Allocate C-contiguous output
         output = cp.empty((out_ny, out_nx), dtype=cp.float32)
 
         # Kernel launch configuration
         grid, block = self._calculate_grid_block_2d(out_ny, out_nx)
 
-        # Launch kernel with flat arguments
+        # Pass pre-computed CTFParams values directly to avoid float32
+        # non-associativity errors from re-deriving in the CUDA constructor.
         self._cuda_kernels["ctf_basic"](
             grid,
             block,
@@ -179,11 +164,13 @@ class CTFCalculator:
                 params.do_sq_ctf,                           # bool
                 np.float32(params.pixel_size),              # float
                 np.float32(params.wavelength),              # float
-                cs_mm,                                      # float
-                np.float32(params.amplitude_contrast),      # float
-                df1,                                        # float
-                df2,                                        # float
-                angle_deg,                                  # float
+                np.float32(params.cs_internal),             # float
+                np.float32(params.amplitude_phase),         # float
+                np.float32(params.mean_defocus),            # float
+                np.float32(params.half_astigmatism),        # float
+                np.float32(params.astigmatism_angle_rad),   # float
+                np.float32(params.cs_term),                 # float
+                np.float32(params.df_term),                 # float
                 centered,                                   # bool
             ),
         )
@@ -231,18 +218,6 @@ class CTFCalculator:
         ox = nx // 2
         oy = ny // 2
 
-        # Recover raw values for the kernel constructor
-        cs_mm = np.float32(float(params.cs_internal) / 1e7)
-        df1 = np.float32(
-            float(params.mean_defocus) + float(params.half_astigmatism)
-        )
-        df2 = np.float32(
-            float(params.mean_defocus) - float(params.half_astigmatism)
-        )
-        angle_deg = np.float32(
-            float(params.astigmatism_angle_rad) * 180.0 / math.pi
-        )
-
         # Allocate C-contiguous output arrays
         ctf_out = cp.empty((out_ny, out_nx), dtype=cp.float32)
         dctf_dD = cp.empty((out_ny, out_nx), dtype=cp.float32)
@@ -251,6 +226,7 @@ class CTFCalculator:
 
         grid, block = self._calculate_grid_block_2d(out_ny, out_nx)
 
+        # Pass pre-computed CTFParams values directly.
         self._cuda_kernels["ctf_with_derivatives"](
             grid,
             block,
@@ -267,11 +243,13 @@ class CTFCalculator:
                 params.do_sq_ctf,                           # bool
                 np.float32(params.pixel_size),              # float
                 np.float32(params.wavelength),              # float
-                cs_mm,                                      # float
-                np.float32(params.amplitude_contrast),      # float
-                df1,                                        # float
-                df2,                                        # float
-                angle_deg,                                  # float
+                np.float32(params.cs_internal),             # float
+                np.float32(params.amplitude_phase),         # float
+                np.float32(params.mean_defocus),            # float
+                np.float32(params.half_astigmatism),        # float
+                np.float32(params.astigmatism_angle_rad),   # float
+                np.float32(params.cs_term),                 # float
+                np.float32(params.df_term),                 # float
                 centered,                                   # bool
             ),
         )
