@@ -151,8 +151,12 @@ class TestConstructor:
 # ---------------------------------------------------------------------------
 
 
-class TestNaNGradient:
-    """Negative control: NaN gradients must raise ValueError."""
+class TestGradientValidation:
+    """Regression tests for gradient NaN/Inf guards (KI-218/222).
+
+    Negative controls: NaN and Inf gradients must raise ValueError.
+    Positive control: large but finite gradients must be accepted.
+    """
 
     def test_nan_gradient_raises(self) -> None:
         opt = AdamOptimizer(np.array([1.0, 2.0]))
@@ -163,6 +167,27 @@ class TestNaNGradient:
         opt = AdamOptimizer(np.array([1.0]))
         with pytest.raises(ValueError, match="NaN"):
             opt.step(np.array([np.nan]), score_is_maximized=True)
+
+    def test_inf_gradient_raises(self) -> None:
+        """Inf gradient must raise ValueError (KI-222 regression)."""
+        opt = AdamOptimizer(np.array([1.0, 2.0]))
+        with pytest.raises(ValueError, match="Inf"):
+            opt.step(np.array([np.inf, 0.5]), score_is_maximized=True)
+
+    def test_neg_inf_gradient_raises(self) -> None:
+        """Negative Inf gradient must also be caught."""
+        opt = AdamOptimizer(np.array([1.0]))
+        with pytest.raises(ValueError, match="Inf"):
+            opt.step(np.array([-np.inf]), score_is_maximized=True)
+
+    def test_large_finite_gradient_accepted(self) -> None:
+        """Large but finite gradient (1e15) must not raise (positive control)."""
+        opt = AdamOptimizer(np.array([0.0, 0.0]))
+        # Should complete without raising — ADAM normalizes by second moment
+        # so even extreme gradients produce bounded parameter updates.
+        opt.step(np.array([1e15, -1e15]), score=0.5, score_is_maximized=True)
+        params = opt.get_current_parameters()
+        assert np.all(np.isfinite(params))
 
     def test_parameters_unchanged_after_nan_rejection(self) -> None:
         """Parameters are not modified when NaN gradient is rejected."""

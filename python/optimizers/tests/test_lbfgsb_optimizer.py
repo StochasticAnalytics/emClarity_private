@@ -134,7 +134,11 @@ class TestConstructor:
 
 
 class TestGradientValidation:
-    """Negative control: invalid gradients must raise ValueError."""
+    """Regression tests for gradient NaN/Inf guards (KI-218/222).
+
+    Negative controls: NaN and Inf gradients must raise ValueError.
+    Positive control: large but finite gradients must be accepted.
+    """
 
     def test_nan_gradient_raises(self) -> None:
         opt = LBFGSBOptimizer(np.array([1.0, 2.0]))
@@ -145,6 +149,27 @@ class TestGradientValidation:
         opt = LBFGSBOptimizer(np.array([1.0]))
         with pytest.raises(ValueError, match="Inf"):
             opt.step(np.array([np.inf]), score_is_maximized=True)
+
+    def test_mixed_inf_gradient_raises(self) -> None:
+        """Inf mixed with finite values must be caught (parity with ADAM KI-218/222)."""
+        opt = LBFGSBOptimizer(np.array([1.0, 2.0]))
+        with pytest.raises(ValueError, match="Inf"):
+            opt.step(np.array([np.inf, 0.5]), score_is_maximized=True)
+
+    def test_neg_inf_gradient_raises(self) -> None:
+        """Negative Inf gradient must also be caught."""
+        opt = LBFGSBOptimizer(np.array([1.0]))
+        with pytest.raises(ValueError, match="Inf"):
+            opt.step(np.array([-np.inf]), score_is_maximized=True)
+
+    def test_large_finite_gradient_accepted(self) -> None:
+        """Large but finite gradient (1e15) must not raise (positive control)."""
+        opt = LBFGSBOptimizer(np.array([0.0, 0.0]))
+        # Should complete without raising — on step 1 with no history (m=0),
+        # the two-loop recursion is skipped and H0=I is applied directly.
+        opt.step(np.array([1e15, -1e15]), score=0.5, score_is_maximized=True)
+        params = opt.get_current_parameters()
+        assert np.all(np.isfinite(params))
 
     def test_length_mismatch_raises(self) -> None:
         opt = LBFGSBOptimizer(np.array([1.0, 2.0]))

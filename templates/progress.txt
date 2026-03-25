@@ -1049,3 +1049,10 @@ Developer: Completed TASK-004 [2026-03-25]
   - Added KI comment near line 491 of emc_tile_prep.py
   - Explains that scipy.ndimage.map_coordinates is CPU-only, making the GPU→CPU→GPU transfer intentional
   - All 38 tile_prep tests pass, no code logic changes
+
+Developer: Completed TASK-005a [2026-03-25]
+  Task: TASK-005a - Regression tests for optimizer gradient guards (KI-218/222)
+  - Added test_inf_gradient_raises, test_neg_inf_gradient_raises, test_large_finite_gradient_accepted to ADAM
+  - Added test_neg_inf_gradient_raises, test_large_finite_gradient_accepted to L-BFGS-B
+  - Renamed ADAM TestNaNGradient class to TestGradientValidation for consistency with L-BFGS-B
+  - All 164 optimizer tests pass, ruff clean on modified files
