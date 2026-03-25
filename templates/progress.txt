@@ -1,3 +1,14 @@
+Developer: Completed TASK-008 [2026-03-25]
+  Task: TASK-008 - Work Items backend: GitHub Issues integration via gh CLI
+  - Created github_service.py with gh CLI subprocess calls for list/get/create/update operations
+  - Label mapping convention: status:*, priority:*, intensity:*, surface:*, project:* labels to typed fields
+  - Issue body parsing extracts description, notes, progress, decision_history, depends_on, blocked_by
+  - 60-second TTL cache for list_issues with invalidation on create/update
+  - GithubAuthError custom exception with HTTP 503 + setup instructions at route level
+  - Updated work_items.py routes: GET /, GET /{id}, POST /, PATCH /{id}/status
+  - Request body models: CreateWorkItemRequest, UpdateStatusRequest
+  - All 36 backend scaffold tests pass; TypeScript compiles without errors
+
 Developer: Completed TASK-007 PATCH [2026-03-25]
   - Fixed misleading comment in alert_service.py line 125: bare-repo guard correctly skips bare repositories, not the main worktree
   - Committed in dot-claude sub-repo as [38c3f906/TASK-007/PATCH] e920d8f
