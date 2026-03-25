@@ -1123,3 +1123,39 @@ Developer: Completed TASK-009 PATCH [2026-03-25]
   - [MEDIUM] Added label prop to DataSection for unique aria-labels; passed section-specific labels in MissionControlView (alerts, work items, activity) and WorkItemsView
   - [LOW] Changed WorkItemDetail open prop from selectedItemId !== null to selectedItem !== null, matching MissionControlView pattern and preventing stale-ID open state
   - TypeScript compiles without errors; 36 backend tests pass
+
+Developer: Completed TASK-010 [2026-03-25]
+  Task: TASK-010 - Landscape Intelligence fullstack wiring with Anthropic SDK
+  - Created intel_service.py with httpx blog scraping, HTML parsing, and auth fallback chain (claude CLI -> anthropic SDK -> skip)
+  - Stable hash-based ID generation for changelog entries (cl- prefix + sha256[:12])
+  - Cache persisted to dot-claude/.claude/cache/intel_cache.json with freshness timestamps
+  - Replaced stub routes in intel.py: GET changelog/features/promos, POST scrape (BackgroundTasks), GET scrape/status, PATCH acknowledge
+  - Created useIntelData.ts with 6 TanStack Query hooks (useChangelog, useFeatures, usePromos, useScrapeStatus, useTriggerScrape, useAcknowledgeEntry)
+  - Updated ChangelogTimeline to id-based acknowledge (was index-based)
+  - Wired LandscapeIntelView with DataSection, refresh button, staleness indicator, and auth status dialog
+  - TypeScript compiles cleanly (npx tsc --noEmit)
+
+Developer: Completed TASK-010/PATCH
+  - Fixed get_auth_status() to return camelCase keys (oauthAvailable, apiKeyAvailable, lastScrapeSuccess, entryCount) matching frontend ScrapeStatus interface
+  - Replaced asyncio.get_event_loop() with asyncio.get_running_loop() in scrape_blog() coroutine (lines 525, 530)
+  - Updated SDK model ID from 'claude-sonnet-4-20250514' to 'claude-sonnet-4-6'
+  - All 36 tests pass
+
+Developer: Patch Completed 2026-03-25
+  - Fixed auth dialog guard in LandscapeIntelView.tsx: removed redundant !apiKeyAvailable condition
+  - Dialog now opens when !oauthAvailable (regardless of apiKeyAvailable), making the API key path reachable
+
+
+Developer: Completed TASK-010 PATCH [2026-03-25]
+  - Fixed DialogDescription in LandscapeIntelView auth dialog
+  - Description now conditionally shows 'credentials detected' vs 'no credentials available'
+  - Resolves contradiction between description text and 'Use API key?' button when apiKeyAvailable is true
+
+Developer: Completed TASK-010 QA patch
+  - Fix 1 (HIGH): ChangelogTimeline key changed from composite date-summary string to entry.id
+  - Fix 2 (HIGH): handleRefresh now shows auth dialog when scrapeStatus.data is undefined
+  - Fix 3 (MEDIUM): useTriggerScrape mutationFn return type corrected to ScrapeStatus
+  - Fix 4 (MEDIUM): get_auth_status() returns CamelCaseModel ScrapeStatus, not raw dict
+  - Fix 5 (MEDIUM): List routes use _safe_parse() to skip malformed entries (partial-failure pattern)
+  - Fix 6 (MEDIUM): oauthAvailable renamed to claudeCliAvailable (accurately describes binary check)
+  - All 36 backend tests pass; TypeScript compiles clean
