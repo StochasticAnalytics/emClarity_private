@@ -21,9 +21,8 @@
   //        command that fails headless. npx playwright install chromium handles setup.
   // bwrap caps, sandbox-runtime, and cupy-cuda12x now baked into Docker image.
   "postCreateCommand": "bash -c 'if [ -z \"$CLAUDE_CONFIG_DIR\" ]; then echo \"ERROR: CLAUDE_CONFIG_DIR not set in host env. Add export CLAUDE_CONFIG_DIR=... to ~/.bashrc\" >&2; exit 1; fi && ln -sfn \"$CLAUDE_CONFIG_DIR\" ~/.claude && npm install -g @playwright/cli@0.1.1 && cd $(npm root -g)/@playwright/cli && npx playwright install chromium'",
-  // On every container start: generate env.sh and ensure .bashrc sources it.
-  // This makes $PROJECT_ROOT and $DOT_CLAUDE_DIR available in all terminals.
-  "postStartCommand": "bash -c 'dot-claude/.claude/scripts/setup_env.sh && grep -q \"dot-claude/.claude/env.sh\" ~/.bashrc 2>/dev/null || echo \"\\n# Project environment from setup_env.sh\\n[ -f \\\"${PWD}/dot-claude/.claude/env.sh\\\" ] && source \\\"${PWD}/dot-claude/.claude/env.sh\\\"\" >> ~/.bashrc'",
+  // PROJECT_ROOT, DOT_CLAUDE_DIR, REPO_NAME are set via remoteEnv below.
+  // No postStartCommand needed for environment setup.
   "remoteUser": "cisTEMdev",
   "hostRequirements": {
     "gpu": "optional"
@@ -41,7 +40,11 @@
     "WORKSPACE_BASENAME": "${localWorkspaceFolderBasename}",
     "WORKSPACE_CONTAINER_NAME": "cisTEMx-${localEnv:USER}-${localWorkspaceFolderBasename}",
     // Persist Claude Code sessions, plans, and memories across container rebuilds
-    "CLAUDE_CONFIG_DIR": "${localEnv:CLAUDE_CONFIG_DIR}"
+    "CLAUDE_CONFIG_DIR": "${localEnv:CLAUDE_CONFIG_DIR}",
+    // Project environment — available to all processes (orchestrator, scripts, Claude sessions)
+    "PROJECT_ROOT": "${containerWorkspaceFolder}",
+    "DOT_CLAUDE_DIR": "${containerWorkspaceFolder}/dot-claude",
+    "REPO_NAME": "${localWorkspaceFolderBasename}"
   },
   // To add mounts, enable smudge/clean filters, define variable in bashrc ... cistem_mounts=("source=/scratch,target=/scratch,type=bind" "source=/sa_shared,target=/sa_shared,type=bind")"
   // Leave the following line comment, it is used as a placeholder for the devcontainer-filter.sh script to insert the mounts.
