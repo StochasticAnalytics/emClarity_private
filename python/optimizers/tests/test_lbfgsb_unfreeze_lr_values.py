@@ -54,7 +54,8 @@ class TestUnfreezeLrValues:
             opt_b.get_current_parameters(),
         )
         assert opt_a.get_history_length() == opt_b.get_history_length() == 0
-        np.testing.assert_array_equal(opt_a.get_h0_diagonal(), opt_b.get_h0_diagonal())
+        assert opt_a.get_h0_diagonal() is None
+        assert opt_b.get_h0_diagonal() is None
 
     def test_history_cleared_with_lr_values(self) -> None:
         """L-BFGS history is cleared even when lr_values is provided."""
@@ -73,8 +74,8 @@ class TestUnfreezeLrValues:
         opt.unfreeze_parameters(np.array([0]), lr_values=np.array([0.05]))
         assert opt.get_history_length() == 0
 
-    def test_h0_set_with_lr_values(self) -> None:
-        """Bounds-based H_0 is set after unfreeze with lr_values."""
+    def test_h0_none_with_lr_values(self) -> None:
+        """get_h0_diagonal returns None after unfreeze (no bounds-based H₀)."""
         n = 3
         lower = np.array([-5.0, -3.0, -1.0])
         upper = np.array([5.0, 3.0, 1.0])
@@ -84,10 +85,7 @@ class TestUnfreezeLrValues:
         opt.freeze_parameters(np.array([0]))
         opt.unfreeze_parameters(np.array([0]), lr_values=np.array([0.1]))
 
-        h0 = opt.get_h0_diagonal()
-        assert h0 is not None
-        expected = (upper - lower) ** 2 / (4.0 * n)
-        np.testing.assert_allclose(h0, expected, rtol=1e-12)
+        assert opt.get_h0_diagonal() is None
 
     def test_optimization_unaffected_by_lr_values(self) -> None:
         """Full optimization trajectory is identical with lr_values."""

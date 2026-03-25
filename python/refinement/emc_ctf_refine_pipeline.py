@@ -76,9 +76,11 @@ class PipelineOptions:
         optimizer_type: Optimiser algorithm — ``'adam'`` or ``'lbfgsb'``.
         defocus_search_range: Symmetric bound on delta defocus (Angstroms).
         maximum_iterations: Hard iteration cap per tilt group.
-        minimum_global_iterations: Iterations with only tilt-global parameters
-            before unfreezing per-particle delta-z.
-        global_only: When True, per-particle parameters are never unfrozen.
+        minimum_global_iterations: Deprecated — retained for backward
+            compatibility but ignored.  All parameters are optimised
+            from the first iteration.
+        global_only: When True, per-particle parameters are permanently
+            frozen; only tilt-global parameters are optimised.
         lowpass_cutoff: Low-pass cutoff in Angstroms.
         highpass_cutoff: High-pass cutoff in Angstroms.
         shift_sigma: Gaussian penalty sigma for X/Y shifts (pixels).

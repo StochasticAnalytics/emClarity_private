@@ -113,7 +113,7 @@ class TestConstructor:
 
     def test_memory_size_default(self) -> None:
         opt = LBFGSBOptimizer(np.array([1.0]))
-        assert opt.get_memory_size() == 7
+        assert opt.get_memory_size() == 20
 
     def test_custom_memory_size(self) -> None:
         opt = LBFGSBOptimizer(np.array([1.0]), memory_size=3)
@@ -418,10 +418,15 @@ class TestFreezeUnfreeze:
 
 
 class TestH0Initialization:
-    """Bounds-based diagonal scaling for H_0 after unfreeze."""
+    """H0 uses identity when no curvature history, gamma_k scaling otherwise.
 
-    def test_h0_diagonal_formula(self) -> None:
-        """After unfreeze, H_0 diagonal matches the specified formula."""
+    Bounds-based H0 diagonal was removed in TASK-002b.  After unfreeze
+    (which clears history), H0 is identity.  The two-loop recursion
+    applies gamma_k = (s'y)/(y'y) * I once curvature pairs are available.
+    """
+
+    def test_h0_returns_none_after_unfreeze(self) -> None:
+        """get_h0_diagonal returns None (no explicit diagonal override)."""
         n = 5
         lower = np.array([-5.0, -3.0, -1.0, 0.0, -10.0])
         upper = np.array([5.0, 3.0, 1.0, 2.0, 10.0])
@@ -429,41 +434,48 @@ class TestH0Initialization:
         opt = LBFGSBOptimizer(np.zeros(n))
         opt.set_bounds(lower, upper)
 
-        # Freeze and unfreeze to trigger H_0 initialization
+        # Freeze and unfreeze
         opt.freeze_parameters(np.array([0]))
         opt.unfreeze_parameters(np.array([0]))
 
-        h0 = opt.get_h0_diagonal()
-        assert h0 is not None
+        assert opt.get_h0_diagonal() is None
 
-        expected = (upper - lower) ** 2 / (4.0 * n)
-        np.testing.assert_allclose(h0, expected, rtol=1e-12)
-
-    def test_h0_not_set_without_bounds(self) -> None:
-        """H_0 diagonal is not set when bounds are absent."""
+    def test_h0_none_without_bounds(self) -> None:
+        """H_0 diagonal is None regardless of bounds."""
         opt = LBFGSBOptimizer(np.array([1.0, 2.0]))
         opt.freeze_parameters(np.array([0]))
         opt.unfreeze_parameters(np.array([0]))
         assert opt.get_h0_diagonal() is None
 
-    def test_h0_handles_infinite_bounds(self) -> None:
-        """Infinite bounds get a default scale of 1.0."""
+    def test_convergence_after_unfreeze_uses_identity_then_gamma(self) -> None:
+        """Optimizer converges after unfreeze using identity H0 then gamma_k scaling."""
         n = 3
-        lower = np.array([-np.inf, -5.0, -2.0])
-        upper = np.array([np.inf, 5.0, 2.0])
+        a = np.array([1.0, 2.0, 3.0])
+        b = np.array([1.0, 1.0, 1.0])
+
+        def f(x: np.ndarray) -> float:
+            return float(np.sum(a * (x - b) ** 2))
+
+        def grad_f(x: np.ndarray) -> np.ndarray:
+            return 2.0 * a * (x - b)
 
         opt = LBFGSBOptimizer(np.zeros(n))
-        opt.set_bounds(lower, upper)
-        opt.freeze_parameters(np.array([0]))
-        opt.unfreeze_parameters(np.array([0]))
+        opt.set_bounds(-5.0 * np.ones(n), 5.0 * np.ones(n))
+        opt.set_objective(f)
 
-        h0 = opt.get_h0_diagonal()
-        assert h0 is not None
-        # Infinite range → default 1.0
-        assert h0[0] == 1.0
-        # Finite ranges → formula
-        assert abs(h0[1] - (10.0 ** 2 / 12.0)) < 1e-12
-        assert abs(h0[2] - (4.0 ** 2 / 12.0)) < 1e-12
+        # Freeze, run, unfreeze, continue — should still converge
+        opt.freeze_parameters(np.array([2]))
+        for _ in range(20):
+            params = opt.get_current_parameters()
+            opt.step(grad_f(params), score=f(params), score_is_maximized=False)
+
+        opt.unfreeze_parameters(np.array([2]))
+        for _ in range(30):
+            params = opt.get_current_parameters()
+            opt.step(grad_f(params), score=f(params), score_is_maximized=False)
+
+        final = opt.get_current_parameters()
+        np.testing.assert_allclose(final, b, atol=1e-3)
 
 
 # ---------------------------------------------------------------------------
@@ -683,14 +695,13 @@ class TestReturnValueIsolation:
         params[0] = 999.0
         assert opt.get_current_parameters()[0] == 1.0
 
-    def test_h0_diagonal_copy(self) -> None:
+    def test_h0_diagonal_returns_none(self) -> None:
+        """get_h0_diagonal returns None (no bounds-based H₀ after TASK-002b)."""
         opt = LBFGSBOptimizer(np.array([1.0, 2.0]))
         opt.set_bounds(np.array([-5.0, -5.0]), np.array([5.0, 5.0]))
         opt.freeze_parameters(np.array([0]))
         opt.unfreeze_parameters(np.array([0]))
-        h0 = opt.get_h0_diagonal()
-        h0[0] = 999.0
-        assert opt.get_h0_diagonal()[0] != 999.0
+        assert opt.get_h0_diagonal() is None
 
 
 # ---------------------------------------------------------------------------

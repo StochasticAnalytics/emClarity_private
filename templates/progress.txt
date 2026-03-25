@@ -1019,3 +1019,20 @@ Developer: Completed 2026-03-24
   - Updated 3 existing L-BFGS-B tests to pass score_is_maximized=False for minimisation objectives
   - Wrote TestSignConventionIntegration (10 tests) and TestWrongSignConvention (3 tests)
   - All 144 optimizer tests pass, all 22 refinement tests pass, ruff clean
+
+Developer: Completed 2026-03-25
+TASK-002b: L-BFGS-B optimizer overhaul with domain-informed hyperparameters
+  - Increased memory_size default from 7 to 20 (recovers full BFGS with ~13 params)
+  - Replaced Armijo-only line search with Wolfe conditions (c1=1e-4, c2=0.9)
+  - Changed curvature_epsilon from 1e-10 to 1e-8
+  - Replaced identity H0 with bounds-based diagonal scaling for first step,
+    then standard gamma_k = (s'y)/(y'y) * I after first curvature pair
+  - Removed freeze/unfreeze calls in refinement loop — all params optimized from start
+  - Updated _create_lbfgsb_optimizer() to pass memory_size=20
+  - Deprecated minimum_global_iterations in PipelineOptions
+  - Added optimizer-aware convergence lookback: ADAM scales with iteration budget,
+    L-BFGS-B uses fixed n_lookback=5 to avoid ridge drift
+  - Fixed 13 RUF002 Unicode character errors in optimizer and test files
+  - Extracted _convergence_lookback() helper to reduce refine_tilt_ctf complexity
+  - Pre-existing: L-BFGS-B half-astig recovery improved 86.8A -> 68.0A (still above 50A)
+  - All 168 optimizer+refinement tests pass, no new ruff errors introduced

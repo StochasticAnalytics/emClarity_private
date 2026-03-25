@@ -7,10 +7,13 @@ CTF parameters, and options.
 
 Port reference: ``synthetic/EMC_refine_tilt_ctf.m`` (406 lines).
 
-The two-phase freeze/unfreeze design is an intentional redesign from the
-MATLAB implementation.  MATLAB computes but discards per-particle gradients
-during the global-only phase; the Python version freezes per-particle
-parameters in the optimizer, avoiding wasted gradient computation.
+All parameters (3 tilt-global + N per-particle) are optimised from the
+first iteration.  This matches production cryo-EM software (Warp/M by
+Tegunov) and eliminates the H₀ re-initialisation problem that occurred
+with the previous freeze/unfreeze two-phase design.
+
+When ``global_only=True``, per-particle parameters are permanently frozen
+and only the 3 tilt-global parameters are optimised.
 """
 
 from __future__ import annotations
@@ -63,10 +66,11 @@ class RefinementOptions:
         optimizer_type: Optimiser algorithm — ``'adam'`` or ``'lbfgsb'``.
         defocus_search_range: Symmetric bound on delta defocus (Angstroms).
         maximum_iterations: Hard iteration cap.
-        minimum_global_iterations: Number of iterations where only the 3
-            global parameters (defocus, half-astigmatism, angle) are
-            optimised before per-particle delta-z is unfrozen.
-        global_only: When True, per-particle parameters are never unfrozen.
+        minimum_global_iterations: Deprecated — retained for backward
+            compatibility but ignored.  All parameters are optimised
+            from the first iteration.
+        global_only: When True, per-particle parameters are permanently
+            frozen; only the 3 tilt-global parameters are optimised.
         lowpass_cutoff: Low-pass cutoff in Angstroms for reference bandpass.
         highpass_cutoff: High-pass cutoff in Angstroms for reference bandpass.
         shift_sigma: Gaussian penalty sigma for X/Y shifts (pixels).
@@ -152,6 +156,25 @@ def compute_half_astig_lower_bound(base_half_astigmatism: float) -> float:
     return -(base_half_astigmatism - margin_angstroms)
 
 
+def _convergence_lookback(
+    optimizer_type: str, global_only: bool, maximum_iterations: int,
+) -> int:
+    """Choose convergence lookback window based on optimizer and mode.
+
+    ADAM oscillates during joint tilt-global + per-particle optimisation,
+    so needs a longer lookback window to avoid triggering convergence on
+    a transient dip.  L-BFGS-B converges monotonically and can detect
+    plateaus with a shorter window; using too long a window lets it drift
+    along flat ridges in the defocus-z landscape.
+    """
+    if global_only:
+        return 3
+    if optimizer_type == "lbfgsb":
+        return 5
+    # ADAM: scale lookback with iteration budget
+    return max(5, maximum_iterations // 3)
+
+
 # ---------------------------------------------------------------------------
 # Main refinement function
 # ---------------------------------------------------------------------------
@@ -174,13 +197,10 @@ def refine_tilt_ctf(
     delta astigmatism angle) and *N* per-particle delta-z offsets using
     either ADAM or L-BFGS-B gradient descent with analytical gradients.
 
-    The optimisation proceeds in two phases:
-
-    1. **Global-only** (iterations 1 through *minimum_global_iterations*):
-       per-particle parameters are frozen; only the 3 tilt-global
-       parameters receive gradient updates.
-    2. **Full** (remaining iterations): all ``3 + N`` parameters are
-       optimised jointly.
+    All ``3 + N`` parameters are optimised jointly from the first
+    iteration (matching Warp/M by Tegunov).  When ``global_only=True``,
+    only the 3 tilt-global parameters are optimised; per-particle
+    parameters remain frozen at zero throughout.
 
     After the loop, a df1/df2 canonicalisation check ensures that the
     reported defocus values maintain the ``df1 >= df2`` convention.
@@ -328,30 +348,23 @@ def refine_tilt_ctf(
             f"Expected 'adam' or 'lbfgsb'."
         )
 
-    # --- Freeze per-particle parameters initially -------------------------
-    per_particle_indices = np.arange(3, n_params)
-    optimizer.freeze_parameters(per_particle_indices)
+    # --- Freeze per-particle parameters if global_only --------------------
+    if options.global_only:
+        per_particle_indices = np.arange(3, n_params)
+        optimizer.freeze_parameters(per_particle_indices)
 
     # --- Optimisation loop ------------------------------------------------
     score_history: list[float] = []
     per_particle_scores = np.zeros(n_particles, dtype=np.float64)
     shifts_xy = np.zeros((n_particles, 2), dtype=np.float64)
     converged = False
-    unfrozen = False
     nan_break = False
+    convergence_n_lookback = _convergence_lookback(
+        optimizer_type, options.global_only, options.maximum_iterations,
+    )
 
     for iteration in range(1, options.maximum_iterations + 1):
         params = optimizer.get_current_parameters()
-
-        # Phase transition: unfreeze per-particle params after the
-        # global-only phase completes.
-        if (
-            not options.global_only
-            and not unfrozen
-            and iteration == options.minimum_global_iterations + 1
-        ):
-            optimizer.unfreeze_parameters(per_particle_indices)
-            unfrozen = True
 
         # --- Evaluate score and gradient ----------------------------------
         total_score, per_particle_scores, shifts_xy, gradient = (
@@ -389,14 +402,11 @@ def refine_tilt_ctf(
         score_history.append(total_score)
 
         # --- Check convergence --------------------------------------------
-        # Need enough history for lookback.
-        min_for_convergence = options.minimum_global_iterations + 3
         # score is natural positive CC; optimizer handles sign via bool
         optimizer.step(gradient, score=total_score, score_is_maximized=True)
 
-        if (
-            iteration >= min_for_convergence
-            and optimizer.has_converged(n_lookback=3, threshold=0.001)
+        if optimizer.has_converged(
+            n_lookback=convergence_n_lookback, threshold=0.001,
         ):
             converged = True
             break
@@ -518,15 +528,22 @@ def _create_lbfgsb_optimizer(
 ) -> LBFGSBOptimizer:
     """Create and configure an L-BFGS-B optimiser for CTF refinement.
 
-    Sets the objective function for backtracking line search, which
-    evaluates the negated score (since L-BFGS-B minimises).
+    Sets the objective + gradient function for Wolfe line search, which
+    evaluates the negated score and the minimisation gradient (since
+    L-BFGS-B minimises).  Uses memory_size=20 to recover full BFGS
+    with ~13 parameters.
     """
-    optimizer = LBFGSBOptimizer(initial_params, memory_size=7)
+    optimizer = LBFGSBOptimizer(initial_params, memory_size=20)
     optimizer.set_bounds(lower_bounds, upper_bounds)
 
-    # Objective for line search: negated score (minimisation).
-    def objective(params: np.ndarray) -> float:
-        score, _, _, _ = evaluate_score_and_gradient(
+    # Objective + gradient for Wolfe line search.
+    # evaluate_score_and_gradient returns (score, ..., gradient) where
+    # gradient is already ∂(-score)/∂θ (negated at line 418 of
+    # emc_ctf_gradients.py for minimisation).
+    def objective_and_gradient(
+        params: np.ndarray,
+    ) -> tuple[float, np.ndarray]:
+        score, _, _, grad = evaluate_score_and_gradient(
             params,
             data_fts,
             ref_fts,
@@ -538,8 +555,8 @@ def _create_lbfgsb_optimizer(
             shift_sigma=options.shift_sigma,
             z_offset_sigma=options.z_offset_sigma,
         )
-        return -score  # Objective returns -score for L-BFGS-B Wolfe line search
+        return -score, grad
 
-    optimizer.set_objective(objective)
+    optimizer.set_objective_and_gradient(objective_and_gradient)
 
     return optimizer

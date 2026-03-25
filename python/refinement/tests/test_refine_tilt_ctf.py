@@ -478,13 +478,16 @@ class TestLBFGSBRecovery:
 # =========================================================================
 
 
-class TestTwoPhaseOptimization:
-    """First minimum_global_iterations only change params[0:3].
+class TestAllParamsFromStart:
+    """All parameters (global + per-particle) optimise from iteration 1.
 
-    Per-particle params[3:] remain zero until unfreeze.
+    The two-phase freeze/unfreeze design was removed in TASK-002b.  All
+    parameters are now optimised jointly from the start (matching Warp/M
+    by Tegunov).  When ``global_only=True``, per-particle parameters are
+    permanently frozen.
     """
 
-    def test_global_only_phase_freezes_per_particle(
+    def test_all_params_optimised_from_start(
         self,
         ft: FourierTransformer,
         ctf_calc: CTFCalculatorCPU,
@@ -492,9 +495,9 @@ class TestTwoPhaseOptimization:
         truth_ctf: CTFParams,
         peak_mask: np.ndarray,
     ) -> None:
-        """With max_iterations == minimum_global_iterations, delta_z stays zero.
+        """With 3 iterations, both global and per-particle params change.
 
-        Per-particle params never unfreeze.
+        All parameters optimise from iteration 1 — no freeze phase.
         """
         data_fts, ref_fts = _make_multi_particle_data(
             ft, ctf_calc, truth_ctf, n_particles=N_PARTICLES,
@@ -502,8 +505,7 @@ class TestTwoPhaseOptimization:
         options = RefinementOptions(
             optimizer_type="adam",
             defocus_search_range=1000.0,
-            maximum_iterations=3,  # == minimum_global_iterations
-            minimum_global_iterations=3,
+            maximum_iterations=3,
         )
         result = refine_tilt_ctf(
             data_fts, ref_fts, base_ctf,
@@ -514,29 +516,23 @@ class TestTwoPhaseOptimization:
             peak_mask=peak_mask,
         )
 
-        # Per-particle params should remain zero — never unfrozen
-        np.testing.assert_array_equal(
-            result.delta_z,
-            np.zeros(N_PARTICLES),
-            err_msg="Per-particle delta_z should remain zero during global-only phase",
-        )
-
         # Global params should have moved (data has +500A offset)
         assert result.delta_defocus_tilt != 0.0, (
-            "Global defocus param should change during global-only phase"
+            "Global defocus param should change"
         )
 
-    def test_per_particle_unfreezes_after_global_phase(
+    def test_per_particle_params_active_from_start(
         self,
         ft: FourierTransformer,
         ctf_calc: CTFCalculatorCPU,
         base_ctf: CTFParams,
         peak_mask: np.ndarray,
     ) -> None:
-        """With sufficient iterations and per-particle signal, delta_z becomes non-zero.
+        """Per-particle delta_z becomes non-zero from the first iteration.
 
         We generate data with per-particle z-offsets so the optimizer has
-        signal to recover after unfreezing.
+        signal to recover.  With all parameters active from iteration 1,
+        delta_z should be non-zero after optimisation.
         """
         ctf_calc_local = ctf_calc
         ft_local = ft
