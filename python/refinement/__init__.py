@@ -12,6 +12,7 @@ from .emc_ctf_refine_pipeline import (
     PipelineOptions,
     PipelineResults,
     TiltGroupResult,
+    check_convergence_health,
     compute_electron_wavelength,
     refine_ctf_from_star,
 )
@@ -41,6 +42,7 @@ __all__ = [
     "RefinementResults",
     "TiltGroupResult",
     "center_crop_or_pad",
+    "check_convergence_health",
     "compute_ctf_friendly_size",
     "compute_electron_wavelength",
     "compute_half_astig_lower_bound",

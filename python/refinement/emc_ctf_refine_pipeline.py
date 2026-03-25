@@ -273,6 +273,9 @@ _SATURATION_BOUND_TOL = 0.99
 # Fixed angle search range in degrees (supplement specification)
 _ANGLE_SEARCH_RANGE_DEG = 45.0
 
+# Large defocus correction warning threshold (MATLAB line 33-34: >= 2000 A)
+_DEFOCUS_WARNING_THRESHOLD = 2000.0
+
 # Diagnostic file column header (16 tab-delimited columns)
 _DIAG_HEADER = (
     "tilt_name\ttilt_angle\tn_particles\tn_iters\tconverged\t"
@@ -376,6 +379,84 @@ def _write_diagnostics(
     diag_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     logger.info("  Diagnostics: %s (%d tilt groups)", diag_path, len(tilt_group_results))
     return diag_path
+
+
+def check_convergence_health(
+    results: RefinementResults,
+    options: PipelineOptions,
+) -> list[str]:
+    """Check refinement results for convergence health issues.
+
+    Inspects per-tilt refinement results for warning conditions that indicate
+    potential problems — without aborting the pipeline.  Mirrors the MATLAB
+    convergence warnings at ``ctf/EMC_ctf_refine_from_star.m`` lines 31-35.
+
+    Warning conditions checked:
+        (a) **Score decrease**: total score at the last iteration is lower
+            than at the first iteration, suggesting divergence.
+        (b) **Large defocus correction**: ``abs(delta_defocus_tilt) >= 2000 A``,
+            which often indicates a wrong starting defocus or sign convention
+            error (MATLAB line 34).
+        (c) **Parameter saturation**: any refined parameter is at >= 99% of
+            its search range bound, suggesting the true optimum lies outside
+            the allowed range.
+
+    Args:
+        results: Refinement results from :func:`refine_tilt_ctf`.
+        options: Pipeline configuration (provides search range bounds).
+
+    Returns:
+        List of human-readable warning strings.  Empty list means healthy.
+    """
+    warnings_list: list[str] = []
+
+    # (a) Score decreased between first and last iteration — compare per-particle
+    # normalized values to match the scale used in the diagnostic file output.
+    n_particles = len(results.per_particle_scores)
+    if len(results.score_history) >= 2 and results.score_history[-1] < results.score_history[0]:
+        norm = float(n_particles) if n_particles > 0 else 1.0
+        first_pp = results.score_history[0] / norm
+        last_pp = results.score_history[-1] / norm
+        warnings_list.append(
+            f"Score decreased from {first_pp:.4f} "
+            f"to {last_pp:.4f} "
+            f"(delta={last_pp - first_pp:.4f}) per particle"
+        )
+
+    # (b) Large defocus correction (MATLAB line 34: >= 2000 A)
+    if abs(results.delta_defocus_tilt) >= _DEFOCUS_WARNING_THRESHOLD:
+        warnings_list.append(
+            f"Large defocus correction: {results.delta_defocus_tilt:.1f} A "
+            f"(threshold: {_DEFOCUS_WARNING_THRESHOLD:.0f} A)"
+        )
+
+    # (c) Parameter saturation at 99% of search range bound
+    bound_tol = _SATURATION_BOUND_TOL
+    df_range = options.defocus_search_range
+    astig_range = df_range / 2.0
+    angle_range_deg = _ANGLE_SEARCH_RANGE_DEG
+
+    if abs(results.delta_defocus_tilt) >= bound_tol * df_range:
+        warnings_list.append(
+            f"Defocus at search bound: {results.delta_defocus_tilt:.1f} A "
+            f"(bound: +/-{df_range:.0f} A)"
+        )
+
+    if abs(results.delta_half_astigmatism) >= bound_tol * astig_range:
+        warnings_list.append(
+            f"Half-astigmatism at search bound: "
+            f"{results.delta_half_astigmatism:.1f} A "
+            f"(bound: +/-{astig_range:.0f} A)"
+        )
+
+    delta_angle_deg = float(np.degrees(results.delta_astigmatism_angle))
+    if abs(delta_angle_deg) >= bound_tol * angle_range_deg:
+        warnings_list.append(
+            f"Astigmatism angle at search bound: {delta_angle_deg:.1f} deg "
+            f"(bound: +/-{angle_range_deg:.0f} deg)"
+        )
+
+    return warnings_list
 
 
 def _free_gpu_memory() -> None:
@@ -609,6 +690,11 @@ def refine_ctf_from_star(
         _apply_refinement_to_particles(
             tilt_particles, results, tilt_angle, pixel_size,
         )
+
+        # ── Convergence health warnings ───────────────────────────────
+        health_warnings = check_convergence_health(results, options)
+        for warn_msg in health_warnings:
+            logger.warning("    [%s] %s", tilt_name, warn_msg)
 
         # ── Per-tilt summary logging ─────────────────────────────────
         n_iters = len(results.score_history)

@@ -1120,3 +1120,14 @@ Developer: Completed TASK-010 [2026-03-25]
   - Saturation detection at 0.99 * bound (defocus range, half-range for astig, 45 deg for angle)
   - Set occupancy=100.0 for all refined particles (MATLAB line 429)
   - 20 unit tests covering occupancy update, diagnostic format, saturation flags, score change %
+
+Developer: Completed TASK-011 [2026-03-25]
+  - Added check_convergence_health() returning warning strings for: score decrease,
+    large defocus correction (>=2000A), parameter saturation at 99% of search bounds
+  - Integrated health warnings into pipeline per-tilt loop with logger.warning output
+  - debug_tilt_list and exit_after_n_tilts already implemented by prior tasks in
+    PipelineOptions and refine_ctf_from_star() pipeline filtering logic
+  - Unprocessed particles retain original occupancy (not set to 100) by design:
+    _apply_refinement_to_particles only called on processed tilt groups
+  - 20 tests: healthy/unhealthy convergence, score decrease, defocus threshold,
+    saturation detection, multiple warnings, debug filtering with occupancy preservation
