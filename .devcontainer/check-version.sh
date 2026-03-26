@@ -14,6 +14,50 @@
 
 set -e  # Exit on any error
 
+# ---------------------------------------------------------------------------
+# Ensure Docker env file exists for --env-file in runArgs.
+# devcontainer-launch.py writes this with per-user CLAUDE_CONFIG_DIR.
+# If missing (direct VS Code GUI launch), propagate host env or create empty.
+# ---------------------------------------------------------------------------
+CLAUDE_ENV_FILE="/tmp/.claude-devcontainer-env"
+if [ ! -f "$CLAUDE_ENV_FILE" ]; then
+    if [ "$CLAUDE_CONFIG_DIR" = "0" ] || [ "$CLAUDE_CONFIG_DIR" = "false" ]; then
+        # Explicit opt-out: collaborator doesn't use Claude
+        echo "CLAUDE_CONFIG_DIR=0" > "$CLAUDE_ENV_FILE"
+        echo "Claude integration disabled (CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR)"
+    elif [ -n "$CLAUDE_CONFIG_DIR" ]; then
+        # Post multi-user migration: a pre-set CLAUDE_CONFIG_DIR from the host
+        # env (e.g., .bashrc) is stale. The launcher sets the per-user path.
+        echo ""
+        echo "⚠  CLAUDE_CONFIG_DIR is already set in your host environment:"
+        echo "   CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR"
+        echo ""
+        echo "   After multi-user migration, this value must come from the launcher,"
+        echo "   not from the host shell. The correct launch command is:"
+        echo ""
+        echo "     python3 dot-claude/.claude/scripts/devcontainer-launch.py <user> <folder>"
+        echo ""
+        echo "   To prevent this warning, remove CLAUDE_CONFIG_DIR from your"
+        echo "   .bashrc / .profile / .zshrc."
+        echo ""
+        read -rp "   Override and unset CLAUDE_CONFIG_DIR for this launch? [y/N] " response
+        if [ "${response,,}" = "y" ]; then
+            unset CLAUDE_CONFIG_DIR
+            # Create empty env file — postCreateCommand will fail fast with
+            # instructions to use the launcher (same as no-env-var path).
+            touch "$CLAUDE_ENV_FILE"
+            echo "   ✓ CLAUDE_CONFIG_DIR unset. Continuing without Claude config."
+        else
+            echo "   Aborting. Launch with: python3 dot-claude/.claude/scripts/devcontainer-launch.py <user> <folder>"
+            exit 1
+        fi
+    else
+        # No launcher, no host env — create empty so Docker --env-file doesn't error.
+        # postCreateCommand will fail fast with instructions to use the launcher.
+        touch "$CLAUDE_ENV_FILE"
+    fi
+fi
+
 # Setup logging - write to file directly at each echo
 LOG_FILE="/tmp/devcontainer-version-check-$(date +%s).log"
 
