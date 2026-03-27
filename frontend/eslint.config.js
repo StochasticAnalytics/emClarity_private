@@ -22,7 +22,8 @@ export default defineConfig([
       globals: globals.browser,
     },
     rules: {
-'no-restricted-globals': [
+      'react-hooks/incompatible-library': 'off',
+      'no-restricted-globals': [
         'error',
         {
           name: 'localStorage',
