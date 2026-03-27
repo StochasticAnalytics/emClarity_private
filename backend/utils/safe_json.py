@@ -21,8 +21,9 @@ import json
 import logging
 import os
 import threading
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
 log = logging.getLogger(__name__)
 
@@ -108,7 +109,7 @@ def locked_json_read(path: Path | str) -> Any:
     with _lock:
         if not path.exists():
             return None
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             fcntl.flock(f.fileno(), fcntl.LOCK_SH)
             try:
                 content = f.read()

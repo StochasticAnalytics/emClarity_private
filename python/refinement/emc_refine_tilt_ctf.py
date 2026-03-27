@@ -43,6 +43,7 @@ else:
 from ctf.emc_ctf_params import CTFParams
 from optimizers.emc_adam_optimizer import AdamOptimizer
 from optimizers.emc_lbfgsb_optimizer import LBFGSBOptimizer
+
 from .emc_ctf_gradients import (
     CTFCalculatorWithDerivatives,
     evaluate_score_and_gradient,

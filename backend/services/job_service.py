@@ -9,9 +9,9 @@ from __future__ import annotations
 import signal
 import subprocess
 import uuid
-from datetime import datetime, timezone
+from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import AsyncIterator
 
 from backend.models.job import Job, JobStatus
 from backend.models.workflow import PipelineCommand
@@ -67,7 +67,7 @@ class JobService:
             )
             job.status = JobStatus.RUNNING
             job.pid = proc.pid
-            job.start_time = datetime.now(tz=timezone.utc)
+            job.start_time = datetime.now(tz=UTC)
 
             self._processes[job_id] = proc
         except FileNotFoundError as exc:
@@ -110,7 +110,7 @@ class JobService:
         if proc is not None and proc.poll() is None:
             proc.send_signal(signal.SIGTERM)
             job.status = JobStatus.CANCELLED
-            job.end_time = datetime.now(tz=timezone.utc)
+            job.end_time = datetime.now(tz=UTC)
 
         return job
 
@@ -146,7 +146,7 @@ class JobService:
 
         while True:
             if log_path.exists():
-                with open(log_path, "r", errors="replace") as fh:
+                with open(log_path, errors="replace") as fh:
                     fh.seek(last_pos)
                     new_data = fh.read()
                     last_pos = fh.tell()
@@ -159,7 +159,7 @@ class JobService:
             if job.status not in (JobStatus.PENDING, JobStatus.RUNNING):
                 # One final read to catch any remaining output
                 if log_path.exists():
-                    with open(log_path, "r", errors="replace") as fh:
+                    with open(log_path, errors="replace") as fh:
                         fh.seek(last_pos)
                         final = fh.read()
                     if final:
@@ -186,7 +186,7 @@ class JobService:
             return  # Still running
 
         job.exit_code = rc
-        job.end_time = datetime.now(tz=timezone.utc)
+        job.end_time = datetime.now(tz=UTC)
 
         if rc == 0:
             job.status = JobStatus.COMPLETED

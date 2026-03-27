@@ -13,7 +13,6 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from backend.models.job import Job, JobListResponse, JobStatus
-from backend.services.job_service import JobService
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 

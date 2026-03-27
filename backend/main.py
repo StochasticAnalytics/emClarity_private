@@ -68,7 +68,8 @@ if _FRONTEND_DIR.is_dir():
     @app.get("/{path:path}", response_model=None)
     async def spa_fallback(request: Request, path: str):
         """Serve static files from the frontend build, falling back to
-        index.html for client-side routes (SPA behaviour)."""
+        index.html for client-side routes (SPA behaviour).
+        """
         # Try to serve the exact file (favicon.svg, etc.)
         file_path = _FRONTEND_DIR / path
         if path and file_path.is_file():

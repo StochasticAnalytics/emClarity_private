@@ -1,5 +1,7 @@
 import unittest
+
 from emc_type_traits import EmcTypeTraits
+
 
 class TestEmcTypeTraits(unittest.TestCase):
     def setUp(self):

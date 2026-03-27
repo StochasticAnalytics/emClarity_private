@@ -81,6 +81,7 @@ def run_version_check(workspace_root: Path) -> bool:
         cwd=str(workspace_root),
         capture_output=True,
         text=True,
+        check=False,
     )
 
     if result.returncode != 0:
@@ -105,6 +106,7 @@ def get_container_status(container_name: str) -> str:
         ["docker", "inspect", "--format", "{{.State.Status}}", container_name],
         capture_output=True,
         text=True,
+        check=False,
     )
 
     if result.returncode != 0:
@@ -141,6 +143,7 @@ def stop_container(container_name: str) -> bool:
         ["docker", "stop", container_name],
         capture_output=True,
         text=True,
+        check=False,
     )
 
     if result.returncode != 0:
@@ -164,6 +167,7 @@ def remove_container(container_name: str) -> bool:
         ["docker", "rm", container_name],
         capture_output=True,
         text=True,
+        check=False,
     )
     return result.returncode == 0
 
@@ -197,6 +201,7 @@ def start_container(info: dict, image: str, interactive: bool = False) -> bool:
             ["docker", "start", container_name],
             capture_output=True,
             text=True,
+            check=False,
         )
         if result.returncode != 0:
             print(f"Failed to start container: {result.stderr}", file=sys.stderr)
@@ -259,7 +264,7 @@ def start_container(info: dict, image: str, interactive: bool = False) -> bool:
         os.execvp("docker", cmd)
     else:
         # Don't capture output - let Docker show pull progress and other messages
-        result = subprocess.run(cmd)
+        result = subprocess.run(cmd, check=False)
         if result.returncode != 0:
             print(f"Failed to create container (exit code {result.returncode})", file=sys.stderr)
             return False
@@ -315,6 +320,7 @@ def show_status(info: dict) -> None:
              container_name],
             capture_output=True,
             text=True,
+            check=False,
         )
         if result.returncode == 0:
             print(result.stdout)

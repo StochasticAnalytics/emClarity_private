@@ -15,11 +15,12 @@ Output layout: C-contiguous float32, shape (ny, out_nx).
 from __future__ import annotations
 
 import logging
+
 import numpy as np
 
-logger = logging.getLogger(__name__)
-
 from .emc_ctf_params import CTFParams
+
+logger = logging.getLogger(__name__)
 
 try:
     from .emc_ctf_calculator import CTFCalculator as _GPUCalc

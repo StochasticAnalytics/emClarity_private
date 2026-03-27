@@ -10,7 +10,7 @@ import json
 import logging
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -316,7 +316,7 @@ class ParameterService:
         params_dir.mkdir(parents=True, exist_ok=True)
 
         snapshot_id = str(uuid.uuid4())
-        created_at = datetime.now(timezone.utc).isoformat()
+        created_at = datetime.now(UTC).isoformat()
         # Filesystem-safe timestamp: replace colons with dashes
         safe_timestamp = created_at.replace(":", "-")
         filename = f"snapshot_{snapshot_id}_{safe_timestamp}.json"

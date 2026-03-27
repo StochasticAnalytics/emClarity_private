@@ -28,12 +28,12 @@ import numpy as np
 PROJECT_ROOT = "/sa_shared/git/emClarity_private/worktrees/build_command_center_dashboard"
 sys.path.insert(0, PROJECT_ROOT)
 
-from python.ctf.emc_ctf_cpu import CTFCalculatorCPU  # noqa: E402
-from python.ctf.emc_ctf_params import CTFParams  # noqa: E402
-from python.ctf.star_io.emc_star_parser import write_star_file  # noqa: E402
-from python.refinement.emc_ctf_refine_pipeline import compute_electron_wavelength  # noqa: E402
-from python.refinement.emc_fourier_utils import FourierTransformer  # noqa: E402
-from python.refinement.emc_tile_prep import (  # noqa: E402
+from python.ctf.emc_ctf_cpu import CTFCalculatorCPU
+from python.ctf.emc_ctf_params import CTFParams
+from python.ctf.star_io.emc_star_parser import write_star_file
+from python.refinement.emc_ctf_refine_pipeline import compute_electron_wavelength
+from python.refinement.emc_fourier_utils import FourierTransformer
+from python.refinement.emc_tile_prep import (
     center_crop_or_pad,
     compute_ctf_friendly_size,
     rotate_volume_trilinear,

@@ -7,8 +7,22 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from backend.api import jobs, parameters, projects, system, workflow
-from backend.api import v1_filesystem, v1_parameters, v1_projects, v1_workflow, v1_system, v1_jobs, v1_utilities, v1_viewer, v1_environment
+from backend.api import (
+    jobs,
+    parameters,
+    projects,
+    system,
+    v1_environment,
+    v1_filesystem,
+    v1_jobs,
+    v1_parameters,
+    v1_projects,
+    v1_system,
+    v1_utilities,
+    v1_viewer,
+    v1_workflow,
+    workflow,
+)
 
 router = APIRouter()
 

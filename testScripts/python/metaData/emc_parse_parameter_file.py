@@ -1,6 +1,8 @@
 import ast
 import os
+
 from emc_type_traits import EmcTypeTraits
+
 
 class EmcParameterFile:
     def __init__(self, parameter_file_path):
@@ -17,7 +19,7 @@ class EmcParameterFile:
     def _parse_parameter_file(self):
         emc_params = {}
         try:
-            with open(self.parameter_file_path, 'r') as f:
+            with open(self.parameter_file_path) as f:
                 lines = f.readlines()
         except FileNotFoundError:
             print(f"Error: Parameter file not found at {self.parameter_file_path}")
@@ -135,7 +137,7 @@ class EmcParameterFile:
             self.type_checker.assert_numeric(emc_params['CUTPADDING'], 1, param_name='CUTPADDING')
         else:
             emc_params['CUTPADDING'] = 20
-    
+
         # Deprecated substitutions examples
         emc_params = self.type_checker.assert_deprecated_substitution(emc_params, 'ccc_cutoff', 'flgCCCcutoff')
         if 'flgCCCcutoff' in emc_params:
@@ -195,7 +197,7 @@ if __name__ == '__main__':
             f.write("particleRadius=[100,100,100]\n")
             f.write("someBooleanFlag=True\n")
             f.write("anotherBoolean=0\n")
-            f.write("limit_to_one_core=false\n") 
+            f.write("limit_to_one_core=false\n")
             f.write("force_no_symmetry=false\n")
     elif not os.path.exists(param_file) and os.path.exists("../../../docs/exampleParametersAndRunScript/param0.m"):
         param_file = "../../../docs/exampleParametersAndRunScript/param0.m"

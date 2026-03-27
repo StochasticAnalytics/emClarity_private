@@ -16,7 +16,6 @@ from pathlib import Path
 
 from backend.models.project import Project, ProjectState, TiltSeries
 
-
 # Directories that emClarity expects inside a project
 _PROJECT_SUBDIRS = [
     "rawData",

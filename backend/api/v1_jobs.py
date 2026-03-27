@@ -10,8 +10,7 @@ Routes:
 
 from __future__ import annotations
 
-import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
@@ -47,11 +46,11 @@ class Job(BaseModel):
         description="Current job status",
     )
     created_at: datetime = Field(
-        default_factory=lambda: datetime.now(tz=timezone.utc),
+        default_factory=lambda: datetime.now(tz=UTC),
         description="When the job was created (ISO-8601)",
     )
     updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(tz=timezone.utc),
+        default_factory=lambda: datetime.now(tz=UTC),
         description="When the job was last updated (ISO-8601)",
     )
     pid: int | None = Field(default=None, description="OS process ID")
@@ -123,7 +122,7 @@ async def get_job_log(job_id: str, tail: int = 100) -> dict[str, Any]:
     log_content = ""
     if job.log_path:
         try:
-            from pathlib import Path  # noqa: PLC0415
+            from pathlib import Path
 
             log_file = Path(job.log_path)
             if log_file.exists():
@@ -153,7 +152,7 @@ async def cancel_job(job_id: str) -> Job:
         updated = job.model_copy(
             update={
                 "status": JobStatus.CANCELLED,
-                "updated_at": datetime.now(tz=timezone.utc),
+                "updated_at": datetime.now(tz=UTC),
             }
         )
         _jobs[job_id] = updated

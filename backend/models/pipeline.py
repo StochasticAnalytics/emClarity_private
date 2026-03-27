@@ -9,7 +9,7 @@ Schema reference: dot-claude/.claude/pipeline/SCHEMA.md
 
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import Field
 
@@ -53,7 +53,7 @@ class PipelineOrigin(CamelCaseModel):
     """Where this work item originated."""
 
     type: Literal["idea", "research", "external", "conversation"]
-    path: Optional[str] = Field(
+    path: str | None = Field(
         default=None,
         description="Relative path to the origin file (relative to dot-claude/.claude/)",
     )
@@ -80,24 +80,24 @@ class PipelineItem(CamelCaseModel):
     id: str = Field(..., description="Unique identifier (e.g. WI-001)")
     title: str = Field(..., description="Short description of the work item")
     stage: PipelineStage = Field(..., description="Current pipeline stage")
-    sub_status: Optional[PlanSubStatus] = Field(
+    sub_status: PlanSubStatus | None = Field(
         default=None,
         description="Stage-specific refinement (currently used for plan stage)",
     )
     priority: PipelinePriority = Field(..., description="Item priority level")
-    origin: Optional[PipelineOrigin] = Field(
+    origin: PipelineOrigin | None = Field(
         default=None,
         description="Where this item started",
     )
-    plan_path: Optional[str] = Field(
+    plan_path: str | None = Field(
         default=None,
         description="Path to plan file (relative to dot-claude/.claude/)",
     )
-    prd_path: Optional[str] = Field(
+    prd_path: str | None = Field(
         default=None,
         description="Path to PRD file (relative to autonomous-build/)",
     )
-    run_command: Optional[str] = Field(
+    run_command: str | None = Field(
         default=None,
         description="Command to execute this item",
     )
@@ -107,7 +107,7 @@ class PipelineItem(CamelCaseModel):
     )
     created: str = Field(..., description="ISO date when the item was created")
     updated: str = Field(..., description="ISO date when the item was last updated")
-    notes: Optional[str] = Field(
+    notes: str | None = Field(
         default=None,
         description="Free-form context",
     )
@@ -143,11 +143,11 @@ class PipelineItemEnriched(PipelineItem):
         default=False,
         description="True when the referenced file has been modified since 'updated'",
     )
-    file_mtime: Optional[str] = Field(
+    file_mtime: str | None = Field(
         default=None,
         description="ISO datetime of the most recently referenced file's mtime",
     )
-    prd_task_summary: Optional[PrdTaskSummary] = Field(
+    prd_task_summary: PrdTaskSummary | None = Field(
         default=None,
         description="Aggregated task counts from the PRD (if stage is prd/queued/running/done)",
     )
@@ -166,14 +166,14 @@ class CreatePipelineItemRequest(CamelCaseModel):
 
     title: str = Field(..., description="Short description of the work item")
     stage: PipelineStage = Field(..., description="Initial pipeline stage")
-    sub_status: Optional[PlanSubStatus] = Field(default=None)
+    sub_status: PlanSubStatus | None = Field(default=None)
     priority: PipelinePriority = Field(..., description="Item priority level")
-    origin: Optional[PipelineOrigin] = Field(default=None)
-    plan_path: Optional[str] = Field(default=None)
-    prd_path: Optional[str] = Field(default=None)
-    run_command: Optional[str] = Field(default=None)
+    origin: PipelineOrigin | None = Field(default=None)
+    plan_path: str | None = Field(default=None)
+    prd_path: str | None = Field(default=None)
+    run_command: str | None = Field(default=None)
     links: list[PipelineLink] = Field(default_factory=list)
-    notes: Optional[str] = Field(default=None)
+    notes: str | None = Field(default=None)
 
 
 class UpdatePipelineItemRequest(CamelCaseModel):
@@ -182,13 +182,13 @@ class UpdatePipelineItemRequest(CamelCaseModel):
     All fields are optional — only provided fields are applied.
     """
 
-    title: Optional[str] = Field(default=None)
-    stage: Optional[PipelineStage] = Field(default=None)
-    sub_status: Optional[PlanSubStatus] = Field(default=None)
-    priority: Optional[PipelinePriority] = Field(default=None)
-    origin: Optional[PipelineOrigin] = Field(default=None)
-    plan_path: Optional[str] = Field(default=None)
-    prd_path: Optional[str] = Field(default=None)
-    run_command: Optional[str] = Field(default=None)
-    links: Optional[list[PipelineLink]] = Field(default=None)
-    notes: Optional[str] = Field(default=None)
+    title: str | None = Field(default=None)
+    stage: PipelineStage | None = Field(default=None)
+    sub_status: PlanSubStatus | None = Field(default=None)
+    priority: PipelinePriority | None = Field(default=None)
+    origin: PipelineOrigin | None = Field(default=None)
+    plan_path: str | None = Field(default=None)
+    prd_path: str | None = Field(default=None)
+    run_command: str | None = Field(default=None)
+    links: list[PipelineLink] | None = Field(default=None)
+    notes: str | None = Field(default=None)

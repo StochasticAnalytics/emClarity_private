@@ -241,7 +241,7 @@ def _get_projects() -> dict[str, Any]:
 
     Imported lazily to avoid circular-import issues at module load time.
     """
-    from backend.api.v1_projects import _projects  # noqa: PLC0415
+    from backend.api.v1_projects import _projects
     return _projects  # type: ignore[return-value]
 
 

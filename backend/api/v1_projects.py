@@ -16,7 +16,7 @@ import logging
 import re
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -60,7 +60,7 @@ def _save_registry() -> None:
             return snapshot
 
         locked_json_read_write(_REGISTRY_FILE, _replace)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.error("Could not persist project registry: %s", exc)
         raise HTTPException(
             status_code=500,
@@ -85,9 +85,9 @@ def _load_registry() -> None:
             for project_id, record_data in raw.items():
                 try:
                     _projects[project_id] = _ProjectRecord(**record_data)
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     log.warning("Skipping corrupt registry entry %s: %s", project_id, exc)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.warning("Could not load project registry from %s: %s", _REGISTRY_FILE, exc)
 
 
@@ -376,7 +376,7 @@ async def mark_project_accessed(project_id: str) -> ProjectResponse:
         record = _projects.get(project_id)
         if record is None:
             raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found")
-        record.last_accessed = datetime.now(timezone.utc).isoformat()
+        record.last_accessed = datetime.now(UTC).isoformat()
         # record is already in _projects; no need to re-insert
 
     _save_registry()

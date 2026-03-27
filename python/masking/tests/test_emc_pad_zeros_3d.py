@@ -20,7 +20,7 @@ python_root = Path(__file__).parent.parent.parent
 if str(python_root) not in sys.path:
     sys.path.insert(0, str(python_root))
 
-from masking.emc_pad_zeros_3d import BH_padZeros3d, emc_pad_zeros_3d  # noqa: E402
+from masking.emc_pad_zeros_3d import BH_padZeros3d, emc_pad_zeros_3d
 
 # Try to import required packages
 try:

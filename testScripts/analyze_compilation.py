@@ -4,8 +4,8 @@ Analyze emClarity compilation output to show only important information.
 Filters out repetitive warnings while preserving errors and key milestones.
 """
 
-import sys
 import re
+import sys
 
 
 def main():
@@ -25,7 +25,7 @@ def main():
 
     # Read from stdin or file
     if len(sys.argv) > 1:
-        with open(sys.argv[1], 'r') as f:
+        with open(sys.argv[1]) as f:
             lines = f.readlines()
     else:
         lines = sys.stdin.readlines()

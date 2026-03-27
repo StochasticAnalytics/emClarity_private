@@ -22,7 +22,7 @@ python_root = Path(__file__).parent.parent.parent
 if str(python_root) not in sys.path:
     sys.path.insert(0, str(python_root))
 
-from cuda_ops.memory_utils import create_fortran_array, ensure_c, ensure_f  # noqa: E402
+from cuda_ops.memory_utils import create_fortran_array, ensure_c, ensure_f
 
 
 class TestMemoryUtils(unittest.TestCase):

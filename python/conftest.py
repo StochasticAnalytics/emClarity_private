@@ -28,6 +28,7 @@ def _assert_cupy_when_gpu_present():
             ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
             capture_output=True,
             timeout=10,
+            check=False,
         )
         gpu_present = result.returncode == 0 and bool(result.stdout.strip())
     except Exception as exc:

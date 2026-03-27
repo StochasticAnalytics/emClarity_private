@@ -1,6 +1,8 @@
-import unittest
 import os
+import unittest
+
 from emc_parse_parameter_file import EmcParameterFile
+
 
 class TestEmcParameterFile(unittest.TestCase):
     def setUp(self):
