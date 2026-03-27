@@ -914,7 +914,9 @@ function ParticleStatsTab() {
         {!isLoading && error && !is404 && (
           <div className="rounded-md bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4">
             <p className="text-sm text-red-700 dark:text-red-400">
-              {`Failed to load particle statistics (${error.status}): ${error.statusText}`}
+              {error instanceof ApiError
+                ? `Failed to load particle statistics (${error.status}): ${error.statusText}`
+                : 'Failed to load particle statistics.'}
             </p>
             <button
               type="button"

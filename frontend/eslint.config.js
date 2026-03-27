@@ -22,12 +22,7 @@ export default defineConfig([
       globals: globals.browser,
     },
     rules: {
-      // TanStack Table v8 triggers this warning because useReactTable()
-      // returns functions incompatible with React Compiler memoization.
-      // Tracked via TODO comments in TiltSeriesPage.tsx and AssetsPage.tsx;
-      // will be resolved during shadcn UI migration.
-      'react-hooks/incompatible-library': 'off',
-      'no-restricted-globals': [
+'no-restricted-globals': [
         'error',
         {
           name: 'localStorage',

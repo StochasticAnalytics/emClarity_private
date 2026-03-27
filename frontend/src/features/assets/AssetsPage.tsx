@@ -353,6 +353,7 @@ function GenericTable<TData extends object>({
   // TODO: incompatible-library — TanStack Table v8's useReactTable() API is
   // incompatible with React Compiler memoization. This will be resolved when
   // this component migrates to shadcn UI table components.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data,
     columns,
