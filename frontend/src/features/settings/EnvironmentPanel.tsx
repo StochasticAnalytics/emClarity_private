@@ -1128,8 +1128,6 @@ function RegistryPathSection() {
 
   useEffect(() => {
     let cancelled = false
-    setRegistryPathLoading(true)
-    setRegistryPathError(null)
     apiClient.get<RegistryPathResponse>('/api/v1/environment/registry-path')
       .then((data) => {
         if (!cancelled) {

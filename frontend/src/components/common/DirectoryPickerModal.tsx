@@ -212,12 +212,14 @@ export function DirectoryPickerModal({
 
   return (
     /* Backdrop */
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/50 cursor-default"
+        onClick={onClose}
+        aria-label="Close dialog"
+        tabIndex={-1}
+      />
       {/* Dialog panel */}
       <div
         ref={dialogRef}

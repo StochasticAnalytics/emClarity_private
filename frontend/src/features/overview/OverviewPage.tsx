@@ -628,7 +628,7 @@ export function OverviewPage() {
     { enabled: !!projectId && !isDemo },
   )
 
-  const { data: workflowData, isError: workflowError } = useApiQuery<AvailableCommandsResponse>(
+  const { data: workflowData } = useApiQuery<AvailableCommandsResponse>(
     ['overview-workflow-state', projectId ?? ''],
     `/api/v1/workflow/${projectId ?? ''}/available-commands`,
     { enabled: !!projectId && !isDemo },

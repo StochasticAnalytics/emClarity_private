@@ -407,15 +407,13 @@ function JobTable({ jobs, selectedJobId, onSelectJob }: JobTableProps) {
   const [focusedJobId, setFocusedJobId] = useState<string | null>(null)
   const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map())
 
-  // Reset focused job when it is no longer present in the list (e.g., removed
-  // after auto-refresh). Without this, focusedJobId stays non-null, the
-  // `?? jobs[0]?.id` fallback never fires, and every row gets tabIndex=-1,
-  // making the grid keyboard-unreachable.
-  useEffect(() => {
-    if (focusedJobId !== null && !jobs.some((j) => j.id === focusedJobId)) {
-      setFocusedJobId(null)
-    }
-  }, [jobs, focusedJobId])
+  // Derive the effective focused job: if the focused job was removed from the
+  // list (e.g., after auto-refresh), fall back to null so the first-row default
+  // in the tabIndex logic kicks in.
+  const effectiveFocusedJobId =
+    focusedJobId !== null && jobs.some((j) => j.id === focusedJobId)
+      ? focusedJobId
+      : null
 
   const focusRow = useCallback(
     (jobId: string) => {
@@ -462,7 +460,7 @@ function JobTable({ jobs, selectedJobId, onSelectJob }: JobTableProps) {
             // Roving tabIndex: the focused row (or first row by default) gets tabIndex=0;
             // all others get -1 so Tab exits the grid rather than cycling through rows.
             const isTabStop =
-              job.id === (focusedJobId ?? jobs[0]?.id)
+              job.id === (effectiveFocusedJobId ?? jobs[0]?.id)
 
             return (
               <tr
@@ -633,13 +631,11 @@ export function JobsPage() {
   }, [fetchJobs])
 
   // Auto-refresh every 5 seconds — stops when an error is present or in demo mode.
-  // `isDemo` is omitted from deps: fetchJobs already captures it via its own useCallback
-  // deps, so any change to isDemo produces a new fetchJobs reference and re-runs this effect.
   useEffect(() => {
     if (isDemo || fetchError !== null) return
     const interval = setInterval(() => void fetchJobs(), REFRESH_INTERVAL_MS)
     return () => clearInterval(interval)
-  }, [fetchError, fetchJobs])
+  }, [isDemo, fetchError, fetchJobs])
 
   // ---------------------------------------------------------------------------
   // Cancel job

@@ -1891,9 +1891,9 @@ function ActionTabContent({
   const optionalParams = resolvedParams.filter((p) => p.def.optional)
 
   // Group params into accordion sections
-  function groupBySection(
+  const groupBySection = useCallback((
     params: typeof resolvedParams,
-  ): Map<string, typeof resolvedParams> {
+  ): Map<string, typeof resolvedParams> => {
     const groups = new Map<string, typeof resolvedParams>()
     for (const p of params) {
       const key = p.def.group
@@ -1901,10 +1901,10 @@ function ActionTabContent({
       groups.get(key)!.push(p)
     }
     return groups
-  }
+  }, [])
 
-  const visibleGroups = useMemo(() => groupBySection(visibleParams), [visibleParams])
-  const optionalGroups = useMemo(() => groupBySection(optionalParams), [optionalParams])
+  const visibleGroups = useMemo(() => groupBySection(visibleParams), [visibleParams, groupBySection])
+  const optionalGroups = useMemo(() => groupBySection(optionalParams), [optionalParams, groupBySection])
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -2129,6 +2129,7 @@ export function ActionsPage() {
         className="flex overflow-x-auto border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shrink-0"
         role="tablist"
         aria-label="Processing steps"
+        tabIndex={-1}
         onKeyDown={(e) => {
           // WAI-ARIA APG: roving tabindex requires arrow-key navigation between tabs.
           const tabEls = Array.from(

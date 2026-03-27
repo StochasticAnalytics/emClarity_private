@@ -524,7 +524,7 @@ interface NewProjectDialogProps {
 function NewProjectDialog({ isOpen, onClose, onCreated }: NewProjectDialogProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
   const onCloseRef = useRef(onClose)
-  onCloseRef.current = onClose
+  useEffect(() => { onCloseRef.current = onClose }, [onClose])
 
   // Escape key + focus trap
   useEffect(() => {
@@ -576,13 +576,14 @@ function NewProjectDialog({ isOpen, onClose, onCreated }: NewProjectDialogProps)
 
   return (
     /* Backdrop */
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={(e) => {
-        // Close when clicking the backdrop (not the dialog itself)
-        if (e.target === e.currentTarget) onClose()
-      }}
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/50 cursor-default"
+        onClick={onClose}
+        aria-label="Close dialog"
+        tabIndex={-1}
+      />
       {/* Dialog panel */}
       <div
         ref={dialogRef}

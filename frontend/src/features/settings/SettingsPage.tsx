@@ -488,6 +488,7 @@ export function SettingsPage() {
         className="flex border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shrink-0"
         role="tablist"
         aria-label="Settings sections"
+        tabIndex={-1}
         onKeyDown={(e) => {
           const tabEls = Array.from(
             e.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]'),

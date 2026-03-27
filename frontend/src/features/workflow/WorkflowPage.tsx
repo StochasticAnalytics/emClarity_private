@@ -354,16 +354,20 @@ function CommandDialog({ command, projectId, onSuccess, onClose }: CommandDialog
 
   return (
     /* Backdrop */
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="cmd-dialog-title"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
-    >
-      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 space-y-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/50 cursor-default"
+        onClick={onClose}
+        aria-label="Close dialog"
+        tabIndex={-1}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cmd-dialog-title"
+        className="relative bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 space-y-4"
+      >
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
           <div>
