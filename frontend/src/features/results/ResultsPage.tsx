@@ -19,8 +19,9 @@
  *   GET /api/v1/results/particles  — Particle statistics (returns 404 if not available)
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState } from 'react'
 import { useTabParam } from '@/hooks/useTabParam'
+import { useApiQuery } from '@/hooks/useApi.ts'
 import {
   LineChart,
   Line,
@@ -34,18 +35,11 @@ import {
   BarChart,
   Bar,
 } from 'recharts'
-import { apiClient, ApiError } from '@/api/client.ts'
+import { ApiError } from '@/api/client.ts'
 
 // ---------------------------------------------------------------------------
 // Shared types
 // ---------------------------------------------------------------------------
-
-type FetchState<T> =
-  | { status: 'idle' }
-  | { status: 'loading' }
-  | { status: 'not_available' }
-  | { status: 'error'; message: string }
-  | { status: 'success'; data: T }
 
 interface FscPoint {
   /** Spatial frequency in 1/Å */
@@ -577,28 +571,14 @@ function FscMultiChart({ curves }: FscChartProps) {
 function FscCurvesTab() {
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [checkedIndices, setCheckedIndices] = useState<Set<number>>(new Set([0]))
-  const [fscState, setFscState] = useState<FetchState<FscData>>({ status: 'loading' })
 
-  const fetchFsc = useCallback(async () => {
-    try {
-      const data = await apiClient.get<FscData>('/api/v1/results/fsc')
-      setFscState({ status: 'success', data })
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 404) {
-        setFscState({ status: 'not_available' })
-      } else {
-        const message =
-          err instanceof ApiError
-            ? `Failed to load FSC data (${err.status}): ${err.statusText}`
-            : 'Failed to load FSC data.'
-        setFscState({ status: 'error', message })
-      }
-    }
-  }, [])
-
-  useEffect(() => {
-    void fetchFsc()
-  }, [fetchFsc])
+  const {
+    data: fscData,
+    error: fscError,
+    isLoading: fscLoading,
+    isFetching: fscFetching,
+    refetch: fscRefetch,
+  } = useApiQuery<FscData>(['results', 'fsc'], '/api/v1/results/fsc')
 
   const handleToggle = (index: number) => {
     setCheckedIndices((prev) => {
@@ -619,11 +599,11 @@ function FscCurvesTab() {
     .map((i) => {
       const label = PLACEHOLDER_CYCLES[i] ?? `cycle${String(i).padStart(3, '0')}`
       // Only cycle000 (index 0) has real data from the API (when available)
-      if (i === 0 && fscState.status === 'success') {
+      if (i === 0 && fscData) {
         return {
           cycleLabel: label,
-          data: fscState.data.half1_half2,
-          resolution: fscState.data.resolution_angstroms,
+          data: fscData.half1_half2,
+          resolution: fscData.resolution_angstroms,
         }
       }
       return { cycleLabel: label, data: [], resolution: null }
@@ -658,7 +638,7 @@ function FscCurvesTab() {
           </div>
           <button
             type="button"
-            disabled={fscState.status === 'loading'}
+            disabled={fscFetching}
             aria-label="Refresh FSC data"
             className={
               'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium ' +
@@ -668,13 +648,10 @@ function FscCurvesTab() {
               'focus:outline-none focus:ring-2 focus:ring-blue-500 ' +
               'transition-colors disabled:opacity-50'
             }
-            onClick={() => {
-              setFscState({ status: 'loading' })
-              void fetchFsc()
-            }}
+            onClick={() => void fscRefetch()}
           >
             <svg
-              className={`w-3.5 h-3.5 ${fscState.status === 'loading' ? 'animate-spin' : ''}`}
+              className={`w-3.5 h-3.5 ${fscFetching ? 'animate-spin' : ''}`}
               viewBox="0 0 20 20"
               fill="currentColor"
               aria-hidden="true"
@@ -690,7 +667,7 @@ function FscCurvesTab() {
         </div>
 
         {/* Chart area */}
-        {fscState.status === 'loading' && (
+        {fscLoading && (
           <div className="flex items-center justify-center py-20">
             <svg
               className="w-5 h-5 animate-spin text-blue-500"
@@ -705,15 +682,16 @@ function FscCurvesTab() {
           </div>
         )}
 
-        {fscState.status === 'error' && (
+        {!fscLoading && fscError && !(fscError instanceof ApiError && fscError.status === 404) && (
           <div className="rounded-md bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4">
-            <p className="text-sm text-red-700 dark:text-red-400">{fscState.message}</p>
+            <p className="text-sm text-red-700 dark:text-red-400">
+              {fscError instanceof ApiError
+                ? `Failed to load FSC data (${fscError.status}): ${fscError.statusText}`
+                : 'Failed to load FSC data.'}
+            </p>
             <button
               type="button"
-              onClick={() => {
-                setFscState({ status: 'loading' })
-                void fetchFsc()
-              }}
+              onClick={() => void fscRefetch()}
               className="mt-2 text-sm text-red-600 dark:text-red-400 underline hover:no-underline"
             >
               Retry
@@ -721,7 +699,7 @@ function FscCurvesTab() {
           </div>
         )}
 
-        {(fscState.status === 'not_available' || fscState.status === 'success') && (
+        {!fscLoading && (!fscError || (fscError instanceof ApiError && fscError.status === 404)) && (
           <>
             {curves.some((c) => c.data.length > 0) ? (
               <FscMultiChart curves={curves.filter((c) => c.data.length > 0)} />
@@ -891,40 +869,15 @@ const PARTICLE_STATS_CYCLES = ['cycle000', 'cycle001', 'cycle002', 'cycle003']
 
 function ParticleStatsTab() {
   const [selectedIndex, setSelectedIndex] = useState(0)
-  const [state, setState] = useState<FetchState<ParticleStats>>({ status: 'loading' })
-  const activeSignalRef = useRef<{ cancelled: boolean }>({ cancelled: false })
 
-  const fetchStats = useCallback(async (cycleIndex: number) => {
-    // Cancel any in-flight request (including a previous retry) before starting a new one
-    activeSignalRef.current.cancelled = true
-    const signal = { cancelled: false }
-    activeSignalRef.current = signal
+  const cycleLabel = PARTICLE_STATS_CYCLES[selectedIndex] ?? `cycle${String(selectedIndex).padStart(3, '0')}`
+  const { data, error, isLoading, refetch } = useApiQuery<ParticleStats>(
+    ['results', 'particles', cycleLabel],
+    `/api/v1/results/particles?cycle=${cycleLabel}`,
+  )
 
-    setState({ status: 'loading' })
-    try {
-      const cycleLabel = PARTICLE_STATS_CYCLES[cycleIndex] ?? `cycle${String(cycleIndex).padStart(3, '0')}`
-      const data = await apiClient.get<ParticleStats>(`/api/v1/results/particles?cycle=${cycleLabel}`)
-      if (!signal.cancelled) setState({ status: 'success', data })
-    } catch (err) {
-      if (signal.cancelled) return
-      if (err instanceof ApiError && err.status === 404) {
-        setState({ status: 'not_available' })
-      } else {
-        const message =
-          err instanceof ApiError
-            ? `Failed to load particle statistics (${err.status}): ${err.statusText}`
-            : err instanceof Error
-              ? `Failed to load particle statistics: ${err.message}`
-              : 'Failed to load particle statistics.'
-        setState({ status: 'error', message })
-      }
-    }
-  }, [])
-
-  useEffect(() => {
-    void fetchStats(selectedIndex)
-    return () => { activeSignalRef.current.cancelled = true }
-  }, [fetchStats, selectedIndex])
+  // Distinguish 404 (not available) from other errors
+  const is404 = error instanceof ApiError && error.status === 404
 
   return (
     <ThreePanelLayout
@@ -943,7 +896,7 @@ function ParticleStatsTab() {
           </p>
         </div>
 
-        {state.status === 'loading' && (
+        {isLoading && (
           <div className="flex items-center justify-center py-20">
             <svg
               className="w-5 h-5 animate-spin text-blue-500"
@@ -958,12 +911,14 @@ function ParticleStatsTab() {
           </div>
         )}
 
-        {state.status === 'error' && (
+        {!isLoading && error && !is404 && (
           <div className="rounded-md bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4">
-            <p className="text-sm text-red-700 dark:text-red-400">{state.message}</p>
+            <p className="text-sm text-red-700 dark:text-red-400">
+              {`Failed to load particle statistics (${error.status}): ${error.statusText}`}
+            </p>
             <button
               type="button"
-              onClick={() => void fetchStats(selectedIndex)}
+              onClick={() => void refetch()}
               className="mt-2 text-sm text-red-600 dark:text-red-400 underline hover:no-underline"
             >
               Retry
@@ -971,7 +926,7 @@ function ParticleStatsTab() {
           </div>
         )}
 
-        {state.status === 'not_available' && (
+        {!isLoading && is404 && (
           <PlaceholderContent
             title="No particle statistics available"
             description="Particle statistics will appear here after running particle alignment (alignRaw) or classification (pca / cluster)."
@@ -983,7 +938,7 @@ function ParticleStatsTab() {
           />
         )}
 
-        {state.status === 'success' && <ParticleStatsContent stats={state.data} />}
+        {!isLoading && data && <ParticleStatsContent stats={data} />}
       </div>
     </ThreePanelLayout>
   )

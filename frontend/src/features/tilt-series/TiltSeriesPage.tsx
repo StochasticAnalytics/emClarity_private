@@ -402,6 +402,9 @@ function TiltSeriesTable({ data, projectId, onSuccess, onError }: TiltSeriesTabl
     [],
   )
 
+  // TODO: incompatible-library — TanStack Table v8's useReactTable() API is
+  // incompatible with React Compiler memoization. This will be resolved when
+  // this component migrates to shadcn UI table components.
   const table = useReactTable({
     data,
     columns,

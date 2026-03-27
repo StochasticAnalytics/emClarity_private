@@ -12,7 +12,8 @@
  *   mode        — 'directory' (default) shows only directories;
  *                 'file' shows all entries returned by the backend
  */
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { browseDirectory, ApiError, type FilesystemBrowseResponse } from '@/api/filesystem.ts'
 
 export interface DirectoryPickerModalProps {
@@ -63,69 +64,57 @@ export function DirectoryPickerModal({
   initialPath,
   mode = 'directory',
 }: DirectoryPickerModalProps) {
-  const [data, setData] = useState<FilesystemBrowseResponse | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  // The path to browse — updated on user navigation clicks. TanStack Query
+  // refetches when this key changes, replacing the manual navigate() callback.
+  const [currentPath, setCurrentPath] = useState<string | undefined>(initialPath)
+
+  // Reset currentPath when the modal opens or initialPath changes.
+  // Uses the "adjust state during render" pattern (React docs) instead of
+  // useEffect to avoid a synchronous setState-in-effect violation.
+  const [prevIsOpen, setPrevIsOpen] = useState(false)
+  const [prevInitialPath, setPrevInitialPath] = useState(initialPath)
+  if ((isOpen && !prevIsOpen) || (isOpen && initialPath !== prevInitialPath)) {
+    setCurrentPath(initialPath)
+  }
+  if (prevIsOpen !== isOpen) setPrevIsOpen(isOpen)
+  if (prevInitialPath !== initialPath) setPrevInitialPath(initialPath)
 
   const dialogRef = useRef<HTMLDivElement>(null)
-  const abortRef = useRef<AbortController | null>(null)
-  // Tracks the path that was last *requested* so the Retry button can re-attempt
-  // the exact same path even after data has been cleared to null.
-  const lastRequestedPathRef = useRef<string | undefined>(initialPath)
   // Holds the element that had focus before the modal opened, so focus can be
   // restored on close (WCAG 2.1 SC 2.4.3).
   const previousFocusRef = useRef<HTMLElement | null>(null)
 
-  const navigate = useCallback((path?: string) => {
-    abortRef.current?.abort()
-    const controller = new AbortController()
-    abortRef.current = controller
+  const { data, error: queryError, isLoading, refetch } = useQuery<FilesystemBrowseResponse, Error>({
+    queryKey: ['browse', currentPath],
+    queryFn: ({ signal }) => browseDirectory(currentPath, signal),
+    enabled: isOpen,
+    // Clear stale data during navigation so breadcrumbs don't show the
+    // previous path while the new fetch is in-flight.
+    placeholderData: undefined,
+  })
 
-    // Record the path we are about to request so Retry can replay it.
-    lastRequestedPathRef.current = path
+  // Derive a user-facing error message from the query error.
+  const error: string | null = (() => {
+    if (!queryError) return null
+    if (queryError instanceof ApiError) {
+      const rawBody = queryError.body
+      const detail =
+        rawBody !== null &&
+        typeof rawBody === 'object' &&
+        'detail' in rawBody &&
+        typeof (rawBody as Record<string, unknown>).detail === 'string'
+          ? ((rawBody as Record<string, unknown>).detail as string)
+          : null
+      return detail ?? queryError.message
+    }
+    if (queryError instanceof TypeError) {
+      return 'Cannot connect to server — is the backend running?'
+    }
+    return queryError.message ?? 'An unexpected error occurred'
+  })()
 
-    setIsLoading(true)
-    setError(null)
-    // Clear stale data so breadcrumbs don't show the previous path while
-    // the new fetch is in-flight.
-    setData(null)
-
-    browseDirectory(path, controller.signal)
-      .then((result) => {
-        setData(result)
-        setIsLoading(false)
-      })
-      .catch((err: unknown) => {
-        if (err instanceof Error && err.name === 'AbortError') return
-
-        let message: string
-        if (err instanceof ApiError) {
-          // Extract the structured `detail` field from the response body when available.
-          const rawBody = err.body
-          const detail =
-            rawBody !== null &&
-            typeof rawBody === 'object' &&
-            'detail' in rawBody &&
-            typeof (rawBody as Record<string, unknown>).detail === 'string'
-              ? ((rawBody as Record<string, unknown>).detail as string)
-              : null
-          message = detail ?? err.message
-        } else if (err instanceof TypeError) {
-          // fetch() only throws TypeError for network-level failures (no response
-          // received).  Programming TypeErrors (e.g. "Cannot read properties of
-          // null") are caught before reaching this point, so no message-text guard
-          // is needed here.
-          message = 'Cannot connect to server — is the backend running?'
-        } else if (err instanceof Error) {
-          message = err.message
-        } else {
-          message = 'An unexpected error occurred'
-        }
-
-        setError(message)
-        setIsLoading(false)
-      })
-  }, [])
+  // Navigate to a new path by updating the query key.
+  const navigate = (path?: string) => setCurrentPath(path)
 
   // Save focus when the modal opens and restore it when it closes (WCAG 2.1
   // SC 2.4.3).  This effect intentionally depends only on `isOpen` so that a
@@ -143,18 +132,6 @@ export function DirectoryPickerModal({
       previousFocusRef.current = null
     }
   }, [isOpen])
-
-  // Navigate to the initial path whenever the modal opens or `initialPath`
-  // changes.  Abort any in-flight request when the modal closes.
-  useEffect(() => {
-    if (!isOpen) return
-
-    navigate(initialPath)
-
-    return () => {
-      abortRef.current?.abort()
-    }
-  }, [isOpen, initialPath, navigate])
 
   // Escape key + focus trap
   useEffect(() => {
@@ -308,7 +285,7 @@ export function DirectoryPickerModal({
               <p className="mb-2 text-sm text-red-600 dark:text-red-400">{error}</p>
               <button
                 type="button"
-                onClick={() => navigate(lastRequestedPathRef.current)}
+                onClick={() => void refetch()}
                 className="rounded bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
               >
                 Retry
