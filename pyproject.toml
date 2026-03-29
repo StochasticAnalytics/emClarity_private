@@ -102,8 +102,8 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 # Test files: complexity/style rules relaxed for test setups
-"**/tests/**" = ["D102", "D103", "D107", "D205", "D209", "D403", "D415", "PLR0915", "PLR0912", "RUF012", "B007", "E721", "F401", "I001", "E402", "F821", "UP015", "UP035"]
-"**/test_*.py" = ["D102", "D103", "D107", "D205", "D209", "D403", "D415", "PLR0915", "PLR0912", "RUF012", "B007", "E721", "F401", "E402", "F821", "UP015"]
+"**/tests/**" = ["D101", "D102", "D103", "D107", "D205", "D209", "D403", "D415", "PLR0915", "PLR0912", "RUF012", "B007", "E721", "F401", "I001", "E402", "F821", "UP015", "UP035"]
+"**/test_*.py" = ["D101", "D102", "D103", "D107", "D205", "D209", "D403", "D415", "PLR0915", "PLR0912", "RUF012", "B007", "E721", "F401", "E402", "F821", "UP015"]
 # __init__.py: re-exports and package docstrings
 "**/__init__.py" = ["F401", "D104"]
 # Parent project backend: pre-existing issues to be addressed in dedicated cleanup
