@@ -38,6 +38,7 @@ dev = [
     "bandit[toml]>=1.7.0",
     "safety>=2.3.0",
     "pre-commit>=2.15.0",
+    "types-PyYAML>=2024.1.0",
 ]
 test = [
     "pytest>=6.0.0",
@@ -130,7 +131,7 @@ max-branches = 25
 
 # Pyright configuration for static type checking
 [tool.pyright]
-include = ["python"]
+include = ["python", "autonomous-build"]
 exclude = ["**/node_modules", "**/__pycache__", "**/.*", "**/tests/**", "**/test_*.py"]
 defineConstant = { DEBUG = true }
 stubPath = "typings"
