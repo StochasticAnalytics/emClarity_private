@@ -5,30 +5,22 @@
   // NOTE: Cont    ainer image must match .vscode/CONTAINER_REPO_NAME and CONTAINER_VERSION_TOP
   // Update all three when changing container version or repository
   "image": "ghcr.io/stochasticanalytics/cistem_build_env:v4.1.2",
-  "initializeCommand": ".devcontainer/check-version.sh",
-  // sandbox-runtime + bwrap caps now baked into Docker image (top_image/Dockerfile).
+  "initializeCommand": ".devcontainer/check-version.sh && .devcontainer/validate-x11.sh",
   // No onCreateCommand needed for sandbox setup.
   // CLAUDE_CONFIG_DIR is delivered via --env-file in runArgs (written by
   // devcontainer-launch.py). On container create:
   //   1. Fail fast if unset (prevents silent fallback to ephemeral ~/.claude)
   //      Set CLAUDE_CONFIG_DIR=0 in host env to skip Claude setup entirely.
   //   2. Symlink ~/.claude → $CLAUDE_CONFIG_DIR so IDE plugins find config at default path
-  //   3. Install fast-moving npm packages that shouldn't be baked into the image:
-  //      - @playwright/cli: Headless browser CLI for visual verification of frontend work (screenshots, snapshots).
-  //        Required so Claude can self-verify CSS/layout changes without human eyeball per iteration.
-  //        install-browser downloads the bundled Chromium binary (~280MB).
-  //        Chromium must be installed from the CLI's own package context so the
-  //        playwright version (and therefore browser revision) matches exactly.
-  //        Note: playwright-cli install-browser was removed — it's an interactive
-  //        command that fails headless. npx playwright install chromium handles setup.
-  // bwrap caps, sandbox-runtime, and cupy-cuda12x now baked into Docker image.
+  //   3. (Removed: Playwright npm install — replaced by native Chrome MCP via --chrome)
+  // cupy-cuda12x now baked into Docker image.
   //   4. Install claude_core in editable mode so skill scripts can import it.
   //      Must use $DOT_CLAUDE_DIR from containerEnv (remoteEnv isn't available yet).
   //   5. Add bashrc function to route `claude` through the launcher.
   //      The launcher sets CLAUDE_LAUNCH_MODE for mount-guard.py, validates
   //      PROJECT_ROOT, and generates session keys. No fallback to raw claude.
   //   6. Run interactive mount access validator on first terminal open.
-  "postCreateCommand": "bash -c 'if [ \"$CLAUDE_CONFIG_DIR\" = \"0\" ] || [ \"$CLAUDE_CONFIG_DIR\" = \"false\" ]; then echo \"Claude integration disabled — skipping Claude setup\"; exit 0; fi && if [ -z \"$CLAUDE_CONFIG_DIR\" ]; then echo \"ERROR: CLAUDE_CONFIG_DIR not set. Run: devcontainer-launch.py <user> <workspace>\" >&2; echo \"Or set CLAUDE_CONFIG_DIR=0 in host env to skip Claude setup entirely.\" >&2; exit 1; fi && ln -sfn \"$CLAUDE_CONFIG_DIR\" ~/.claude && pip install -e \"$DOT_CLAUDE_DIR\" --quiet && npm install -g @playwright/cli@0.1.1 && cd $(npm root -g)/@playwright/cli && npx playwright install chromium && echo \"claude() { local launcher=\\\"\\$DOT_CLAUDE_DIR/.claude/scripts/claude-launcher.py\\\"; if [[ -f \\\"\\$launcher\\\" ]]; then python3 \\\"\\$launcher\\\" \\\"\\$@\\\"; else echo \\\"ERROR: claude-launcher.py not found at \\$launcher\\\" >&2; return 1; fi; }; export -f claude\" >> ~/.bashrc && echo \"python3 \\$DOT_CLAUDE_DIR/.claude/scripts/validate_mount_access.py 2>/dev/null\" >> ~/.bashrc'",
+  "postCreateCommand": ".devcontainer/post-create.sh",
   // PROJECT_ROOT, DOT_CLAUDE_DIR, REPO_NAME are set via remoteEnv below.
   // No postStartCommand needed for environment setup.
   "remoteUser": "cisTEMdev",
@@ -67,32 +59,16 @@
   // UID is 1000 in base container (default)
   "updateRemoteUserUID": false,
   // Network configuration: Using host networking for X11 forwarding.
-  // bwrap needs SYS_ADMIN to call mount --make-slave / when root propagation
-  // is "private" (the Docker/containerd default). Without it, bwrap sandbox
-  // (used by Claude Code's Bash tool) fails with "Failed to make / slave: Permission denied".
-  // The following overrides remain disabled — add back if needed:
-  //   "--cap-add=NET_ADMIN",       // was for bwrap CLONE_NEWNET
-  //   "--security-opt", "apparmor=unconfined",  // was for bwrap
   "runArgs": [
     "--gpus",
     "all",
+    "--shm-size",
+    "2g",
     "--env-file",
     "/tmp/.claude-devcontainer-env",
-    "--security-opt",
-    "apparmor=unconfined",
-    "--security-opt",
-    "seccomp=unconfined",
-    "--cap-add",
-    "NET_ADMIN",
     "-it",
     "--net",
     "host",
-    "--cap-add=SYS_ADMIN",
-    "--security-opt",
-    "seccomp=unconfined",
-    "--cap-add=SYS_ADMIN",
-    "--security-opt",
-    "seccomp=unconfined",
     "-e",
     "DISPLAY=${env:DISPLAY}",
     "-v",
