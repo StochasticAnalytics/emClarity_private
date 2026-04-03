@@ -16,13 +16,35 @@ if [ -z "${CLAUDE_CONFIG_DIR:-}" ]; then
     exit 1
 fi
 
-# 1. Symlink ~/.claude so IDE plugins find config at default path
+# 1. Install system packages not in base image
+#    lsof: required by start-dashboard.sh for port diagnostics
+if ! command -v lsof &>/dev/null; then
+    sudo apt-get update -qq && sudo apt-get install -y -qq lsof
+fi
+
+# 2. Symlink ~/.claude so IDE plugins find config at default path
 ln -sfn "$CLAUDE_CONFIG_DIR" ~/.claude
 
-# 2. Install claude_core in editable mode so skill scripts can import it
+# 3. Install claude_core in editable mode — also installs all project
+#    Python deps (scientific, GPU, dashboard, dev tooling) via setup.py
 pip install -e "$DOT_CLAUDE_DIR" --quiet
 
-# 3. Add bashrc function to route `claude` through the launcher
+# 3b. Wire safe-cp/safe-mv aliases before interactive guard
+#     Pre-guard placement: aliases protect both interactive and non-interactive shells.
+#     Double quotes: variable expands at write time to concrete path.
+_SAFE_CP="alias cp=\"${PROJECT_ROOT}/dot-claude/usr/bin/safe-cp.py \""
+_SAFE_MV="alias mv=\"${PROJECT_ROOT}/dot-claude/usr/bin/safe-mv.py \""
+_MARKER="# If not running interactively"
+
+if grep -qF "$_MARKER" ~/.bashrc; then
+    sed -i "/${_MARKER}/i\\${_SAFE_CP}\n${_SAFE_MV}" ~/.bashrc
+else
+    # Marker not found — prepend to top of file as fail-safe
+    printf '%s\n%s\n' "${_SAFE_CP}" "${_SAFE_MV}" | cat - ~/.bashrc > ~/.bashrc.tmp
+    /usr/bin/mv ~/.bashrc.tmp ~/.bashrc
+fi
+
+# 4. Add bashrc function to route `claude` through the launcher
 cat >> ~/.bashrc << 'BASHRC'
 claude() {
     local launcher="$DOT_CLAUDE_DIR/.claude/scripts/claude-launcher.py"
@@ -35,8 +57,5 @@ claude() {
 }
 export -f claude
 BASHRC
-
-# 4. Run interactive mount access validator on first terminal open
-echo 'python3 $DOT_CLAUDE_DIR/.claude/scripts/validate_mount_access.py 2>/dev/null' >> ~/.bashrc
 
 echo "✓ Claude integration setup complete"

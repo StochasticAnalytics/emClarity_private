@@ -31,6 +31,7 @@
   // CLAUDE_CONFIG_DIR comes from --env-file in runArgs (written by launcher).
   // Do NOT set CLAUDE_CONFIG_DIR here — Docker -e flags override --env-file.
   "containerEnv": {
+    "PROJECT_ROOT": "${containerWorkspaceFolder}",
     "DOT_CLAUDE_DIR": "${containerWorkspaceFolder}/dot-claude"
   },
   "remoteEnv": {
