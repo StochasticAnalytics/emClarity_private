@@ -4,7 +4,7 @@
   "workspaceFolder": "${localWorkspaceFolder}",
   // NOTE: Cont    ainer image must match .vscode/CONTAINER_REPO_NAME and CONTAINER_VERSION_TOP
   // Update all three when changing container version or repository
-  "image": "ghcr.io/stochasticanalytics/cistem_build_env:v4.1.2",
+  "image": "ghcr.io/stochasticanalytics/cistem_build_env:v4.2.0",
   "initializeCommand": ".devcontainer/check-version.sh && .devcontainer/validate-x11.sh",
   // No onCreateCommand needed for sandbox setup.
   // CLAUDE_CONFIG_DIR is delivered via --env-file in runArgs (written by
