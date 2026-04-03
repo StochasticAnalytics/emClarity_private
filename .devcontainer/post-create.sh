@@ -16,13 +16,7 @@ if [ -z "${CLAUDE_CONFIG_DIR:-}" ]; then
     exit 1
 fi
 
-# 1. Install system packages not in base image
-#    lsof: required by start-dashboard.sh for port diagnostics
-if ! command -v lsof &>/dev/null; then
-    sudo apt-get update -qq && sudo apt-get install -y -qq lsof
-fi
-
-# 2. Symlink ~/.claude so IDE plugins find config at default path
+# 1. Symlink ~/.claude so IDE plugins find config at default path
 ln -sfn "$CLAUDE_CONFIG_DIR" ~/.claude
 
 # 3. Install claude_core in editable mode — also installs all project
@@ -32,6 +26,7 @@ pip install -e "$DOT_CLAUDE_DIR" --quiet
 # 3b. Wire safe-cp/safe-mv aliases before interactive guard
 #     Pre-guard placement: aliases protect both interactive and non-interactive shells.
 #     Double quotes: variable expands at write time to concrete path.
+#     Full-path overrides (/usr/bin/cp, /usr/bin/mv) are in 3c below.
 _SAFE_CP="alias cp=\"${PROJECT_ROOT}/dot-claude/usr/bin/safe-cp.py \""
 _SAFE_MV="alias mv=\"${PROJECT_ROOT}/dot-claude/usr/bin/safe-mv.py \""
 _MARKER="# If not running interactively"
@@ -43,6 +38,15 @@ else
     printf '%s\n%s\n' "${_SAFE_CP}" "${_SAFE_MV}" | cat - ~/.bashrc > ~/.bashrc.tmp
     /usr/bin/mv ~/.bashrc.tmp ~/.bashrc
 fi
+
+# 3c. Override /usr/bin/cp and /usr/bin/mv as bash functions.
+#     Closes the backdoor where scripts call the full path directly.
+#     Safe wrappers' subprocess.run uses execve (no shell), so the real
+#     binary is still reachable — no infinite loop.
+cat >> ~/.bashrc << FUNCS
+/usr/bin/cp() { ${PROJECT_ROOT}/dot-claude/usr/bin/safe-cp.py "\$@"; }
+/usr/bin/mv() { ${PROJECT_ROOT}/dot-claude/usr/bin/safe-mv.py "\$@"; }
+FUNCS
 
 # 4. Add bashrc function to route `claude` through the launcher
 cat >> ~/.bashrc << 'BASHRC'
