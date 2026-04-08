@@ -1,7 +1,23 @@
 #!/usr/bin/env bash
 # postCreateCommand for devcontainer — runs once after container creation.
 # Extracted from devcontainer.json for readability and maintainability.
+#
+# BOOTSTRAP EXCEPTION: This script is the one legitimate self-locator in
+# the project. It runs BEFORE `pip install -e dot-claude` (step 2 below),
+# so claude_core.paths is not yet importable. PROJECT_ROOT and
+# DOT_CLAUDE_DIR are derived from BASH_SOURCE here; every other script
+# resolves paths via claude_core.paths after step 2 completes.
+#
+# Cluster 4 step 7 of the permissions audit removed these variables from
+# devcontainer.json containerEnv and remoteEnv. They exist in this
+# script's local scope only — they are NOT exported to the environment
+# of any other process.
 set -euo pipefail
+
+# Self-locate: this file lives at $PROJECT_ROOT/.devcontainer/post-create.sh
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+DOT_CLAUDE_DIR="$PROJECT_ROOT/dot-claude"
 
 # Allow disabling Claude integration entirely
 if [ "${CLAUDE_CONFIG_DIR:-}" = "0" ] || [ "${CLAUDE_CONFIG_DIR:-}" = "false" ]; then
@@ -69,14 +85,20 @@ cat >> ~/.bashrc << FUNCS
 /usr/bin/mv() { ${PROJECT_ROOT}/dot-claude/usr/bin/safe-mv.py "\$@"; }
 FUNCS
 
-# 6. Add bashrc function to route `claude` through the launcher
-cat >> ~/.bashrc << 'BASHRC'
+# 6. Add bashrc function to route `claude` through the launcher.
+#    Note the unquoted heredoc terminator ("BASHRC" rather than 'BASHRC'):
+#    this lets ${DOT_CLAUDE_DIR} expand NOW (write time) to a literal
+#    absolute path, while \$launcher and \$@ stay as runtime references.
+#    Cluster 4 step 7 removed $DOT_CLAUDE_DIR from the session environment,
+#    so the bashrc function cannot read it at call time — the path must
+#    be baked in here instead.
+cat >> ~/.bashrc << BASHRC
 claude() {
-    local launcher="$DOT_CLAUDE_DIR/.claude/scripts/claude-launcher.py"
-    if [[ -f "$launcher" ]]; then
-        python3 "$launcher" "$@"
+    local launcher="${DOT_CLAUDE_DIR}/.claude/scripts/claude-launcher.py"
+    if [[ -f "\$launcher" ]]; then
+        python3 "\$launcher" "\$@"
     else
-        echo "ERROR: claude-launcher.py not found at $launcher" >&2
+        echo "ERROR: claude-launcher.py not found at \$launcher" >&2
         return 1
     fi
 }
