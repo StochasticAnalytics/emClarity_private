@@ -21,13 +21,13 @@
   //      PROJECT_ROOT, and generates session keys. No fallback to raw claude.
   //   6. Run interactive mount access validator on first terminal open.
   "postCreateCommand": ".devcontainer/post-create.sh",
-  // Cluster 4 step 7 of the permissions audit (2026-04-07) removed
-  // PROJECT_ROOT, DOT_CLAUDE_DIR, and REPO_NAME from both containerEnv
-  // and remoteEnv. They now resolve via claude_core.paths — the single
-  // source of truth for project paths. post-create.sh self-locates from
-  // BASH_SOURCE (bootstrap exception: it runs before pip install). Every
-  // other consumer reads from claude_core.paths after the post-create
-  // install completes. REPO_NAME derives from `git remote get-url origin`.
+  // PROJECT_ROOT is the sole env-var exception to the "no project paths
+  // in env vars" rule. It is set here because it defines the project root
+  // for all consumers — mount guard hooks, safe-git, session startup,
+  // and CLAUDE.md path conventions. Fail-fast: if missing, tools must
+  // error immediately, not derive or guess.
+  // DOT_CLAUDE_DIR and REPO_NAME remain eliminated — they resolve via
+  // claude_core.paths (which itself reads PROJECT_ROOT from env).
   "remoteUser": "cisTEMdev",
   "hostRequirements": {
     "gpu": "optional"
@@ -35,7 +35,9 @@
   // containerEnv is available during postCreateCommand (unlike remoteEnv).
   // CLAUDE_CONFIG_DIR comes from --env-file in runArgs (written by launcher).
   // Do NOT set CLAUDE_CONFIG_DIR here — Docker -e flags override --env-file.
-  "containerEnv": {},
+  "containerEnv": {
+    "PROJECT_ROOT": "${containerWorkspaceFolder}"
+  },
   "remoteEnv": {
     // We need to set this so we can use wxmctrl -lpx | grep ${WORKSPACE_BASENAME} | awk '{print $1}' to find window IDs
     // then xdotool get_desktop_for_window <windowID> to get the desktop number
