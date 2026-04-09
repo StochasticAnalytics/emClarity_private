@@ -35,7 +35,7 @@ if [ ! -f "$CLAUDE_ENV_FILE" ]; then
         echo "   After multi-user migration, this value must come from the launcher,"
         echo "   not from the host shell. The correct launch command is:"
         echo ""
-        echo "     python3 dot-claude/.claude/scripts/devcontainer-launch.py <user> <folder>"
+        echo "     python3 dot-claude/scripts/devcontainer-launch.py <user> <folder>"
         echo ""
         echo "   To prevent this warning, remove CLAUDE_CONFIG_DIR from your"
         echo "   .bashrc / .profile / .zshrc."
@@ -48,7 +48,7 @@ if [ ! -f "$CLAUDE_ENV_FILE" ]; then
             touch "$CLAUDE_ENV_FILE"
             echo "   ✓ CLAUDE_CONFIG_DIR unset. Continuing without Claude config."
         else
-            echo "   Aborting. Launch with: python3 dot-claude/.claude/scripts/devcontainer-launch.py <user> <folder>"
+            echo "   Aborting. Launch with: python3 dot-claude/scripts/devcontainer-launch.py <user> <folder>"
             exit 1
         fi
     else

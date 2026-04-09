@@ -21,8 +21,13 @@
   //      PROJECT_ROOT, and generates session keys. No fallback to raw claude.
   //   6. Run interactive mount access validator on first terminal open.
   "postCreateCommand": ".devcontainer/post-create.sh",
-  // PROJECT_ROOT, DOT_CLAUDE_DIR, REPO_NAME are set via remoteEnv below.
-  // No postStartCommand needed for environment setup.
+  // PROJECT_ROOT is the sole env-var exception to the "no project paths
+  // in env vars" rule. It is set here because it defines the project root
+  // for all consumers — mount guard hooks, safe-git, session startup,
+  // and CLAUDE.md path conventions. Fail-fast: if missing, tools must
+  // error immediately, not derive or guess.
+  // DOT_CLAUDE_DIR and REPO_NAME remain eliminated — they resolve via
+  // claude_core.paths (which itself reads PROJECT_ROOT from env).
   "remoteUser": "cisTEMdev",
   "hostRequirements": {
     "gpu": "optional"
@@ -31,8 +36,7 @@
   // CLAUDE_CONFIG_DIR comes from --env-file in runArgs (written by launcher).
   // Do NOT set CLAUDE_CONFIG_DIR here — Docker -e flags override --env-file.
   "containerEnv": {
-    "PROJECT_ROOT": "${containerWorkspaceFolder}",
-    "DOT_CLAUDE_DIR": "${containerWorkspaceFolder}/dot-claude"
+    "PROJECT_ROOT": "${containerWorkspaceFolder}"
   },
   "remoteEnv": {
     // We need to set this so we can use wxmctrl -lpx | grep ${WORKSPACE_BASENAME} | awk '{print $1}' to find window IDs
@@ -43,11 +47,7 @@
     "WORKSPACE_CONTAINER_NAME": "cisTEMx-${localEnv:USER}-${localWorkspaceFolderBasename}",
     // Persist Claude Code sessions, plans, and memories across container rebuilds.
     // Reads from container env (set by --env-file), not host env.
-    "CLAUDE_CONFIG_DIR": "${containerEnv:CLAUDE_CONFIG_DIR}",
-    // Project environment — available to all processes (orchestrator, scripts, Claude sessions)
-    "PROJECT_ROOT": "${containerWorkspaceFolder}",
-    "DOT_CLAUDE_DIR": "${containerWorkspaceFolder}/dot-claude",
-    "REPO_NAME": "${localWorkspaceFolderBasename}"
+    "CLAUDE_CONFIG_DIR": "${containerEnv:CLAUDE_CONFIG_DIR}"
   },
   // To add mounts, enable smudge/clean filters, define variable in bashrc ... cistem_mounts=("source=/scratch,target=/scratch,type=bind" "source=/sa_shared,target=/sa_shared,type=bind")"
   // Leave the following line comment, it is used as a placeholder for the devcontainer-filter.sh script to insert the mounts.
