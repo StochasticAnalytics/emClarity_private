@@ -331,11 +331,15 @@ class ParameterService:
         atomic_write(filepath, snapshot_data)
 
         # Enforce retention cap — errors are suppressed so they don't
-        # propagate as HTTP 500 after a successful save.
+        # propagate as HTTP 500 after a successful save, but log so
+        # repeated cleanup failures are visible in service logs.
         try:
             self.cleanup_old_snapshots(project_dir)
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning(
+                "snapshot retention cleanup failed for %s: %s",
+                project_dir, exc, exc_info=True,
+            )
 
         return snapshot_id, filename, created_at
 
@@ -411,8 +415,13 @@ class ParameterService:
                 m_file = snap_file.with_suffix(".m")
                 if m_file.exists():
                     m_file.unlink()
-            except OSError:
-                pass  # best-effort cleanup
+            except OSError as exc:
+                # Best-effort cleanup; log so failures aren't silent
+                # (e.g. permission issues that would otherwise mask
+                # disk fill-up).
+                log.warning(
+                    "failed to delete old snapshot %s: %s", snap_file, exc,
+                )
 
     def list_snapshots(self, project_dir: Path) -> list[dict[str, str]]:
         """List all parameter snapshots sorted by creation date descending.
