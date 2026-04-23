@@ -24,9 +24,27 @@ from backend.models.parameter import (
     ParameterValidationResult,
     ParameterValue,
 )
+from claude_core.paths import AUTOBUILD_DIR
 
-# Path to the parameter schema JSON generated from BH_parseParameterFile.m
-_SCHEMA_PATH = Path(__file__).parent.parent.parent / "autonomous-build" / "templates" / "phase0-artifacts" / "parameter_schema.json"
+
+def _resolve_schema_path() -> Path:
+    """Return the parameter schema JSON path, raising if absent on disk.
+
+    Why resolve at call time and fail loud: the previous implementation
+    constructed the path via ``__file__.parent.parent.parent`` and fell
+    back to a built-in schema on absence, silently masking wrong-path
+    resolutions when the layout drifted. The S3 contract of WI-148
+    requires a single authoritative source (``claude_core.paths``) that
+    validates existence at resolve-time and fails loud on mismatch.
+    """
+    path = AUTOBUILD_DIR / "templates" / "phase0-artifacts" / "parameter_schema.json"
+    if not path.exists():
+        raise RuntimeError(
+            f"parameter schema not found at {path} — check claude_core.paths "
+            "configuration (config.yaml autobuild entry) and that the autobuilder "
+            "asset is present on disk."
+        )
+    return path
 
 
 class ParameterService:
@@ -38,17 +56,15 @@ class ParameterService:
     def get_schema(self) -> list[ParameterDefinition]:
         """Return the parameter schema, loading from disk on first call.
 
-        If the schema JSON file is not found, returns a minimal built-in
-        set of core parameters so the backend remains functional.
+        Raises RuntimeError if the schema JSON cannot be located on disk;
+        the prior built-in-schema fallback is intentionally removed
+        (WI-148 S3) so absence cannot silently mask a layout regression.
         """
         if self._schema is not None:
             return self._schema
 
-        if _SCHEMA_PATH.exists():
-            self._schema = self._load_schema_from_json(_SCHEMA_PATH)
-        else:
-            self._schema = self._builtin_schema()
-
+        schema_path = _resolve_schema_path()
+        self._schema = self._load_schema_from_json(schema_path)
         return self._schema
 
     def load_parameter_file(self, path: str) -> ParameterFile:
@@ -185,13 +201,13 @@ class ParameterService:
         Parameters whose names are already canonical are returned unchanged.
         """
         deprecated_lookup: dict[str, str] = {}
-        if _SCHEMA_PATH.exists():
-            raw = json.loads(_SCHEMA_PATH.read_text())
-            entries = raw if isinstance(raw, list) else raw.get("parameters", [])
-            for entry in entries:
-                dep = entry.get("deprecated_name")
-                if dep:
-                    deprecated_lookup[dep] = entry["name"]
+        schema_path = _resolve_schema_path()
+        raw = json.loads(schema_path.read_text())
+        entries = raw if isinstance(raw, list) else raw.get("parameters", [])
+        for entry in entries:
+            dep = entry.get("deprecated_name")
+            if dep:
+                deprecated_lookup[dep] = entry["name"]
 
         migrated: list[ParameterValue] = []
         for pv in parameters:
@@ -223,13 +239,13 @@ class ParameterService:
 
         # Build deprecated-name -> current-name lookup from the schema JSON.
         deprecated_lookup: dict[str, str] = {}
-        if _SCHEMA_PATH.exists():
-            raw = json.loads(_SCHEMA_PATH.read_text())
-            entries = raw if isinstance(raw, list) else raw.get("parameters", [])
-            for entry in entries:
-                dep = entry.get("deprecated_name")
-                if dep:
-                    deprecated_lookup[dep] = entry["name"]
+        schema_path = _resolve_schema_path()
+        raw = json.loads(schema_path.read_text())
+        entries = raw if isinstance(raw, list) else raw.get("parameters", [])
+        for entry in entries:
+            dep = entry.get("deprecated_name")
+            if dep:
+                deprecated_lookup[dep] = entry["name"]
 
         errors: list[str] = []
         warnings: list[str] = []
@@ -611,53 +627,3 @@ class ParameterService:
             )
 
         return definitions
-
-    @staticmethod
-    def _builtin_schema() -> list[ParameterDefinition]:
-        """Return a minimal built-in schema for core parameters.
-
-        Used as a fallback when the full JSON schema file is not available.
-        """
-        return [
-            ParameterDefinition(
-                name="PIXEL_SIZE",
-                type=ParameterType.FLOAT,
-                required=True,
-                description="Pixel size of the raw tilt-series images",
-                category=ParameterCategory.GENERAL,
-                units="angstroms",
-                range=[0.1, 50.0],
-            ),
-            ParameterDefinition(
-                name="SuperResolution",
-                type=ParameterType.INTEGER,
-                required=False,
-                default=0,
-                description="Super-resolution factor (0 = off, 1 = on)",
-                category=ParameterCategory.GENERAL,
-                range=[0, 1],
-            ),
-            ParameterDefinition(
-                name="Ali_samplingRate",
-                type=ParameterType.VECTOR,
-                required=False,
-                default=[4, 3, 2],
-                description="Sampling rates for alignment cycles",
-                category=ParameterCategory.ALIGNMENT,
-            ),
-            ParameterDefinition(
-                name="Cls_className",
-                type=ParameterType.STRING,
-                required=False,
-                default="",
-                description="Class name for classification",
-                category=ParameterCategory.CLASSIFICATION,
-            ),
-            ParameterDefinition(
-                name="GPU",
-                type=ParameterType.VECTOR,
-                required=True,
-                description="GPU device IDs to use",
-                category=ParameterCategory.SYSTEM,
-            ),
-        ]
