@@ -95,7 +95,7 @@ class PipelineItem(CamelCaseModel):
     )
     prd_path: str | None = Field(
         default=None,
-        description="Path to PRD file (relative to autonomous-build/)",
+        description="Path to PRD file (relative to dot-claude/autobuilder/)",
     )
     run_command: str | None = Field(
         default=None,

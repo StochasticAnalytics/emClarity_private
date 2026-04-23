@@ -131,7 +131,7 @@ max-branches = 25
 
 # Pyright configuration for static type checking
 [tool.pyright]
-include = ["python", "autonomous-build"]
+include = ["python"]
 exclude = ["**/node_modules", "**/__pycache__", "**/.*", "**/tests/**", "**/test_*.py"]
 defineConstant = { DEBUG = true }
 stubPath = "typings"

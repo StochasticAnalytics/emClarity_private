@@ -16,9 +16,6 @@ testScripts/EMC_test/fixtures
 ._.DS_Store
 .nfs*
 
-# Nested repos (managed separately)
-autonomous-build/
-autonomous-build-worktrees/
 
 *.db
 *.png
