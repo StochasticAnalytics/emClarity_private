@@ -18,7 +18,7 @@ except ImportError:
     CUDA_BASIC_OPS_AVAILABLE = False
 
 
-@skipIf(not CUDA_BASIC_OPS_AVAILABLE, "CudaBasicOps kernel loading not available")
+@unittest.skipIf(not CUDA_BASIC_OPS_AVAILABLE, "CudaBasicOps kernel loading not available")
 class TestCudaBasicOps(unittest.TestCase):
     """Test CUDA basic operations implementation."""
 

@@ -169,3 +169,5 @@ dot-claude
 .mcp.json
 
 worktrees/
+
+pyrightconfig.json
