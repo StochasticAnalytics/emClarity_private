@@ -178,52 +178,70 @@ do_load = true;
 
 
 
-[template, tempPath, tempName, tempExt] = BH_multi_loadOrBin( TEMPLATE, 1, 3, true );
+% REQUIREMENT #1: TEMPLATE may be a comma-separated list of reference paths.
+% All templates are processed identically and must share XYZ dims (#2).
+%
+% NORMALIZATION CAVEAT (#5): templates should be at a similar resolution.
+% Each template gets the SAME bandpass (bp_vals) and is RMS-normalized below,
+% so their match scores share a common footing -- but only if the templates
+% carry comparable resolution. The shared low-pass in bp_vals usually makes a
+% modest resolution mismatch a non-issue; true power-equalization across
+% genuinely different resolutions (per-template spectral matching) is deferred.
+template_list = strsplit(strtrim(TEMPLATE), ',');
+nTemplates = numel(template_list);
+fprintf('templateSearch over %d template(s)\n', nTemplates);
 
-% Bandpass the template so it is properly normalized
 bp_vals
-temp_bp = BH_bandpass3d(size(template),bp_vals(1),0.3.*bp_vals(2),bp_vals(3),'GPU',pixelSizeFULL);
-template = real(ifftn(fftn(gpuArray(template)).*temp_bp.^2));
-clear temp_bp
 
+templateBIN_cell = cell(1, nTemplates);
+tempPath = '';
+for iTmpl = 1:nTemplates
 
-% The template will be padded later, trim for now to minimum so excess
-% iterations can be avoided.
-fprintf('size of provided template %d %d %d\n',size(template));
-trimTemp = BH_multi_padVal(size(template),ceil(2.0.*max(emc.('Ali_mRadius')./pixelSizeFULL)));
-% template = BH_padZeros3d(template, trimTemp(1,:),trimTemp(2,:),'cpu','singleTaper');
-% SAVE_IMG(MRCImage(template),'template_trimmed.mrc');
-clear trimTemp
-fprintf('size after trim to sqrt(2)*max(lattice radius) %d %d %d\n',size(template));
+  [template, tempPath, tempName, tempExt] = BH_multi_loadOrBin( strtrim(template_list{iTmpl}), 1, 3, true );
+
+  % Bandpass the template so it is properly normalized
+  temp_bp = BH_bandpass3d(size(template),bp_vals(1),0.3.*bp_vals(2),bp_vals(3),'GPU',pixelSizeFULL);
+  template = real(ifftn(fftn(gpuArray(template)).*temp_bp.^2));
+  clear temp_bp
+
+  fprintf('size of provided template %d: %d %d %d\n',iTmpl,size(template));
+
+  % Make sure the template is an even sized image
+  template = padarray(template, mod(size(template),2),0, 'post');
+  template = template - mean(template(:));
+
+  templateBIN = BH_reScale3d(gather(template),'',sprintf('%f',1/samplingRate),'cpu');
+  templateBIN = templateBIN - mean(templateBIN(:));
+  templateBIN = templateBIN  ./rms(templateBIN(:));
+
+  if (iTmpl == 1)
+    sizeTempBIN = size(templateBIN);
+    % templateMask is derived from the first template only; all templates share
+    % dims by the guard below, so a single mask is representative.
+    [templateMask] = (EMC_maskReference(gpuArray(templateBIN),pixelSize,{'fsc', true}));
+    templateMask = gather(templateMask);
+  else
+    % REQUIREMENT #2: identical XYZ dims (kept simple for now). Fail loud rather
+    % than silently padding -- mismatched dims would break the shared FFT plan.
+    if (~isequal(size(templateBIN), sizeTempBIN))
+      error(['Template %d (%s) has size %s but template 1 has size %s. ', ...
+             'All templates must share identical XYZ dims.'], ...
+             iTmpl, strtrim(template_list{iTmpl}), mat2str(size(templateBIN)), mat2str(sizeTempBIN));
+    end
+  end
+
+  templateBIN_cell{iTmpl} = templateBIN;
+
+end
 
 if isempty(mapPath) ; mapPath = '.' ; end
 if isempty(tempPath) ; tempPath = '.' ; end
 % Check to see if only tilt angles are supplied, implying a y-axis tilt scheme,
 % or otherwise, assume a general geometry as in protomo.
-% % % tiltGeometry = load(RAWTLT);
 RAWTLT = sprintf('fixedStacks/ctf/%s_ali1_ctf.tlt',tomoName);
 tiltGeometry = load(RAWTLT);
-% subTomoMeta.('tiltGeometry').(mapName) = tiltGeometry;
-
-% Make sure the template and is an even sized image
-template = padarray(template, mod(size(template),2),0, 'post');
-template = template - mean(template(:));
-
-
-templateBIN = BH_reScale3d(gather(template),'',sprintf('%f',1/samplingRate),'cpu');
-
-templateBIN = templateBIN - mean(templateBIN(:));
-templateBIN = templateBIN  ./rms(templateBIN(:));
-
-[templateMask] = (EMC_maskReference(gpuArray(templateBIN),pixelSize,{'fsc', true}));
-templateMask = gather(templateMask);
-
-% templateMask = gather(EMC_maskShape('sphere', size(templateBIN), [3,3,3].*2, 'gpu', {'shift', [0,0,0];'kernel',false}));
-
-
 
 sizeTemp = size(template);
-sizeTempBIN = size(templateBIN);
 
 
 
@@ -254,7 +272,18 @@ else
 end
 
 
-highThr=sqrt(2).*erfcinv(ceil(peakThreshold.*0.10).*2./(prod(size(tomogram)).*nAngles(1)))
+% Guard (#3/#4 packing): RESULTS_angle stores a packed (angle,template) linear
+% index = (angleIdx-1)*nTemplates + refIdx in single precision. Exact-integer
+% representation requires the max packed value nAngles*nTemplates < 2^24.
+if (nAngles(1) .* nTemplates >= flintmax('single'))
+  error(['Packed angle/template index range (%g) exceeds the single-precision ', ...
+         'exact-integer limit 2^24. Reduce the angular sampling or template count.'], ...
+         nAngles(1) .* nTemplates);
+end
+
+% Multiple-comparison trial count spans all (voxel, angle, template) tuples, so
+% nTemplates enters the threshold here (identical to prior behavior at N==1).
+highThr=sqrt(2).*erfcinv(ceil(peakThreshold.*0.10).*2./(prod(size(tomogram)).*nAngles(1).*nTemplates))
 
 
 [ OUTPUT ] = BH_multi_iterator( [targetSize; ...
@@ -495,11 +524,16 @@ firstLoopOverAngles = true;
 
   
 % Avoid repeated allocations
-tempPAD = zeros(size(templateBIN) + padBIN(1,:) + padBIN(2,:),'single','gpuArray');
+tempPAD = zeros(sizeTempBIN + padBIN(1,:) + padBIN(2,:),'single','gpuArray');
 
 use_only_once = false;
-template_interpolator = '';
-[template_interpolator, ~] = interpolator(gpuArray(templateBIN),[0,0,0],[0,0,0], 'Bah', 'forward', 'C1', use_only_once);
+% One interpolator per template. The GPU-resident tomogram chunk (tomoFou) is
+% reused across all templates per angle (#3), so only the small template
+% rotations are repeated -- chunks are pulled/FFT'd once per chunk.
+template_interpolator = cell(1, nTemplates);
+for iTmpl = 1:nTemplates
+  [template_interpolator{iTmpl}, ~] = interpolator(gpuArray(templateBIN_cell{iTmpl}),[0,0,0],[0,0,0], 'Bah', 'forward', 'C1', use_only_once);
+end
 
 % templateMask_interpolator = '';
 % [templateMask_interpolator, ~] = interpolator(gpuArray(templateMask),[0,0,0],[0,0,0], 'Bah', 'forward', 'C1', use_only_once);
@@ -569,13 +603,22 @@ for iTomo = 1:nTomograms
         if (firstLoopOverAngles)
           ANGLE_LIST(currentGlobalAngle,:) = [phi, theta, psi - phi];
         end
+
+        % REQUIREMENT #3: run every template against THIS chunk at THIS angle,
+        % reusing the GPU-resident, already-FFT'd chunk (tomoFou). Template is
+        % the FAST index in the packed value stored in angTmp:
+        %   refIdx   = mod(packed-1, nTemplates) + 1
+        %   angleIdx = floor((packed-1)/nTemplates) + 1   (indexes ANGLE_LIST)
+        for iTmpl = 1:nTemplates
+
+          packed_index = (currentGlobalAngle - 1) .* nTemplates + iTmpl;
         
         
         % rather than using padzeros
         tempPAD = tempPAD .* 0;
         tempPAD(padBIN(1,1)+1: end - padBIN(2,1), ...
           padBIN(1,2)+1: end - padBIN(2,2), ...
-          padBIN(1,3)+1: end - padBIN(2,3)) = template_interpolator.interp3d(...
+          padBIN(1,3)+1: end - padBIN(2,3)) = template_interpolator{iTmpl}.interp3d(...
                                                                             [phi, theta, psi - phi],...
                                                                             [0,0,0],rotConvention,...
                                                                             'forward','C1');
@@ -599,7 +642,7 @@ for iTomo = 1:nTomograms
         if (firstLoopOverChunk)
           %store ccfmap as complex with phase = angle of reference
           magTmp = ccfmap;
-          angTmp = ones(size(magTmp), 'single','gpuArray');
+          angTmp = packed_index .* ones(size(magTmp), 'single','gpuArray');
 
           if (measure_noise_variance)
             ccfmap(abs(ccfmap) > 3) = 0;
@@ -613,7 +656,7 @@ for iTomo = 1:nTomograms
           replaceTmp = ( magTmp < ccfmap );
           
           magTmp(replaceTmp) = ccfmap(replaceTmp);
-          angTmp(replaceTmp) = currentGlobalAngle;
+          angTmp(replaceTmp) = packed_index;
 
           if (measure_noise_variance)
             ccfmap(abs(ccfmap) > 3) = 0;
@@ -624,6 +667,8 @@ for iTomo = 1:nTomograms
           
           clear replaceTmp
         end % end if firstLoopOverChunk
+
+        end % end loop over templates
         currentGlobalAngle = currentGlobalAngle + 1;
 
       end % end psi loop over in plane angles
@@ -735,8 +780,10 @@ SAVE_IMG(mag,{resultsOUT,'half'});
 noiseVarOUT = sprintf('./%s/%s_noise_variance.mrc',convTMPNAME,mapName);
 
 if (measure_noise_variance)
-  n_angles_searched = sum(any(ANGLE_LIST,2));
-  noiseVar = (RESULTS_sum_sq./n_angles_searched - (RESULTS_sum./n_angles_searched).^2);
+  % Noise stats accumulate one ccfmap per (angle, template), so the sample count
+  % spans templates too (#4). At N==1 this is identical to the prior divisor.
+  n_samples = sum(any(ANGLE_LIST,2)) .* nTemplates;
+  noiseVar = (RESULTS_sum_sq./n_samples - (RESULTS_sum./n_samples).^2);
   noiseVar(noiseVar == 0) = 1;
 
   SAVE_IMG(noiseVar,{noiseVarOUT,'half'});
@@ -879,7 +926,10 @@ while n <= search_limit && (this_try < max_tries) && MAX > highThr
     % % %       topPeak = peakM;
     % % %     else
     % Otherwise use the value at the max for the peak val;
-    peakMat(n,4:6) = ANGLE_LIST(Ang(coord),:);
+    % Ang holds the packed (angle,template) index: decode the angle index for the
+    % euler lookup and the template index for the .templateIDX sidecar (#4).
+    peakMat(n,4:6) = ANGLE_LIST(floor((Ang(coord) - 1) ./ nTemplates) + 1,:);
+    peakMat(n,7)   = mod(Ang(coord) - 1, nTemplates) + 1;
     topPeak = Ang(coord);
     % % %     end
     peakMat(n,1:3) = gather(samplingRate.*cenP);
@@ -906,7 +956,9 @@ while n <= search_limit && (this_try < max_tries) && MAX > highThr
             % previous peaks
             iSNR = mean( peakMat(n,10:10:10*(iPeak-1)) ) .* 0.75;
           else
-            iAngles =  ANGLE_LIST(Ang(cAng),:);
+            % Decode packed index: angle for the euler lookup, template for sidecar.
+            iAngles =  ANGLE_LIST(floor((Ang(cAng) - 1) ./ nTemplates) + 1,:);
+            peakMat(n,7+10*(iPeak-1)) = mod(Ang(cAng) - 1, nTemplates) + 1;
           end
         else
           useRandom = true;
@@ -972,9 +1024,15 @@ peakMat = peakMat( ( peakMat(:,1)>0 ),:);
 
 csv_out = sprintf('./%s/%s.csv',convTMPNAME,mapName);
 pos_out = sprintf('./%s/%s.pos',convTMPNAME,mapName);
+% REQUIREMENT #4: per-peak winning-template index in a SEPARATE sidecar so the
+% .csv geometry schema (consumed downstream) is untouched. Row order matches the
+% .csv / .pos peak order; one column per nPeaks sub-peak. A value of 0 marks a
+% randomly-filled sub-peak with no associated template.
+tmplIdx_out = sprintf('./%s/%s.templateIDX',convTMPNAME,mapName);
 %fieldOUT = zeros(length(peakMat(:,1)),26);
 fileID = fopen(csv_out,'w');
 fileID2 = fopen(pos_out,'w');
+fileID3 = fopen(tmplIdx_out,'w');
 errID  = fopen(sprintf('./%s/%s.errID',convTMPNAME,mapName));
 
 
@@ -1011,6 +1069,12 @@ for i = 1:length(peakMat(:,1))
     
     fprintf(fileID,'\n');
     fprintf(fileID2,'%f %f %f\n',peakMat(i,1:3)./samplingRate);
+    % Winning template index per peak (one column per nPeaks sub-peak).
+    fprintf(fileID3,'%d',peakMat(i,7));
+    for iPeak = 2:emc.nPeaks
+      fprintf(fileID3,' %d',peakMat(i,7+10*(iPeak-1)));
+    end
+    fprintf(fileID3,'\n');
     
     
     n = n + 1;
@@ -1021,6 +1085,7 @@ end
 
 fclose(fileID);
 fclose(fileID2);
+fclose(fileID3);
 
 
 
