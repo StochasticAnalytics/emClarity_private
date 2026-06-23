@@ -2,16 +2,10 @@ function [ ] = BH_geometryInitialize( PARAMETER_FILE, varargin )
 %Take a set of coordinates and optionally angles and set up geometry.
 %   For now just BH, but also to work with Relion set up.
 
-% Option for testing euler angles will remove.
-% enable_profiling is now handled in BH_parseParameterFile
-enable_profiling = emc.enable_profiling;
 
 convertEulers = 0;
 direction = '';
 
-if (enable_profiling)
-  profile on;
-end
 
 % Initialize the subTomoMeta structure
 subTomoMeta = struct();
@@ -21,6 +15,8 @@ angleSgn=1;
 convention='Bah';
 direction='fwd';
 emc = BH_parseParameterFile(PARAMETER_FILE);
+
+
 if nargin > 1
   if length(varargin) == 1
     mapBackIter = EMC_str2double(varargin{1});
@@ -390,10 +386,7 @@ subTomoMeta.('maxGoldStandard') = maxGoldStandard;
 BH_saveSubTomoMeta(emc.('subTomoMeta'), subTomoMeta);
 
 
-if (enable_profiling)
-  profile off;
-  profsave;
-end
+
 
 end % end of initialize function
 
