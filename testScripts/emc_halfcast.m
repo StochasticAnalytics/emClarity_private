@@ -1,4 +1,19 @@
 function [output_vol] =  emc_halfcast(input_vol, swap_host_device)
+% Convert between single and FP16-packed uint16, returning a NEW, MATLAB-owned
+% array. The direction is inferred from the input precision:
+%     single  ->  uint16 (FP16 bit pattern)
+%     uint16  ->  single
+%
+% By default the output is on the SAME device as the input. Pass
+% swap_host_device = true to put the output on the OTHER device (e.g. a
+% host-uint16 tomogram -> single gpuArray for processing).
+%
+% Under the hood mexFP16 allocates the output (mxGPUCreateGPUArray for a
+% gpuArray, mxCreateNumericArray for a host array) and returns it; MATLAB then
+% owns and reference-counts it exactly like the result of gpuArray(x). When the
+% output is a gpuArray the conversion runs on the GPU, so a host-uint16 ->
+% gpu-single cast moves only the uint16 bytes across PCIe and never builds a
+% single-precision copy on the host.
 
     if nargin < 2
         swap_host_device = false;
@@ -8,59 +23,25 @@ function [output_vol] =  emc_halfcast(input_vol, swap_host_device)
     if ~(numel(input_vol) > 1)
        error('Input volume to emc_halfcast must have more than one element\n');
     end
-    to_gpu = false;
-    to_cpu = false;
-    to_half = false;
-    
-    % Determin if we are going to or from half based on the input precision.
+
+    % Determine direction from the input precision.
     switch underlyingType(input_vol)
         case 'uint16'
-            to_half = false;
+            to_half = false;   % uint16 (FP16) -> single
         case 'single'
-            to_half = true;
+            to_half = true;    % single -> uint16 (FP16)
         otherwise
             error('Unknown precision');
     end
 
-    % By default, stay on cpu or gpu and just convert type.
-    % If swap_host_device is true, then we will swap to the other device.
+    % Where the output should live: same device by default, the other on swap.
+    input_on_gpu = isa(input_vol, 'gpuArray');
     if (swap_host_device)
-        if isa(input_vol, 'gpuArray')
-            to_cpu = true;
-        else
-            to_gpu = true;
-        end
+        output_on_gpu = ~input_on_gpu;
     else
-        if isa(input_vol, 'gpuArray')
-            to_gpu = true;
-        else
-            to_cpu = true;
-        end
+        output_on_gpu =  input_on_gpu;
     end
 
-    if (to_cpu && to_gpu)
-        error('Cannot convert to and from GPU at the same time');
-    end
-
-    % fprintf("To half: %d\n", to_half);
-    % fprintf("To GPU: %d\n", to_gpu);
-    % fprintf("To CPU: %d\n", to_cpu);
-    % fprintf("Swap: %d\n", swap_host_device);
-
-    if (to_half)
-        if (to_gpu)
-            output_vol = zeros(size(input_vol), 'uint16', 'gpuArray');
-        else
-            output_vol = zeros(size(input_vol), 'uint16');
-        end
-        mexFP16(input_vol, output_vol, to_half, int64(numel(input_vol)));
-    else 
-        if (to_gpu)
-            output_vol = zeros(size(input_vol), 'single', 'gpuArray');
-        else
-            output_vol = zeros(size(input_vol), 'single');
-        end
-        mexFP16(output_vol, input_vol, to_half, int64(numel(input_vol)));
-    end
+    output_vol = mexFP16(input_vol, logical(to_half), logical(output_on_gpu), int64(numel(input_vol)));
 
 end
