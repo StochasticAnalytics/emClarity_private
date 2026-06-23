@@ -25,7 +25,7 @@ rng('shuffle');
 randIDX = randi([1,10^10],1);
 
 if samplingRate > 1
-  nameOUT = sprintf('cache/%s_bin%d%s', imgName, samplingRate, imgExt);
+  nameOUT = sprintf('cache/%s_bin%d%s', imgName, samplingRate, imgExt)
   doCalc = 0;
   if exist(nameOUT,'file')
     fprintf('Using cached file %s_bin%d%s\n', imgName, samplingRate,imgExt);
@@ -35,6 +35,7 @@ if samplingRate > 1
       doCalc = 1;
     end
   else
+    fprintf('file %s not found\n', nameOUT);
     doCalc = 1;
   end
   
