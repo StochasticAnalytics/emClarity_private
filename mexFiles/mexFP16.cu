@@ -5,197 +5,147 @@
 // #define mexFP16_DEBUG_PRINT(args) mexPrintf("%s\n", args)
 #define mexFP16_DEBUG_PRINT(...)
 
+// Element-wise conversion kernels (grid-stride).
 __global__ void convert_fp16_to_fp32(const uint16_t* __restrict__ input_half, float* __restrict__ output_single, const int N) {
-  // Could be improved with a simple vector load.
-  for (int idx = blockIdx.x * blockDim.x + threadIdx.x;  idx < N; idx += gridDim.x * blockDim.x) 
+  for (int idx = blockIdx.x * blockDim.x + threadIdx.x;  idx < N; idx += gridDim.x * blockDim.x)
     output_single[idx] = __half2float(__ushort_as_half(input_half[idx]));
-  
 }
 
 __global__ void convert_fp32_to_fp16(const float* __restrict__ input_single, uint16_t* __restrict__ output_half, const int N) {
-  // Could be improved with a simple vector store.
-  for (int idx = blockIdx.x * blockDim.x + threadIdx.x;  idx < N; idx += gridDim.x * blockDim.x) 
+  for (int idx = blockIdx.x * blockDim.x + threadIdx.x;  idx < N; idx += gridDim.x * blockDim.x)
      output_half[idx] = __half_as_ushort(__float2half_rn(input_single[idx]));
-  
 }
 
-
-
+// out = mexFP16(input, to_half, output_on_gpu, n_elements)
+//
+//   input         : single or uint16 array, on the host or a gpuArray
+//   to_half       : logical. true  -> single -> uint16 (FP16 bit pattern)
+//                            false -> uint16 (FP16) -> single
+//   output_on_gpu : logical. true  -> returned array is a gpuArray
+//                            false -> returned array is on the host
+//   n_elements    : int64, numel(input)
+//
+// The returned array is freshly allocated and OWNED BY MATLAB (gpuArray via
+// mxGPUCreateGPUArray + mxGPUCreateMxArrayOnGPU, or host via mxCreateNumericArray).
+// MATLAB reference-counts and frees it like the result of gpuArray(x); this mex
+// keeps nothing alive. Behaves like new = gpuArray(x) but the precision
+// conversion happens on the GPU, so converting host-uint16 -> gpu-single moves
+// only the (smaller) uint16 bytes across PCIe and never materializes a single
+// copy on the host.
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, mxArray const *prhs[]) {
 
   if (nrhs != 4) {
     mexErrMsgIdAndTxt("MATLAB:mexFP16:rhs",
-                      "This function requires 2 input matrices, a boolean (to_half), and an int (*n_elements).");
+                      "Usage: out = mexFP16(input, to_half(logical), output_on_gpu(logical), n_elements(int64)).");
   }
-  bool single_array_is_on_gpu = false;
-  bool half_array_is_on_gpu = false;
-  // First check to see if we have a gpu arra
-  if (mxIsGPUArray(prhs[0])) {
-    // Now let's see if it isvalid data
-    if (!mxGPUIsValidGPUData(prhs[0])) {
-      mexErrMsgIdAndTxt("MATLAB:mexFP16:rhs",
-                        "This function requires the first input to be a valid gpuArray.");
-    }
-    // And if it is single precision ( written this way causes a segfault, trust that emc_halfcast has done the checking.)
-    // if (mxGPUGetClassID((const mxGPUArray *)prhs[0]) != mxSINGLE_CLASS) {
-    //   mexErrMsgIdAndTxt("MATLAB:mexFP16:rhs",
-    //                     "This function requires the first input to be of type single mxGPUGetClassID.");
-    // }
-    single_array_is_on_gpu = true;  
+  if (!mxIsLogical(prhs[1]) || !mxIsLogical(prhs[2])) {
+    mexErrMsgIdAndTxt("MATLAB:mexFP16:rhs", "Arguments 2 (to_half) and 3 (output_on_gpu) must be logical.");
   }
-  
-  // Same thing for the half array
-  if (mxIsGPUArray(prhs[1])) {
-    if (!mxGPUIsValidGPUData(prhs[1])) {
-      mexErrMsgIdAndTxt("MATLAB:mexFP16:rhs",
-                        "This function requires the second input to be a valid gpuArray.");
-    }
-    //( written this way causes a segfault, trust that emc_halfcast has done the checking.)
-    // if (mxGPUGetClassID((const mxGPUArray *)prhs[1]) != mxUINT16_CLASS) {
-    //    mexPrintf("Here %d\n", __LINE__);
-    //   mexErrMsgIdAndTxt("MATLAB:mexFP16:rhs",
-    //                     "This function requires the second input to be of type uint16 mxGPUGetClassID.");
-    // }
-    half_array_is_on_gpu = true;
-  }
-
-  if (!mxIsLogical(prhs[2])) {
-    mexErrMsgIdAndTxt("MATLAB:mexFP16:rhs",
-                      "This function requires the third input to be of type logical.");
-  }
-
   if (!mxIsInt64(prhs[3])) {
-    mexErrMsgIdAndTxt("MATLAB:mexFP16:rhs",
-                      "This function requires the fourth input to be of type int.");
+    mexErrMsgIdAndTxt("MATLAB:mexFP16:rhs", "Argument 4 (n_elements) must be int64.");
+  }
+  if (mxInitGPU() != MX_GPU_SUCCESS) {
+    mexErrMsgIdAndTxt("MATLAB:mexFP16:gpu", "Could not initialize the MathWorks GPU API.");
   }
 
+  const bool   to_half    = mxIsLogicalScalarTrue(prhs[1]);
+  const bool   out_on_gpu = mxIsLogicalScalarTrue(prhs[2]);
+  const bool   in_on_gpu  = mxIsGPUArray(prhs[0]);
+  const size_t N          = (size_t)(*((int64_t*)mxGetData(prhs[3])));
+  const int    Ni         = (int)N;
 
-  float* input_single;
-  uint16_t* input_uint16;
+  // grid-stride launch config (the kernels loop, so the grid need not cover N).
+  const int threadsPerBlock = 256;
+  long long want_blocks = ((long long)N + threadsPerBlock - 1) / threadsPerBlock;
+  if (want_blocks < 1)     want_blocks = 1;
+  if (want_blocks > 65535) want_blocks = 65535;
+  const int numBlocks = (int)want_blocks;
 
-  // mxGPUCreateFromMxArray will return a read only pointer if the underlying is a matlab gpuArray
-  // To avoid a copy but still get a pointer we can cast the const away.
-  // This seems dodgy as fuck
-  if (single_array_is_on_gpu) {
-    // mexEvalString("pause(3)");
-    mxGPUArray const * inputArray  = mxGPUCreateFromMxArray(prhs[0]);
-    input_single =  (float *) mxGPUGetData((mxGPUArray *)inputArray);
-    // if we don't destroy this array we have a bad memory leak, yet it also doesn't seem like more memory is allocated
-    // inside this block based on pausing and watching.
-    mxGPUDestroyGPUArray(inputArray);
+  // --- acquire the input read-only, plus its shape (output is element-wise) ---
+  mxGPUArray const* inGPU = NULL;
+  mwSize            ndim;
+  mwSize const*     dims  = NULL;   // heap (mxFree) when in_on_gpu; else owned by prhs[0]
+  const void*       in_host = NULL;
+  const void*       in_dev  = NULL;
+
+  if (in_on_gpu) {
+    inGPU  = mxGPUCreateFromMxArray(prhs[0]);
+    ndim   = mxGPUGetNumberOfDimensions(inGPU);
+    dims   = mxGPUGetDimensions(inGPU);
+    in_dev = mxGPUGetDataReadOnly(inGPU);
+  } else {
+    ndim    = mxGetNumberOfDimensions(prhs[0]);
+    dims    = mxGetDimensions(prhs[0]);
+    in_host = mxGetData(prhs[0]);
   }
-  else
-    input_single =  (float *) mxGetData(prhs[0]);
 
-  if (half_array_is_on_gpu) {
-    mxGPUArray const * inputArray  = mxGPUCreateFromMxArray(prhs[1]);
-    input_uint16 = (uint16_t *) mxGPUGetData((mxGPUArray *)inputArray);
-    mxGPUDestroyGPUArray(inputArray);
-  }
-  else
-    input_uint16 = (uint16_t *) mxGetData(prhs[1]);
+  const mxClassID out_class = to_half ? mxUINT16_CLASS : mxSINGLE_CLASS;
 
-  bool* cast_to_fp16 = (bool *) mxGetData(prhs[2]);
-  size_t* n_elements = (size_t *) mxGetData(prhs[3]);
+  if (out_on_gpu) {
+    // -------------------- owned gpuArray output: convert on the GPU --------------------
+    mxGPUArray* outGPU = mxGPUCreateGPUArray(ndim, dims, out_class, mxREAL, MX_GPU_DO_NOT_INITIALIZE);
+    void* out_dev = mxGPUGetData(outGPU);
 
-  const size_t threads = 1024;
-  const size_t blocks = (threads / *n_elements + 1024 - 1) /threads;
-
-
-  // First, we need to take care of any data conversion needed.
-  float* temporary_single;
-  uint16_t* temporary_uint16;
-
-  // Output half on gpu so we need to use the conversion kernel
-  if (cast_to_fp16[0]) {
-    mexFP16_DEBUG_PRINT("Casting to half\n");
-    if (half_array_is_on_gpu) {
-      mexFP16_DEBUG_PRINT("Casting to half that is on device already\n");
-      temporary_uint16 = input_uint16;
-      if (single_array_is_on_gpu) {
-        temporary_single = input_single;
-      } 
+    if (to_half) {
+      const float* src; float* tmp = NULL;
+      if (in_on_gpu) { src = (const float*)in_dev; }
       else {
-        mexFP16_DEBUG_PRINT("Copying single to device\n");
-        checkCudaErrors(cudaMallocAsync(&temporary_single, *n_elements * sizeof(float), cudaStreamPerThread));
-        checkCudaErrors(cudaMemcpyAsync(temporary_single, input_single, *n_elements  * sizeof(float), cudaMemcpyHostToDevice, cudaStreamPerThread));
+        checkCudaErrors(cudaMallocAsync(&tmp, N * sizeof(float), cudaStreamPerThread));
+        checkCudaErrors(cudaMemcpyAsync(tmp, in_host, N * sizeof(float), cudaMemcpyHostToDevice, cudaStreamPerThread));
+        src = tmp;
       }
-      
-      convert_fp32_to_fp16<<<threads, blocks, 0, cudaStreamPerThread>>>(temporary_single, temporary_uint16, *n_elements);
-
-      if (!single_array_is_on_gpu)
-        checkCudaErrors(cudaFreeAsync(temporary_single, cudaStreamPerThread));
-
-      checkCudaErrors(cudaStreamSynchronize(cudaStreamPerThread));
+      convert_fp32_to_fp16<<<numBlocks, threadsPerBlock, 0, cudaStreamPerThread>>>(src, (uint16_t*)out_dev, Ni);
+      checkCudaErrors(cudaPeekAtLastError());
+      if (tmp) checkCudaErrors(cudaFreeAsync(tmp, cudaStreamPerThread));
+    } else {
+      const uint16_t* src; uint16_t* tmp = NULL;
+      if (in_on_gpu) { src = (const uint16_t*)in_dev; }
+      else {
+        checkCudaErrors(cudaMallocAsync(&tmp, N * sizeof(uint16_t), cudaStreamPerThread));
+        checkCudaErrors(cudaMemcpyAsync(tmp, in_host, N * sizeof(uint16_t), cudaMemcpyHostToDevice, cudaStreamPerThread));
+        src = tmp;
+      }
+      convert_fp16_to_fp32<<<numBlocks, threadsPerBlock, 0, cudaStreamPerThread>>>(src, (float*)out_dev, Ni);
+      checkCudaErrors(cudaPeekAtLastError());
+      if (tmp) checkCudaErrors(cudaFreeAsync(tmp, cudaStreamPerThread));
     }
-    else {
-      mexFP16_DEBUG_PRINT("Casting to half that is on host already\n");
-      // Even though we could do this in place, then only copy over the half precision data to the host,
-      // we want to keep the input data un altered.
-      if (single_array_is_on_gpu) {
-        mexFP16_DEBUG_PRINT("Copying single to host\n");
-        checkCudaErrors(cudaMallocHost(&temporary_single, *n_elements * sizeof(float)));
-        checkCudaErrors(cudaMemcpy(temporary_single, input_single, *n_elements  * sizeof(float), cudaMemcpyDeviceToHost));
-checkCudaErrors(cudaStreamSynchronize(cudaStreamPerThread));
-      } 
-      else 
-        temporary_single = input_single;
+    checkCudaErrors(cudaStreamSynchronize(cudaStreamPerThread));
 
-      mexFP16_DEBUG_PRINT(std::to_string(*n_elements));
-      half_float::half* half_ptr = (half_float::half *)(input_uint16);
+    plhs[0] = mxGPUCreateMxArrayOnGPU(outGPU);   // hand the data to MATLAB
+    mxGPUDestroyGPUArray(outGPU);                // wrapper only; data persists via plhs[0]
+  } else {
+    // -------------------- owned host output: convert on the CPU --------------------
+    plhs[0] = mxCreateNumericArray(ndim, dims, out_class, mxREAL);
+    void* out_host = mxGetData(plhs[0]);
 
-      for (int i = 0; i < *n_elements ; i++) {
-        half_ptr[i] = half_float::half(temporary_single[i]);
-      }
-
-      if (single_array_is_on_gpu)
-        checkCudaErrors(cudaFreeHost(temporary_single));
-
+    if (to_half) {
+      const float* src; float* tmp = NULL;
+      if (in_on_gpu) {
+        checkCudaErrors(cudaMallocHost(&tmp, N * sizeof(float)));
+        checkCudaErrors(cudaMemcpy(tmp, in_dev, N * sizeof(float), cudaMemcpyDeviceToHost));
+        src = tmp;
+      } else { src = (const float*)in_host; }
+      half_float::half* dst = (half_float::half*)out_host;
+      for (size_t i = 0; i < N; ++i) dst[i] = half_float::half(src[i]);
+      if (tmp) checkCudaErrors(cudaFreeHost(tmp));
+    } else {
+      const uint16_t* src; uint16_t* tmp = NULL;
+      if (in_on_gpu) {
+        checkCudaErrors(cudaMallocHost(&tmp, N * sizeof(uint16_t)));
+        checkCudaErrors(cudaMemcpy(tmp, in_dev, N * sizeof(uint16_t), cudaMemcpyDeviceToHost));
+        src = tmp;
+      } else { src = (const uint16_t*)in_host; }
+      const half_float::half* src_h = (const half_float::half*)src;
+      float* dst = (float*)out_host;
+      for (size_t i = 0; i < N; ++i) dst[i] = half_float::half_cast<float>(src_h[i]);
+      if (tmp) checkCudaErrors(cudaFreeHost(tmp));
     }
   }
-  else {
-    mexFP16_DEBUG_PRINT("Casting to single\n");
-    // Casting from half to single
-    if (single_array_is_on_gpu) {
-      temporary_single = input_single;
-      if (half_array_is_on_gpu) {
-        temporary_uint16 = input_uint16;
-      } 
-      else {
-        checkCudaErrors(cudaMallocAsync(&temporary_uint16, *n_elements * sizeof(uint16_t), cudaStreamPerThread));
-        checkCudaErrors(cudaMemcpyAsync(temporary_uint16, input_uint16, *n_elements  * sizeof(uint16_t), cudaMemcpyHostToDevice, cudaStreamPerThread));
-      }
-      convert_fp16_to_fp32<<<threads, blocks, 0, cudaStreamPerThread>>>(temporary_uint16, temporary_single, *n_elements);
 
-      if (!half_array_is_on_gpu)
-        checkCudaErrors(cudaFreeAsync(temporary_uint16, cudaStreamPerThread));
-
-checkCudaErrors(cudaStreamSynchronize(cudaStreamPerThread));
-    }
-    else {
-      mexFP16_DEBUG_PRINT("Casting to single that is on host already\n");
-      // the output single is on the host
-      half_float::half* half_ptr = (half_float::half *)(input_uint16);
-      if (half_array_is_on_gpu) {
-        mexFP16_DEBUG_PRINT("Copying half to host\n");
-        checkCudaErrors(cudaMallocHost(&temporary_uint16, *n_elements * sizeof(uint16_t)));
-        checkCudaErrors(cudaMemcpy(temporary_uint16, input_uint16, *n_elements  * sizeof(uint16_t), cudaMemcpyDeviceToHost));
-        checkCudaErrors(cudaStreamSynchronize(cudaStreamPerThread));
-        half_ptr = (half_float::half *)(temporary_uint16);
-      } 
-
-      for (int i = 0; i < *n_elements ; i++) {
-        float tmp = half_float::half_cast<float>(half_ptr[i]);
-        input_single[i] = half_float::half_cast<float>(half_ptr[i]);
-      }
-
-      if (half_array_is_on_gpu)
-        checkCudaErrors(cudaFreeHost(temporary_uint16));
-    }
-  } // end if if cast to fp16 else to single
-
+  if (in_on_gpu) {
+    mxFree((void*)dims);                       // mxGPUGetDimensions allocates this
+    mxGPUDestroyGPUArray((mxGPUArray*)inGPU);  // release the read-only input view
+  }
 
   return;
-
-    
 }
