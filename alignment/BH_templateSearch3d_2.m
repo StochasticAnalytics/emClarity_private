@@ -391,7 +391,7 @@ if (test_half)
   wanted_storage_precision = 'uint16';
 end
 
- = zeros([sizeChunk,nTomograms], wanted_storage_precision);
+tomoStack = zeros([sizeChunk,nTomograms], wanted_storage_precision);
 % tomoNonZero = zeros(nTomograms,6,'uint64');
 
 % backgroundVol = zeros(sizeChunk,'single');
