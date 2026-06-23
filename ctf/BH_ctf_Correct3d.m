@@ -264,17 +264,16 @@ try
 catch
   delete(gcp('nocreate'))
   EMC_parpool(nParProcesses)
-end 
+end
 
 
 parfor iParProc = 1:nParProcesses
-% for iParProc = 1:nParProcesses % revert
+%for iParProc = 1:nParProcesses 
   % iGPU = mod(iParProc,nGPUs);
   for iTilt = iterList{iParProc}
     nTomos = 0;
     alreadyMade = 0;
     
-
     % For now, since the tilt geometry is not necessarily updated (it is manual)
     % in the subTomoMeta, check that newer (possible perTilt refined) data is
     % not present.
@@ -302,7 +301,9 @@ parfor iParProc = 1:nParProcesses
         % The order of tomo num could be off but only if all are present do we
         % skip.
         alt_cache = emc.alt_cache;
+        fprintf('before\n');
         checkRecon = EMC_checkCacheForFile(alt_cache, sprintf('cache/%s_bin%d%s.rec',  tomoList{iTomo}, samplingRate, filtered));
+        fprintf('after\n');
         if isfile(checkRecon)
           try 
             % Could have a corrupt file
@@ -340,7 +341,7 @@ end
 
 % All data is handled through disk i/o so everything unique created in the
 parfor iParProc = 1:nParProcesses
-  % for iParProc = 1:nParProcesses %
+%for iParProc = 1:nParProcesses 
     iGPU = mod(iParProc,nGPUs);
 % for iGPU = 1:nGPUs %
 
@@ -350,6 +351,7 @@ parfor iParProc = 1:nParProcesses
   for iTilt = iterList{iParProc}
     slab_list = {};
     
+
     TLTNAME = sprintf('fixedStacks/ctf/%s_ali%d_ctf.tlt', tiltList{iTilt}, mapBackIter + 1 );
     TLT = load(TLTNAME);
     fprintf('iParProc %d and iTilt %d using TLT %s\n', iParProc, iTilt, TLTNAME);
@@ -385,7 +387,7 @@ parfor iParProc = 1:nParProcesses
     
     if samplingRate > 1
       % For now, we are only using the alt_cache for the tomos
-      fullStack = sprintf('%aliStacks/%s_ali%d.fixed', tiltList{iTilt}, mapBackIter + 1);
+      fullStack = sprintf('aliStacks/%s_ali%d.fixed', tiltList{iTilt}, mapBackIter + 1);
       alt_cache = emc.alt_cache;
       inputStack = EMC_setCacheForFile(alt_cache, sprintf('cache/%s_ali%d_bin%d.fixed', tiltList{iTilt}, mapBackIter + 1, samplingRate));
       % Check if the file exists using the cache selection logic
