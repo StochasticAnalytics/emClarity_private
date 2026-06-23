@@ -188,6 +188,18 @@ catch
   flgPcaShapeMask = 1;
 end
 
+% Parallel multi-GPU subtomo extraction (opt-in). Set Pca_parallel=1 in the param
+% to distribute the per-tomogram extraction across the node's GPUs (parfor, one
+% worker per GPU). Default 0 keeps the original serial path, which also serves as
+% the A/B oracle. The parallel path carries the id->column mapping explicitly via
+% idxList/peakList (downstream BH_clusterPub joins by particleIDX), so column
+% order is free. See local_pca_extractTomo / local_pca_gpuState below.
+try
+  flgParallel = emc.('Pca_parallel');
+catch
+  flgParallel = 0;
+end
+
 % The defaults used in fscGold are modified here to make a more permissive
 % mask since we are concerned with densities that are likely damped during
 % averaging due to low occupancy.
@@ -647,6 +659,132 @@ for iGold = 1:1+flgGold
     nSUBSET = nSUBSET*emc.nPeaks;
   end
   
+  if (flgParallel)
+    % ===================== PARALLEL multi-GPU extraction =====================
+    % Distribute the per-tomogram extraction over the node's GPUs (mirrors the
+    % BH_average3d / BH_alignRaw3d_v2 idiom). Each worker emits its own kept
+    % columns as a sliced cell output; reassembled (order-free) after the parfor.
+    clear dataMatrix tempDataMatrix
+    dataMatrix = cell(emc.n_scale_spaces,1);
+    idxList  = [];
+    peakList = [];
+    nIgnored = 0;
+
+    % avgMotif_FT may be a device-1 gpuArray; gather to host so each worker can
+    % re-upload it onto ITS OWN GPU (gpuArrays are bound to the creating device).
+    avgMotif_FT_host = cell(1,emc.n_scale_spaces);
+    for iScale = 1:emc.n_scale_spaces
+      avgMotif_FT_host{iScale} = gather(avgMotif_FT{iGold, iScale});
+    end
+
+    [ nParProcesses, iterList ] = BH_multi_parallelJobs(nTomograms, emc.nGPUs, sizeCalc(1), emc.nGPUs);
+    fprintf('PCA parallel extraction: %d partitions over %d GPUs\n', nParProcesses, emc.nGPUs);
+
+    dataResults     = cell(nParProcesses,1);
+    idxResults      = cell(nParProcesses,1);
+    peakResults     = cell(nParProcesses,1);
+    skipResults     = cell(nParProcesses,1);
+    nIgnoredResults = zeros(nParProcesses,1);
+
+    % Clear all GPUs before entering the loop.
+    for iGPU = 1:emc.nGPUs
+      gpuDevice(iGPU);
+    end
+
+    % Extraction pool: one worker per GPU to start (extraction is GPU-bound).
+    try
+      EMC_parpool(nParProcesses);
+    catch
+      delete(gcp('nocreate'));
+      EMC_parpool(nParProcesses);
+    end
+
+    parVect = 1:nParProcesses;
+    parfor iParProc = parVect
+      % Pin this worker to its GPU, then build its own GPU-resident masks + avg.
+      gpuIDXList = mod(parVect+emc.nGPUs,emc.nGPUs)+1;
+      gpuDevice(gpuIDXList(iParProc));
+      [ gpuMasks_w, avgMotif_w ] = local_pca_gpuState(masks, avgMotif_FT_host, ...
+        stHALF, emc, test_multi_ref_diffmap, use_notch_filter);
+
+      data_w = cell(emc.n_scale_spaces,1);
+      for iScale = 1:emc.n_scale_spaces
+        data_w{iScale} = zeros(nPixels(iGold,iScale), 0, 'single');
+      end
+      idx_w = []; peak_w = []; skip_w = zeros(0,3); nIgnored_w = 0;
+
+      for iTomo = iterList{iParProc}
+        [ td, tidx, tpeak, tskip, tnIg ] = local_pca_extractTomo( ...
+          iTomo, tomoList, geometry, subTomoMeta, emc, gpuMasks_w, avgMotif_w, ...
+          masks, stHALF, nPixels, iGold, samplingRate, pixelSize, CUTPADDING, ...
+          sizeWindow, maskRadius, padWindow, wiener_constant, mapBackIter, ...
+          flgGold, oddRot, aliParams, flgNorm, test_multi_ref_diffmap, use_notch_filter);
+        for iScale = 1:emc.n_scale_spaces
+          data_w{iScale} = [data_w{iScale}, td{iScale}];
+        end
+        idx_w = [idx_w, tidx]; peak_w = [peak_w, tpeak];
+        skip_w = [skip_w; tskip]; nIgnored_w = nIgnored_w + tnIg;
+      end
+
+      dataResults{iParProc}     = data_w;
+      idxResults{iParProc}      = idx_w;
+      peakResults{iParProc}     = peak_w;
+      skipResults{iParProc}     = skip_w;
+      nIgnoredResults(iParProc) = nIgnored_w;
+    end
+
+    % Reset GPUs and drop the extraction pool before the SVD pool is made.
+    for iGPU = 1:emc.nGPUs
+      gpuDevice(iGPU);
+    end
+    delete(gcp('nocreate'));
+
+    % Reassemble outside the parfor. Column order is free (consumer joins by id),
+    % so plain concatenation in partition order is correct.
+    for iScale = 1:emc.n_scale_spaces
+      dataMatrix{iScale} = zeros(nPixels(iGold,iScale), 0, 'single');
+    end
+    for iParProc = 1:nParProcesses
+      for iScale = 1:emc.n_scale_spaces
+        dataMatrix{iScale} = [dataMatrix{iScale}, dataResults{iParProc}{iScale}];
+      end
+      idxList  = [idxList,  idxResults{iParProc}];
+      peakList = [peakList, peakResults{iParProc}];
+      nIgnored = nIgnored + nIgnoredResults(iParProc);
+    end
+
+    % Apply the deferred ignore (-9999) writes serially. They target subTomoMeta,
+    % NOT the control-flow `geometry`, so deferral cannot change this pass.
+    for iParProc = 1:nParProcesses
+      sk = skipResults{iParProc};
+      for iSkip = 1:size(sk,1)
+        it = sk(iSkip,1); pid = sk(iSkip,2); pk = sk(iSkip,3);
+        eraseIDX = subTomoMeta.(cycleNumber).(geom_name).(tomoList{it})(:,4) == pid;
+        subTomoMeta.(cycleNumber).(geom_name).(tomoList{it})(eraseIDX, 26+pk*26) = -9999;
+      end
+    end
+
+    % Mirror the serial post-extraction bookkeeping (was :953-985).
+    for iScale = 1:emc.n_scale_spaces
+      masks.('binary').(stHALF).(sprintf('s%d',iScale)) = ...
+        reshape(masks.('binary').(stHALF).(sprintf('s%d',iScale)),sizeMask);
+    end
+    subTomoMeta.(cycleNumber).('newIgnored_PCA').(halfSet) = gather(nIgnored);
+    BH_saveSubTomoMeta(emc.('subTomoMeta'), subTomoMeta);
+
+    % Columns are built kept-only by concatenation (no zero-pad to strip, unlike
+    % the serial cleanIDX=idxList~=0). Guard the equivalent invariant.
+    if any(idxList == 0)
+      error('PCA parallel: unexpected particleIDX==0 in idxList');
+    end
+    for iScale = 1:emc.n_scale_spaces
+      % Center the rows
+      for row = 1:size(dataMatrix{iScale},1)
+        dataMatrix{iScale}(row,:) = dataMatrix{iScale}(row,:) -  mean(double(dataMatrix{iScale}(row,:)));
+      end
+    end
+    % =================== end PARALLEL multi-GPU extraction ===================
+  else
   % Initialize array in main memory for pca
   clear dataMatrix tempDataMatrix
   dataMatrix = cell(3,1);
@@ -983,10 +1121,22 @@ for iGold = 1:1+flgGold
       dataMatrix{iScale}(row,:) = dataMatrix{iScale}(row,:) -  mean(double(dataMatrix{iScale}(row,:)));
     end
   end
+
+  end  % if (flgParallel): parallel multi-GPU extraction | else: serial extraction
   
   
   
   
+  % A/B oracle dump (only when env EMC_PCA_DUMP is set): save the centered
+  % dataMatrix + idxList + peakList so a parallel run can be diffed column-for-
+  % column against a serial one (sort both by idxList first; svds is unseeded, so
+  % compare the pre-SVD inputs, not coeffs). Off in production.
+  if ~isempty(getenv('EMC_PCA_DUMP'))
+    save(sprintf('%s_%s_dataMatrixDUMP.mat',outputPrefix,halfSet), ...
+      'dataMatrix','idxList','peakList','-v7.3');
+    fprintf('EMC_PCA_DUMP: wrote %s_%s_dataMatrixDUMP.mat\n', outputPrefix, halfSet);
+  end
+
   %save('preparpoolSave.mat');
   try
     EMC_parpool(nCores);
@@ -1185,5 +1335,205 @@ end % end of loop over halfsets
 gpuDevice(1);
 delete(gcp('nocreate'));
 end % end of pca function
+
+
+% =================== local helpers for parallel pca extraction ===================
+
+function [ gpuMasks_w, avgMotif_w ] = local_pca_gpuState(masks, avgMotif_FT_host, ...
+  stHALF, emc, test_multi_ref_diffmap, use_notch_filter)
+% Build this worker's GPU-resident masks + filtered average on the CURRENTLY
+% selected GPU (caller already did gpuDevice(...)). gpuArrays are bound to their
+% creating device, so this MUST run per worker rather than broadcasting a device-1
+% copy. Inputs are host arrays (masks.* are gather()'d upstream; avgMotif gathered
+% by the caller). This reproduces the serial gpuMasks build (BH_pcaPub :661-681).
+gpuMasks_w = struct();
+avgMotif_w = cell(1,emc.n_scale_spaces);
+for iScale = 1:emc.n_scale_spaces
+  stSCALE = sprintf('s%d',iScale);
+  gpuMasks_w.('volMask').(stSCALE)     = gpuArray(masks.('volMask').(stHALF).(stSCALE));
+  gpuMasks_w.('binary').(stSCALE)      = gpuArray(masks.('binary').(stHALF).(stSCALE));
+  gpuMasks_w.('binaryApply').(stSCALE) = gpuArray(masks.('binaryApply').(stHALF).(stSCALE));
+  if ~(test_multi_ref_diffmap)
+    gpuMasks_w.('scaleMask').(stSCALE) = gpuArray(masks.('scaleMask').(stSCALE));
+  end
+  gpuMasks_w.('highPass').(stSCALE)    = gpuArray(masks.('highPass').(stSCALE));
+  if (use_notch_filter && ~test_multi_ref_diffmap)
+    gpuMasks_w.('highPass').(stSCALE)  = gpuMasks_w.('highPass').(stSCALE) .* gpuArray(masks.('scaleMask').(stSCALE));
+  end
+  avgMotif_w{iScale} = gpuArray(avgMotif_FT_host{iScale});
+end
+end
+
+
+function [ td, tidx, tpeak, tskip, tnIgnored ] = local_pca_extractTomo( ...
+  iTomo, tomoList, geometry, subTomoMeta, emc, gpuMasks_w, avgMotif_w, ...
+  masks, stHALF, nPixels, iGold, samplingRate, pixelSize, CUTPADDING, ...
+  sizeWindow, maskRadius, padWindow, wiener_constant, mapBackIter, ...
+  flgGold, oddRot, aliParams, flgNorm, test_multi_ref_diffmap, use_notch_filter) %#ok<INUSL>
+% Extract the wedge-masked-difference columns for ONE tomogram. Faithful port of
+% the serial per-tomo body (BH_pcaPub :702-948); only the bookkeeping changed:
+%   - kept columns returned in td{iScale} (host) with tidx/tpeak the id/peak;
+%   - skips returned in tskip = [iTomo, particleIDX, iPeak] and applied to
+%     subTomoMeta by the CALLER (never mutate the broadcast struct in a parfor);
+%   - iScale is set explicitly to the coarsest scale before the wedge setup (the
+%     serial code relied on a leftover loop value there; parfor would treat it as
+%     an uninitialised temporary, and the value is load-bearing for wdgBP).
+
+tomoName = tomoList{iTomo};
+iGPU = 1;
+reconCoords = subTomoMeta.mapBackGeometry.tomoCoords.(tomoName);
+TLT = subTomoMeta.('tiltGeometry').(tomoName);
+
+if (emc.flgCutOutVolumes)
+  volumeData = [];
+  volHeader = [];
+else
+  do_load = false;
+  [ volumeData ] = BH_multi_loadOrBuild(emc.alt_cache, tomoName, mapBackIter, ...
+                                        samplingRate, iGPU, do_load);
+  volHeader = getHeader(volumeData);
+end
+
+positionList = geometry.(tomoName);
+positionList = positionList(positionList(:,26) ~= -9999,:);
+nSubTomos = size(positionList,1);
+fprintf('Working on %s (tomo %d): %d subTomos\n', tomoName, iTomo, nSubTomos);
+
+% Upper bound on kept columns for this tomo; trimmed at the end.
+nCand = max(nSubTomos * emc.nPeaks, 1);
+td = cell(emc.n_scale_spaces,1);
+for iScale = 1:emc.n_scale_spaces
+  td{iScale} = zeros(nPixels(iGold,iScale), nCand, 'single');
+end
+tidx = zeros(1,nCand);
+tpeak = zeros(1,nCand);
+tskip = zeros(0,3);
+tnIgnored = 0;
+kept = 0;
+
+% Make the serial "leftover iScale at the coarsest scale" explicit (see header).
+iScale = emc.n_scale_spaces;
+
+radialMask = '';
+if (flgNorm)
+  [radialGrid,~,~,~,~,~] = BH_multi_gridCoordinates(size(avgMotif_w{iScale}),'Cartesian',...
+    'GPU',{'none'},1,0,1);
+  bins = radialGrid(1:floor(size(avgMotif_w{iScale},1)/2),1,1);
+  bins = bins(bins < 0.5);
+  radialMask = cell(length(bins)-1,1);
+  for iBin = 1:length(bins)-1
+    radialMask{iBin} = find(radialGrid >= bins(iBin) & radialGrid < bins(iBin+1));
+  end
+  radialGrid = '';
+end
+
+wdgBP = ifftshift(gpuMasks_w.('highPass').(sprintf('s%d',iScale)));
+for iSubTomo = 1:nSubTomos
+  includeParticle = positionList(iSubTomo, 8);
+  particleIDX = positionList(iSubTomo, 4);
+  iPeak = 0;
+  if (includeParticle)
+    make_sf3d = true;
+    for iPeak = 0:emc.nPeaks-1
+      center = positionList(iSubTomo,[11:13]+26*iPeak)./samplingRate;
+      angles = positionList(iSubTomo,[17:25]+26*iPeak);
+
+      if ( make_sf3d )
+        make_sf3d = false;
+        padWdg = [0,0,0;0,0,0];
+        [ wedgeMask ] = BH_weightMaskMex(sizeWindow, samplingRate, TLT, center, reconCoords, wiener_constant);
+      end
+
+      if positionList(iSubTomo,7) == 1
+        angles = reshape(angles,3,3) * oddRot;
+      end
+      wedgeMask = wedgeMask .* wdgBP;
+
+      if (emc.flgCutOutVolumes)
+        [ indVAL, padVAL, shiftVAL ] = BH_isWindowValid(2*CUTPADDING+sizeWindow, sizeWindow, maskRadius, center);
+      else
+        [ indVAL, padVAL, shiftVAL ] = BH_isWindowValid([volHeader.nX,volHeader.nY,volHeader.nZ], sizeWindow, maskRadius, center);
+      end
+
+      if ~(flgGold)
+        shiftVAL = shiftVAL + aliParams(2,1:3)./samplingRate;
+      end
+
+      using_this_subtomo = true;
+      cand = kept + 1;   % candidate column for this (subtomo,peak)
+      if ~ischar(indVAL)
+        if (emc.flgCutOutVolumes)
+          particleOUT_name = sprintf('cache/subtomo_%0.7d_%d.mrc',positionList(iSubTomo,4),iPeak+1);
+          iParticle = gpuArray(OPEN_IMG('single',particleOUT_name,...
+            [indVAL(1,1),indVAL(2,1)],[indVAL(1,2),indVAL(2,2)],[indVAL(1,3),indVAL(2,3)],'keep'));
+        else
+          iParticle = gpuArray(OPEN_IMG('single', volumeData,[indVAL(1,1),indVAL(2,1)], ...
+            [indVAL(1,2),indVAL(2,2)],[indVAL(1,3),indVAL(2,3)],'keep'));
+        end
+
+        if any(padVAL(:))
+          [ iParticle ] = BH_padZeros3d(iParticle, padVAL(1,1:3), padVAL(2,1:3), 'GPU', 'single');
+        end
+
+        use_only_once = true;
+        [ ~, iParticle ] = interpolator(gpuArray(iParticle),angles, shiftVAL, 'Bah', 'inv', emc.symmetry, use_only_once);
+        [ ~, iWedge ] = interpolator(gpuArray(wedgeMask),angles,[0,0,0], 'Bah', 'inv', emc.symmetry, use_only_once);
+
+        iParticle = iParticle(padWindow(1,1)+1 : end - padWindow(2,1), ...
+                              padWindow(1,2)+1 : end - padWindow(2,2), ...
+                              padWindow(1,3)+1 : end - padWindow(2,3));
+
+        for iScale = 1:emc.n_scale_spaces
+          iTrimParticle = iParticle;
+          if ~(test_multi_ref_diffmap) && ~(use_notch_filter)
+            iTrimParticle = EMC_convn(iTrimParticle , gpuMasks_w.('scaleMask').(sprintf('s%d',iScale)));
+          end
+          iTrimParticle = BH_bandLimitCenterNormalize( ...
+            iTrimParticle .* gpuMasks_w.('volMask').(sprintf('s%d',iScale)), ...
+            gpuMasks_w.('highPass').(sprintf('s%d',iScale)),...
+            gpuMasks_w.('binary').(sprintf('s%d',iScale)),...
+            [0,0,0;0,0,0],'single');
+          [iWmd,~] = BH_diffMap(avgMotif_w{iScale},iTrimParticle,ifftshift(iWedge),...
+            flgNorm,pixelSize,radialMask, padWdg);
+          if all(isfinite(iWmd(gpuMasks_w.('binary').(sprintf('s%d',iScale)))))
+            td{iScale}(:,cand) = gather(single(iWmd(gpuMasks_w.('binary').(sprintf('s%d',iScale)))));
+          else
+            fprintf('inf or nan in subtomo %d scaleSpace %d\n',particleIDX, iScale);
+            using_this_subtomo = false;
+          end
+        end % loop on scale spaces
+        clear iWmd
+
+        if (using_this_subtomo)
+          tidx(cand) = particleIDX;
+          tpeak(cand) = iPeak+1;
+          kept = cand;
+        else
+          tnIgnored = tnIgnored + 1;
+          tskip(end+1,:) = [iTomo, particleIDX, iPeak]; %#ok<AGROW>
+        end
+      else
+        tnIgnored = tnIgnored + 1;
+        tskip(end+1,:) = [iTomo, particleIDX, iPeak]; %#ok<AGROW>
+      end
+    end % loop over peaks
+  else
+    tnIgnored = tnIgnored + 1;
+    if ~(emc.Pca_randSubset)
+      tskip(end+1,:) = [iTomo, particleIDX, iPeak]; %#ok<AGROW>
+    end
+  end
+  if ~rem(iSubTomo,100)
+    fprintf('tomo %d: %d/%d subTomo, kept %d, ignored %d\n', iTomo, iSubTomo, nSubTomos, kept, tnIgnored);
+  end
+end % loop over subTomos
+
+for iScale = 1:emc.n_scale_spaces
+  td{iScale} = td{iScale}(:,1:kept);
+end
+tidx = tidx(1:kept);
+tpeak = tpeak(1:kept);
+clear volumeData
+end
 
 
