@@ -281,9 +281,13 @@ if (nAngles(1) .* nTemplates >= flintmax('single'))
          nAngles(1) .* nTemplates);
 end
 
-% Multiple-comparison trial count spans all (voxel, angle, template) tuples, so
-% nTemplates enters the threshold here (identical to prior behavior at N==1).
-highThr=sqrt(2).*erfcinv(ceil(peakThreshold.*0.10).*2./(prod(size(tomogram)).*nAngles(1).*nTemplates))
+% Threshold trial count is the ANGLE search only (prod(tomogram)*nAngles), NOT
+% scaled by nTemplates: the combined-max noise floor must stay invariant to
+% template COUNT so that passing the same reference twice reproduces the
+% single-reference detections (negative control). Searching additional DISTINCT
+% templates raises detections by finding more particles, not by moving this
+% floor; sensitivity remains the user's peakThreshold.
+highThr=sqrt(2).*erfcinv(ceil(peakThreshold.*0.10).*2./(prod(size(tomogram)).*nAngles(1)))
 
 
 [ OUTPUT ] = BH_multi_iterator( [targetSize; ...
@@ -387,7 +391,7 @@ if (test_half)
   wanted_storage_precision = 'uint16';
 end
 
-tomoStack = zeros([sizeChunk,nTomograms], wanted_storage_precision);
+ = zeros([sizeChunk,nTomograms], wanted_storage_precision);
 % tomoNonZero = zeros(nTomograms,6,'uint64');
 
 % backgroundVol = zeros(sizeChunk,'single');
@@ -644,7 +648,10 @@ for iTomo = 1:nTomograms
           magTmp = ccfmap;
           angTmp = packed_index .* ones(size(magTmp), 'single','gpuArray');
 
-          if (measure_noise_variance)
+          % Noise stats from the FIRST template only: keeps the noise-variance
+          % estimate the single-template angle-search floor, invariant to template
+          % count (the noise machinery must not change for the multi-template case).
+          if (measure_noise_variance && iTmpl == 1)
             ccfmap(abs(ccfmap) > 3) = 0;
             sumTmp = ccfmap;
             sumSqTmp = ccfmap.^2;
@@ -658,7 +665,7 @@ for iTomo = 1:nTomograms
           magTmp(replaceTmp) = ccfmap(replaceTmp);
           angTmp(replaceTmp) = packed_index;
 
-          if (measure_noise_variance)
+          if (measure_noise_variance && iTmpl == 1)
             ccfmap(abs(ccfmap) > 3) = 0;
             sumTmp = sumTmp + ccfmap;
             sumSqTmp = sumSqTmp + ccfmap.^2;
@@ -732,7 +739,7 @@ for iTomo = 1:nTomograms
     clear sumSqStoreTmp
     
     firstLoopOverAngles = false;
-  end  
+  end
 end
 %save('angle_list.txt','angle_list','-ascii');
 clear tomoStack
@@ -757,8 +764,15 @@ end
 
 
 
-gpuDevice(useGPU);
-clear bhF
+% Free the search-phase GPU resources: bhF (cuFFT plans) and the template
+% interpolators (texture/cudaArray objects). Clearing these returns their GPU
+% memory to MATLAB's reuse pool and destroys the cuFFT/texture handles while
+% their CUDA context is still valid, leaving a clean device for peak extraction.
+% (Previously this point did a gpuDevice(useGPU) reset for the same purpose, but
+% the reset tore down the context these still-live handles belonged to -> a
+% dead-context segfault in their destructors on a re-run; clearing is sufficient
+% and the reset is removed.)
+clear bhF template_interpolator
 
 
 % scale the magnitude of the results to be 0 : 1
@@ -780,10 +794,11 @@ SAVE_IMG(mag,{resultsOUT,'half'});
 noiseVarOUT = sprintf('./%s/%s_noise_variance.mrc',convTMPNAME,mapName);
 
 if (measure_noise_variance)
-  % Noise stats accumulate one ccfmap per (angle, template), so the sample count
-  % spans templates too (#4). At N==1 this is identical to the prior divisor.
-  n_samples = sum(any(ANGLE_LIST,2)) .* nTemplates;
-  noiseVar = (RESULTS_sum_sq./n_samples - (RESULTS_sum./n_samples).^2);
+  % Noise stats are accumulated from the first template only (gated iTmpl==1 in the
+  % search loop), so the divisor is the angle count alone and the estimate equals
+  % the single-template noise floor regardless of template count.
+  n_angles_searched = sum(any(ANGLE_LIST,2));
+  noiseVar = (RESULTS_sum_sq./n_angles_searched - (RESULTS_sum./n_angles_searched).^2);
   noiseVar(noiseVar == 0) = 1;
 
   SAVE_IMG(noiseVar,{noiseVarOUT,'half'});
