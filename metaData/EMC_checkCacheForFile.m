@@ -20,7 +20,7 @@ function outPath = EMC_checkCacheForFile(alt_cache, relPath)
 %   - This helper is intended only for cached image files under cache/.
 %   - alt_cache entries should be writable directories (validated at parse time).
 
-DEBUG = true; % set true for verbose debug prints
+DEBUG = false; % set true for verbose debug prints
 
 % Validate inputs
 if nargin < 2
@@ -55,7 +55,11 @@ end
 % Use provided alt_cache list
 alt_list = alt_cache;
 if isempty(alt_list)
-  error('EMC_checkCacheForFile: not found in cache/ and alt_cache is empty: %s', relPath);
+  if DEBUG
+    fprintf('EMC_checkCacheForFile: not found in cache/ and alt_cache list is empty, returning original: %s\n', relPath);
+  end
+  outPath = relPath;
+  return;
 end
 if ~iscell(alt_list)
   alt_list = {alt_list};

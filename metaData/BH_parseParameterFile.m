@@ -238,14 +238,31 @@ if ~isfield(emc, 'alt_cache')
   emc.alt_cache = {};
 else
   t = strsplit(emc.alt_cache, ',');
+
   % Clear and we'll repopulate as a cell
   emc.alt_cache = cell(length(t),1);
+
   for i = 1:length(t)
-    if ~(isfolder(t{i}))
-      error('alt_cache directory does not exist: %s', t{i});
-    else
-      emc.alt_cache{i} = t{i};
+    cache_dir = strtrim(t{i});
+
+    if ~isfolder(cache_dir)
+      parent_dir = fileparts(cache_dir);
+
+      if isempty(parent_dir)
+        parent_dir = pwd;
+      end
+
+      if ~isfolder(parent_dir)
+        error('alt_cache parent directory does not exist: %s', parent_dir);
+      end
+
+      [ok, msg] = mkdir(cache_dir);
+      if ~ok
+        error('failed to create alt_cache directory: %s (%s)', cache_dir, msg);
+      end
     end
+
+    emc.alt_cache{i} = cache_dir;
   end
 end
 

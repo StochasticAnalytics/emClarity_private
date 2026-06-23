@@ -22,7 +22,7 @@ function outPath = EMC_setCacheForFile(alt_cache, inPath)
 %   - alt_cache directories are validated in parameter parsing; we still
 %     check existence defensively and skip missing ones.
 
-DEBUG = true; % verbose debug prints
+DEBUG = false; % verbose debug prints
 
 % Validate inputs
 if nargin < 2
