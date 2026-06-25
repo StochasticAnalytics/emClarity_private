@@ -470,6 +470,20 @@ else
   emc.Pca_use_real_space_conv = false;
 end
 
+% Multi-GPU parallel subtomo extraction in BH_pcaPub. Default on; set
+% Pca_parallel=0 to select the original serial extraction path.
+if isfield(emc, 'Pca_parallel')
+  EMC_assert_boolean(emc.Pca_parallel);
+else
+  emc.Pca_parallel = true;
+end
+
+if isfield(emc, 'flgPcaShapeMask')
+  EMC_assert_boolean(emc.flgPcaShapeMask);
+else
+  emc.flgPcaShapeMask = true;
+end
+
 if isfield(emc, 'Pca_som_coverSteps')
   EMC_assert_numeric(emc.Pca_som_coverSteps, 1, [1, 1000]);
 else

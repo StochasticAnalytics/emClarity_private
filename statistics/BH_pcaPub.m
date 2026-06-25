@@ -182,23 +182,15 @@ outputPrefix   = sprintf('%s_%s', cycleNumber, emc.('subTomoMeta'));
 
 
 flgNorm = 1;% emc.('flgNormalizeWMDs');
-try
-  flgPcaShapeMask = emc.('flgPcaShapeMask');
-catch
-  flgPcaShapeMask = 1;
-end
+flgPcaShapeMask = emc.('flgPcaShapeMask');
 
-% Parallel multi-GPU subtomo extraction (opt-in). Set Pca_parallel=1 in the param
-% to distribute the per-tomogram extraction across the node's GPUs (parfor, one
-% worker per GPU). Default 0 keeps the original serial path, which also serves as
-% the A/B oracle. The parallel path carries the id->column mapping explicitly via
-% idxList/peakList (downstream BH_clusterPub joins by particleIDX), so column
-% order is free. See local_pca_extractTomo / local_pca_gpuState below.
-try
-  flgParallel = emc.('Pca_parallel');
-catch
-  flgParallel = 0;
-end
+% Parallel multi-GPU subtomo extraction. Default on (Pca_parallel defaults
+% true in BH_parseParameterFile); set Pca_parallel=0 to select the original
+% serial path. The parallel path carries the id->column mapping explicitly
+% via idxList/peakList (downstream BH_clusterPub joins by particleIDX), so
+% column order is free.
+% See local_pca_extractTomo / local_pca_gpuState below.
+flgParallel = emc.('Pca_parallel');
 
 % The defaults used in fscGold are modified here to make a more permissive
 % mask since we are concerned with densities that are likely damped during
@@ -207,16 +199,9 @@ emc.shape_mask_lowpass = emc.shape_mask_lowpass + 10;
 emc.shape_mask_threshold = emc.shape_mask_threshold - 0.4;
 
 
-try
-  tmpVal = emc.('whitenPS');
-  if (numel(tmpVal) == 3)
-    wiener_constant = tmpVal(3);
-  else
-    error('flgWhitenPS should be a 3 element vector');
-  end
-catch
-  wiener_constant = 0.0;
-end
+% wiener_constant is whitenPS(3); both validated and defaulted in
+% BH_parseParameterFile (whitenPS asserted as a 3-element vector there).
+wiener_constant = emc.('wiener_constant');
 
 
 
@@ -1101,7 +1086,6 @@ for iGold = 1:1+flgGold
   
   subTomoMeta.(cycleNumber).('newIgnored_PCA').(halfSet) = gather(nIgnored);
   
-  subTomoMeta = subTomoMeta;
   % Save using wrapper
   BH_saveSubTomoMeta(emc.('subTomoMeta'), subTomoMeta);
   
