@@ -677,7 +677,11 @@ for iGold = 1:1+flgGold
       avgMotif_FT_host{iScale} = gather(avgMotif_FT{iGold, iScale});
     end
 
-    [ nParProcesses, iterList ] = BH_multi_parallelJobs(nTomograms, emc.nGPUs, sizeCalc(1), emc.nGPUs);
+    % flgAvg (4th arg) caps the worker count. nCpuCores workers (e.g. 18 = 6/GPU on etna) are
+    % spread over emc.nGPUs by the modulo pinning at the parfor below. Was emc.nGPUs (1 worker/GPU),
+    % which left the GPUs at ~15% util -- per-worker extraction is CPU/host-IO-bound, not GPU-bound,
+    % so feed each GPU several workers. Still bounded by BH_multi_parallelJobs' memory-safe NumWorkers cap.
+    [ nParProcesses, iterList ] = BH_multi_parallelJobs(nTomograms, emc.nGPUs, sizeCalc(1), emc.nCpuCores);
     fprintf('PCA parallel extraction: %d partitions over %d GPUs\n', nParProcesses, emc.nGPUs);
 
     dataResults     = cell(nParProcesses,1);
@@ -691,7 +695,7 @@ for iGold = 1:1+flgGold
       gpuDevice(iGPU);
     end
 
-    % Extraction pool: one worker per GPU to start (extraction is GPU-bound).
+    % Extraction pool: nParProcesses (= nCpuCores, capped) workers, mod-pinned across the GPUs (:705).
     try
       EMC_parpool(nParProcesses);
     catch
