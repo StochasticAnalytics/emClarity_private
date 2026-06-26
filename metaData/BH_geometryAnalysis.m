@@ -1,6 +1,6 @@
 function  BH_geometryAnalysis( PARAMETER_FILE, CYCLE, ...
                                STAGEofALIGNMENT, OPERATION, ...
-                               VECTOR_OP, HALF_SET)
+                               VECTOR_OP, HALF_SET, KEEP_MOD)
 % BH_geometryAnalysis
 % Purpose
 %   Perform geometry edits, exports, and bookkeeping across several alignment
@@ -55,8 +55,14 @@ function  BH_geometryAnalysis( PARAMETER_FILE, CYCLE, ...
 
 
 
-if (nargin ~= 6)
-  error('args = (PARAMETER_FILE, CYCLE, STAGEofALIGNMENT, OPERATION, REMOVE_CLASS, HALF_SET)')
+if (nargin ~= 6 && nargin ~= 7)
+  error('args = (PARAMETER_FILE, CYCLE, STAGEofALIGNMENT, OPERATION, REMOVE_CLASS, HALF_SET, [optional KEEP_MOD])')
+end
+
+% Optional 2nd positional mod (RemoveClasses only): the KEEP selection. When present,
+% a clearly-named ClassKeep file is emitted alongside the normal ClassMods output.
+if (nargin < 7)
+  KEEP_MOD = '';
 end
 
 remove_cycles = false;
@@ -412,7 +418,17 @@ switch OPERATION
     if strcmpi(STAGEofALIGNMENT, 'Cluster')
       subTomoMeta.(cycleNumber).Post_RemoveClasses.ClusterResults.(cluster_key) = geometry_copy;
     end
-  
+
+    % Optional 2nd positional mod = the curated KEEP selection. The inline remove
+    % cull above is untouched; here we ONLY emit a clearly-named ClassKeep file (the
+    % marked tiles are the classes to KEEP, weighted -> the Raw_classes selection).
+    % No geometry/-9999 edits -- the shared helper just writes the text file.
+    if ~isempty(KEEP_MOD)
+      BH_classModificationsFromModFile( KEEP_MOD, locations, classVector, className, ...
+        sprintf('%s_ClassKeep_%s.txt', cycleNumber, halfSet), ...
+        'Classes kept:', 'Classes dropped:', true );
+    end
+
   case 'AssignClassToBranch'
   % Assign montage tiles to branches using VECTOR_OP labels.
   % Contract:

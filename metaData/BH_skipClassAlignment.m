@@ -53,13 +53,36 @@ if strcmpi(STAGEofALIGNMENT, 'RawAlignment')
       error('Post_AssignAndMergeToBranch field not found in cycle %s', cycleNumber);
     end
   elseif strcmpi(postOperation, 'RemoveClasses')
-    % Use the Post_RemoveClasses geometry (should already be proper geometry)
-    if isfield(subTomoMeta.(cycleNumber), 'Post_RemoveClasses')
-      subTomoMeta.(cycleNumber).('RawAlign') = subTomoMeta.(cycleNumber).Post_RemoveClasses;
-    else
+    % The culled per-tomo geometry written by `geometry ... RemoveClasses` is stored ONE LEVEL DEEP at
+    % Post_RemoveClasses.ClusterResults.<key> (see BH_geometryAnalysis.m), NOT directly on
+    % Post_RemoveClasses. Descend into the (single) ClusterResults entry.
+    % (Fixed 2026-06-24: previously assigned the wrapper struct -> a malformed/empty RawAlign.)
+    if ~isfield(subTomoMeta.(cycleNumber), 'Post_RemoveClasses')
       error('Post_RemoveClasses field not found in cycle %s', cycleNumber);
     end
+    postRC = subTomoMeta.(cycleNumber).Post_RemoveClasses;
+    if isfield(postRC, 'ClusterResults')
+      crKeys = fieldnames(postRC.ClusterResults);
+      if numel(crKeys) ~= 1
+        error('Post_RemoveClasses.ClusterResults has %d keys (expected 1) in cycle %s', ...
+              numel(crKeys), cycleNumber);
+      end
+      subTomoMeta.(cycleNumber).('RawAlign') = postRC.ClusterResults.(crKeys{1});
+    else
+      % Back-compat: older format stored the per-tomo geometry directly on Post_RemoveClasses.
+      subTomoMeta.(cycleNumber).('RawAlign') = postRC;
+    end
   else
+    % Plain skip (no postOperation) or explicit 'Override'.
+    % SAFETY (added 2026-06-24): if RemoveClasses was run this cycle, a plain skip would SILENTLY promote
+    % the un-culled full clustering geometry and DROP the cull. Refuse unless the caller passes 'Override'.
+    if ~strcmpi(postOperation, 'Override') && ...
+        isfield(subTomoMeta.(cycleNumber), 'Post_RemoveClasses')
+      error(['skip: RemoveClasses was run in %s (Post_RemoveClasses present); a plain skip would SILENTLY ', ...
+             'DROP the cull and promote the FULL set.\n', ...
+             '       Use "skip <param> <iter> RemoveClasses" to apply the cull, or\n', ...
+             '       use "skip <param> <iter> Override" to deliberately promote the full set.'], cycleNumber);
+    end
     % Default behavior - use normal geometry
     if (emc.multi_reference_alignment || emc.classification)
       if (emc.classification)
