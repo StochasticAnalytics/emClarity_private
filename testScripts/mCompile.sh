@@ -45,7 +45,7 @@ outName="$(basename ${mFile} .m)${post}"
 major=1
 minor=8
 bugs=6
-nightly=1
+nightly=2
 binaryOutName="${major}_${minor}_${bugs}_${nightly}"
 scriptOutName="${major}_${minor}_${bugs}_${nightly}_v23a"
 
@@ -62,7 +62,7 @@ zip_location="${HOME}/tmp"
 
 # Skip MEX compilation flag - used to speed up debugging of non-CUDA compilation steps
 # Generally only enabled when debugging compilation steps unrelated to the cudaMex files
-skipMex=0
+skipMex=1
 if [[ $skipMex -eq 0 ]]; then
   mexCompile="mexCompile ;"
 else

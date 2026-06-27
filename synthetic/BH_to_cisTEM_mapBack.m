@@ -833,7 +833,7 @@ for iTiltSeries = tiltStart:nTiltSeries
     end
 
     tmp_stack_filename = sprintf('%s/%s_%d.mrc',mbOUT{1:2},iCell);
-    SAVE_IMG(output_particle_stack, tmp_stack_filename, pixelSize);
+    SAVE_IMG(output_particle_stack, {tmp_stack_filename, 'half'}, pixelSize);  % mode 12 (fp16), like the inputs
 
     fprintf(newstack_file_handle, '%s\n',tmp_stack_filename);
     fprintf(newstack_file_handle, '0-%d\n',n_particles_this_stack-1);
@@ -865,7 +865,13 @@ end
 system(sprintf('cat %s >> %s', newstack_file, newstack_file_with_n_stacks));
 fprintf('DEBUG: About to run newstack. Total particles tracked for stack: %d\\n', total_particles_in_stack);
 fprintf('DEBUG: Total star records written: %d\\n', total_records_in_star);
-system(sprintf('newstack -FileOfInputs %s %s.mrc > /dev/null 2>&1', newstack_file_with_n_stacks, output_prefix));
+% newstack caps sections at 1,000,000 by default and overflows its section-list array (PARSELIST)
+% above that; -megasec raises the cap (in megasections). Size it to the exact tracked section count
+% (+1 megasection margin) so the combine scales to any class with no hard ceiling, and -mode 12 keeps
+% the combined stack fp16 like the per-tile inputs (IMOD newstack man: -megasec).
+megaSec = ceil(total_particles_in_stack / 1.0e6) + 1;
+fprintf('Combine: %d sections -> newstack -mode 12 -megasec %d (fp16)\n', total_particles_in_stack, megaSec);
+system(sprintf('newstack -mode 12 -megasec %d -FileOfInputs %s %s.mrc > /dev/null 2>&1', megaSec, newstack_file_with_n_stacks, output_prefix));
 fprintf('DEBUG: newstack command completed\\n');
 
 % Validate output files
