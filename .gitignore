@@ -13,7 +13,7 @@ testScripts/EMC_test/fixtures
 .vite/
 .claude/
 .DS_Store
-._.DS_Store
+._*
 .nfs*
 
 
