@@ -128,6 +128,12 @@ catch
   measure_noise_variance = false;
 end
 
+try
+  write_angle_volume = emc.('write_angle_volume');
+catch
+  write_angle_volume = false;
+end
+
 
 if pixelSize*2 >  bp_vals(3)
   fprintf('\nLimiting to Nyquist (%f) instead of user requested low pass cutoff %f Angstrom\n',pixelSize*2,bp_vals(3));
@@ -803,7 +809,12 @@ if (measure_noise_variance)
 
   SAVE_IMG(noiseVar,{noiseVarOUT,'half'});
 end
-% SAVE_IMG(MRCImage(RESULTS_angle),anglesOUT);
+if (write_angle_volume)
+  % Per-voxel best-angle packed index, voxel-aligned to the convmap saved above.
+  % fp32 (mode 2), NOT 'half': packed = (angleIdx-1)*nTemplates + templateId,
+  % max = nAngles*nTemplates = 864*3 = 2592 > 2048 (fp16 integer-exact limit).
+  SAVE_IMG(RESULTS_angle, anglesOUT);
+end
 
 angleFILE = fopen(angleListOUT,'w');
 fprintf(angleFILE,'%2.2f\t%2.2f\t%2.2f\n', ANGLE_LIST');
