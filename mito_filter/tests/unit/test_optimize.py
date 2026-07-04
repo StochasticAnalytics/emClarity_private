@@ -361,6 +361,114 @@ class TestParameterSpace:
             ParameterSpace([Dimension("a", 0, 1, 0.5), Dimension("a", 0, 1, 0.5)])
 
 
+class TestWeightSignPriors:
+    """Physics sign priors: every FP-axis fusion weight is constrained non-positive (module
+    docstring) so ``keep_prob = sigmoid(bias + Σ w_j s_j)`` is monotone non-increasing in each
+    FP score -- the tuner cannot reproduce the counter-intuitive positive round_4_fitted head."""
+
+    def test_fp_axes_bounded_non_positive_by_default(self) -> None:
+        space = ParameterSpace.from_model(_model())
+        by_name = {d.name: d for d in space.dimensions}
+        for name in ("gold_ice_cluster", "surface_coherence"):
+            d = by_name[f"combiner::w::{name}"]
+            assert d.hi == 0.0, name  # weight cannot go positive
+            assert d.lo == -8.0, name  # full negative magnitude available
+            assert d.init <= 0.0, name  # seeded on the physical side
+
+    def test_no_sampled_weight_is_positive(self) -> None:
+        import optuna
+
+        space = ParameterSpace.from_model(_model())
+        seen: list[float] = []
+
+        def _obj(trial: "optuna.trial.Trial") -> float:
+            theta = space.suggest_optuna(trial)
+            seen.extend(v for k, v in theta.items() if k.startswith("combiner::w::"))
+            return 0.0
+
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+        optuna.create_study().optimize(_obj, n_trials=25)
+        assert seen and max(seen) <= 0.0
+
+    def test_random_sampler_respects_sign(self) -> None:
+        space = ParameterSpace.from_model(_model())
+        rng = np.random.default_rng(0)
+        for _ in range(200):
+            theta = space.sample_random(rng)
+            for k, v in theta.items():
+                if k.startswith("combiner::w::"):
+                    assert v <= 0.0
+
+    def test_keep_sign_override_flips_half_line(self) -> None:
+        from mito_filter.optimize.space import KEEP_INCREASING_SIGN, SIGN_FREE
+
+        space = ParameterSpace.from_model(
+            _model(),
+            weight_signs={"gold_ice_cluster": KEEP_INCREASING_SIGN, "surface_coherence": SIGN_FREE},
+        )
+        by_name = {d.name: d for d in space.dimensions}
+        keep = by_name["combiner::w::gold_ice_cluster"]
+        assert (keep.lo, keep.hi) == (0.0, 8.0) and keep.init >= 0.0
+        free = by_name["combiner::w::surface_coherence"]
+        assert (free.lo, free.hi) == (-8.0, 8.0)
+
+    def test_signed_weight_bounds_helper(self) -> None:
+        from mito_filter.optimize.space import (
+            FP_INCREASING_SIGN,
+            KEEP_INCREASING_SIGN,
+            SIGN_FREE,
+            signed_weight_bounds,
+        )
+
+        assert signed_weight_bounds(FP_INCREASING_SIGN, 8.0) == (-8.0, 0.0)
+        assert signed_weight_bounds(KEEP_INCREASING_SIGN, 8.0) == (0.0, 8.0)
+        assert signed_weight_bounds(SIGN_FREE, 8.0) == (-8.0, 8.0)
+
+    def test_positive_config_weight_seeds_negative_init(self) -> None:
+        """A physics config that lists positive FP weights (fp_logit convention) is re-seeded on
+        the physical negative side -- magnitude preserved, sign forced."""
+        from mito_filter.model.filter_model import Combiner
+
+        names = ["gold_ice_cluster", "surface_coherence"]
+        model = FilterModel(_model().constraints, Combiner(names, np.array([3.0, 1.0]), bias=-1.5))
+        by_name = {d.name: d for d in ParameterSpace.from_model(model).dimensions}
+        assert by_name["combiner::w::gold_ice_cluster"].init == -3.0
+        assert by_name["combiner::w::surface_coherence"].init == -1.0
+
+    def test_fitted_head_is_monotone_fp(self) -> None:
+        """End to end: after a real fit under the sign prior EVERY combiner weight is <= 0, so
+        keep-prob is monotone non-increasing in each FP score (P(FP) monotone non-decreasing)."""
+        ds = _dataset()
+        model = _model()
+        Tuner(model, SelfSupervisedObjective(), optimizer=OptunaOptimizer(seed=1)).fit(
+            ds, n_trials=40, dataset_name="synthetic"
+        )
+        assert np.all(model.combiner.weights <= 1e-9)
+        # Directly verify monotonicity: raising any one FP score never raises keep-prob.
+        base = FeatureMatrix.from_columns(
+            {
+                "cc_cluster_density": np.array([2.0]),
+                "normal_coherence": np.array([0.5]),
+                "surface_residual": np.array([50.0]),
+                "curvature": np.array([0.01]),
+                "blobness": np.array([0.3]),
+            },
+            np.arange(1),
+        )
+        p0 = float(model.forward(base)[0])
+        hotter = FeatureMatrix.from_columns(
+            {
+                "cc_cluster_density": np.array([9.0]),  # deep inside a gold/ice cluster
+                "normal_coherence": np.array([0.5]),
+                "surface_residual": np.array([50.0]),
+                "curvature": np.array([0.01]),
+                "blobness": np.array([0.3]),
+            },
+            np.arange(1),
+        )
+        assert float(model.forward(hotter)[0]) <= p0 + 1e-9
+
+
 # --------------------------------------------------------------------------- #
 # Optimizers + Tuner (the core "tuner improves the objective" test)           #
 # --------------------------------------------------------------------------- #

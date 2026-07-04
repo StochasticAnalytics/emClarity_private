@@ -7,11 +7,41 @@ from pathlib import Path
 
 import yaml
 
-from mito_filter.cli import build_parser, main
+from mito_filter.cli import _build_combiner, build_parser, main
 
 from .fake_round import make_fake_round
 
 BASES = ["H99_2_100_1_bin5", "H99_2_101_1_bin5", "H99_2_102_1_bin5"]
+
+
+class _NamedConstraint:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+
+def test_build_combiner_accepts_positional_weight_list() -> None:
+    """The round_4_physics.yaml combiner lists weights positionally (aligned to constraint order),
+    not as a {name: w} map -- _build_combiner must accept both."""
+    cons = [_NamedConstraint("gold_ice_cluster"), _NamedConstraint("surface_coherence")]
+    cfg = {"combiner": {"kind": "logit", "weights": [3.0, 1.0], "bias": -1.5}}
+    comb = _build_combiner(cfg, cons)
+    assert list(comb.weights) == [3.0, 1.0]
+    assert comb.bias == -1.5
+
+
+def test_build_combiner_accepts_weight_mapping() -> None:
+    cons = [_NamedConstraint("gold_ice_cluster"), _NamedConstraint("surface_coherence")]
+    cfg = {"combiner": {"weights": {"surface_coherence": 2.0}}}
+    comb = _build_combiner(cfg, cons)
+    assert comb.weights[1] == 2.0
+
+
+def test_build_combiner_rejects_mismatched_weight_list() -> None:
+    import pytest
+
+    cons = [_NamedConstraint("gold_ice_cluster"), _NamedConstraint("surface_coherence")]
+    with pytest.raises(ValueError, match="weights list length"):
+        _build_combiner({"combiner": {"weights": [1.0, 2.0, 3.0]}}, cons)
 
 
 def test_build_parser_returns_parser() -> None:

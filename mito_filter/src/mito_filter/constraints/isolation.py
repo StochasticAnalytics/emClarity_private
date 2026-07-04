@@ -24,7 +24,12 @@ from .combine import (
     soft_or,
 )
 
-_DENSITY_ALIASES = ("neighbor_density",)
+# Prefer the raw neighbor COUNT: it lives on an O(1..30) scale so a ``density_thresh`` of a few
+# neighbors gives a sigmoid that SPANS [0, 1] (isolated <thresh -> ~1, in-sheet -> ~0). The
+# ``neighbor_density`` fallback ("candidates per 1e6 A^3") is ~0.005 on the real data, so a
+# threshold on it saturates the sigmoid at ~1 for every hit (the round_4_fitted bug: density_thresh
+# 27.4 >> feature max 0.03). See ``NeighborDensity``.
+_DENSITY_ALIASES = ("neighbor_count", "neighbor_density")
 _OFF_ALIASES = ("off_surface_A",)
 
 
@@ -37,8 +42,9 @@ class IsolationConstraint(_BaseConstraint):
     weak — a legitimately sparse but coherent region is only mildly penalized.
 
     Args:
-        density_thresh: Neighbor density (candidates per ``1e6`` Angstrom^3) below which to
-            penalize.
+        density_thresh: Minimum neighbor COUNT below which to penalize as isolated (the preferred
+            ``neighbor_count`` feature; a few neighbors). Falls back to the ``neighbor_density``
+            scale only when the count column is absent.
         density_sharpness: Steepness of the density sigmoid.
         off_thresh_A: Off-surface offset (Angstrom) above which to penalize.
         off_sharpness: Steepness of the off-surface sigmoid (per Angstrom).

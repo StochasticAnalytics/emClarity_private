@@ -77,6 +77,52 @@ class ScoreClusterDensity(FeatureExtractor):
         }
 
 
+@FEATURE_REGISTRY.register("cluster_density_sample")
+class ClusterDensitySample(FeatureExtractor):
+    """Sample the dense ``cc_cluster`` gold/ice cluster-density field at each candidate (SPEC §1).
+
+    This is the extractor half of the rebuilt gold/ice detector. The dense ``cc_cluster`` field
+    (:class:`~mito_filter.fields.derived.ClusterDensityProvider`) is a whole-volume convolution
+    that, per voxel, holds the local count of *extreme*-CC voxels within ``radius_A`` — the compact
+    spatial CLUSTER signature of gold/ice, computed once per tomo. This extractor reads that field
+    at each candidate peak (a small ``+/-radius`` max, so the sub-voxel-offset peak still lands on
+    its own cluster) and log-compresses it into ``cc_cluster_density``:
+
+    * an isolated coherent hit -> only its own footprint of extreme voxels -> low value;
+    * a peak embedded in a gold/ice cluster -> hundreds-thousands of extreme voxels -> high value.
+
+    ``cc_cluster_density`` is the primary alias the :class:`GoldIceClusterConstraint` reads, so
+    wiring this extractor makes that constraint fire on real convmap clusters (validated ROC-AUC
+    ~0.65 on H99_2_100/101/110) instead of the near-dead ``cc_cluster_z`` fallback. When the
+    ``cc_cluster`` field is MISSING the column is neutral (all-NaN) and the constraint falls back to
+    its other density aliases.
+
+    Args:
+        radius: Neighborhood radius (voxels) for the peak-max sample of the dense field.
+        log: If True (default), emit ``log1p(density)`` so a count field maps into a small,
+            physically-thresholdable range; if False, emit the raw sampled value.
+    """
+
+    produces = ("cc_cluster_density",)
+    needs_fields = ("cc_cluster",)
+    theta_dependent = False
+
+    def __init__(self, radius: int = 1, log: bool = True, **params: object) -> None:
+        self.params: Dict[str, object] = {"radius": radius, "log": log, **params}
+        self.radius = int(radius)
+        self.log = bool(log)
+
+    def extract(
+        self, cand: CandidateSet, fields: Mapping[str, DenseField], ctx: BlockCtx
+    ) -> Dict[str, ArrayT]:
+        """Return the per-candidate gold/ice cluster-density column (neutral if MISSING)."""
+        if "cc_cluster" not in fields:
+            return {"cc_cluster_density": neutral_column(cand.n)}
+        val = _sample(fields["cc_cluster"], cand.coords_zyx, reduce="max", radius=self.radius)
+        out = np.log1p(np.clip(val, 0.0, None)) if self.log else val
+        return {"cc_cluster_density": np.asarray(out, dtype=np.float32)}
+
+
 @FEATURE_REGISTRY.register("blobness")
 class Blobness(FeatureExtractor):
     """Hessian (Frangi-style) blob vs sheet signature of the ``cc`` field (SPEC §1, §6).
@@ -206,4 +252,9 @@ class GoldFiducialProximity(FeatureExtractor):
         return {"gold_dist_A": dist, "near_gold": near}
 
 
-__all__: List[str] = ["ScoreClusterDensity", "Blobness", "GoldFiducialProximity"]
+__all__: List[str] = [
+    "ScoreClusterDensity",
+    "ClusterDensitySample",
+    "Blobness",
+    "GoldFiducialProximity",
+]

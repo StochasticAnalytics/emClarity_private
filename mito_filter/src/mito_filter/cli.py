@@ -18,24 +18,13 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 
 import yaml
 
+from . import constraints as constraints_pkg
+from . import features as features_pkg
 from .candidates.csv_source import CsvPeakSource
 from .config import ComponentSpec, WritebackConfig
-
-# Import the concrete plugin modules for their side effects: each @register decorator populates
-# FEATURE_REGISTRY / CONSTRAINT_REGISTRY so a config can name them (the package __init__s empty).
-from .constraints import curvature as _c_curvature  # noqa: F401
-from .constraints import gold_ice as _c_gold_ice  # noqa: F401
-from .constraints import isolation as _c_isolation  # noqa: F401
-from .constraints import membrane as _c_membrane  # noqa: F401
-from .constraints import template_prior as _c_template_prior  # noqa: F401
 from .datasets.base import TomogramRef
 from .datasets.emclarity_tm import EmclarityTMSource
 from .exec.runner import TomogramRunner
-from .features import curvature as _f_curvature  # noqa: F401
-from .features import isolation as _f_isolation  # noqa: F401
-from .features import local_stats as _f_local_stats  # noqa: F401
-from .features import membrane as _f_membrane  # noqa: F401
-from .features import priors as _f_priors  # noqa: F401
 from .features.engine import FEATURE_REGISTRY, FeatureEngine
 from .features.extractor import FeatureExtractor
 from .fields.calibrate import BackgroundModel
@@ -47,6 +36,16 @@ from .scan.context import (
     device_from_string,
 )
 from .scan.pipeline import ScanPipeline
+
+# Populate FEATURE_REGISTRY / CONSTRAINT_REGISTRY at import time so any config
+# reaching _build_context / _build_extractors can name the plugins by string.
+# WHY at module import (not lazily inside each builder): the registries are
+# consulted from multiple entry points (scan, dispatch stubs, tests that
+# import cli), so running the registration once at load matches the process
+# lifetime. Both calls are idempotent — the concrete modules hit Python's
+# module cache on any re-invocation.
+constraints_pkg.register_all()
+features_pkg.register_all()
 
 __all__ = ["main", "build_parser"]
 
@@ -210,9 +209,10 @@ def _build_candidate_source(config: Dict[str, Any], reg: Any, device: Any) -> An
 def _build_combiner(config: Dict[str, Any], constraints: List[Any]) -> Combiner:
     """Build the fusion head from the config's ``combiner`` block (DESIGN §7).
 
-    ``combiner: {bias, weight, weights: {<constraint>: w}}`` — ``weight`` is the uniform initial
-    fusion weight (negative: a larger FP score lowers keep-probability), ``bias`` the global
-    keep/reject offset, and ``weights`` optional per-constraint overrides. Defaults reproduce the
+    ``combiner: {bias, weight, weights}`` — ``weight`` is the uniform initial fusion weight
+    (negative: a larger FP score lowers keep-probability), ``bias`` the global keep/reject offset,
+    and ``weights`` optional per-constraint overrides given **either** as a ``{<constraint>: w}``
+    mapping **or** as a positional list aligned to the constraint order. Defaults reproduce the
     uniform-weight head.
 
     Args:
@@ -221,16 +221,27 @@ def _build_combiner(config: Dict[str, Any], constraints: List[Any]) -> Combiner:
 
     Returns:
         The configured :class:`Combiner`.
+
+    Raises:
+        ValueError: If a positional ``weights`` list length does not match the constraint count.
     """
     comb = dict(config.get("combiner", {}))
     names = [c.name for c in constraints]
     combiner = Combiner.default(
         names, weight=float(comb.get("weight", -1.0)), bias=float(comb.get("bias", 0.0))
     )
-    overrides = dict(comb.get("weights", {}))
+    raw = comb.get("weights", {})
+    if isinstance(raw, (list, tuple)):
+        if len(raw) != len(names):
+            raise ValueError(
+                f"combiner weights list length {len(raw)} != {len(names)} constraints {names}"
+            )
+        overrides = {nm: float(w) for nm, w in zip(names, raw)}
+    else:
+        overrides = {str(k): float(v) for k, v in dict(raw).items()}
     for j, nm in enumerate(names):
         if nm in overrides:
-            combiner.weights[j] = float(overrides[nm])
+            combiner.weights[j] = overrides[nm]
     return combiner
 
 

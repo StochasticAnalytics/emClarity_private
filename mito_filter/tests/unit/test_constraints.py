@@ -187,6 +187,34 @@ def test_isolation_monotonic_in_sparsity() -> None:
     assert _nondecreasing(fp) and fp[-1] > fp[0]
 
 
+def test_isolation_prefers_neighbor_count() -> None:
+    """When neighbor_count is present it wins over neighbor_density (the O(1..30) scale)."""
+    count = np.array([0.0, 5.0, 20.0])
+    # A neighbor_density on the tiny (~0.005) real scale would saturate the sigmoid; the count
+    # column must be the one that drives the term.
+    tiny_density = np.array([0.02, 0.02, 0.02])
+    fp = IsolationConstraint(density_thresh=4.0, density_sharpness=1.0, off_weight=0.0).forward(
+        make_fm(neighbor_count=count, neighbor_density=tiny_density), {}
+    )
+    assert fp[0] > fp[1] > fp[2]  # fewer neighbors -> more isolated
+
+
+def test_isolation_neighbor_count_spans_unit_interval_not_saturated() -> None:
+    """On a realistic neighbor-count range the density term SPANS [0,1] (de-saturation fix).
+
+    The round_4_fitted bug saturated the isolation term at ~1.0 for every hit because
+    ``density_thresh`` (27.4) dwarfed the ``neighbor_density`` scale (~0.005). Reading the raw
+    neighbor COUNT with a few-neighbor threshold restores a term that separates isolated hits
+    (~1) from well-connected in-sheet hits (~0).
+    """
+    count = np.array([0.0, 2.0, 4.0, 8.0, 16.0, 30.0])  # real neighbor-count spread
+    fp = IsolationConstraint(density_thresh=4.0, density_sharpness=1.0, off_weight=0.0).forward(
+        make_fm(neighbor_count=count), {}
+    )
+    assert fp.min() < 0.1 and fp.max() > 0.9  # spans [0,1]
+    assert (fp.max() - fp.min()) > 0.8  # NOT pinned to a constant (the saturation bug)
+
+
 def test_template_prior_penalizes_ref1() -> None:
     """templateIDX == 1 (ref_old) gets the penalty; others do not."""
     fm = make_fm(is_ref1=np.array([0.0, 1.0]))
@@ -303,3 +331,53 @@ def test_template_prior_on_real_templateidx() -> None:
     assert np.allclose(fp[tid == 1], penalty)
     assert np.allclose(fp[tid != 1], 0.0)
     assert float(fp.mean()) == pytest.approx(ref1_frac * penalty, abs=1e-6)
+
+
+# --------------------------------------------------------------------------- #
+# physics regression: the rebuilt FP axes fire on their real signatures        #
+# (guards the round_4 fix — gold/ice cluster-density + membrane interior/mis-  #
+# facing — that made the axes live; see six_hours_round_4/analysis/            #
+# filter_direct_validation.md). Pure-function; no volumes.                     #
+# --------------------------------------------------------------------------- #
+def test_gold_ice_monotone_in_cluster_density() -> None:
+    """gold_ice_cluster is non-decreasing in cc_cluster_density (the live gold/ice axis).
+
+    round_4_physics params: an isolated peak (log-count ~1) scores ~0; a peak embedded in a
+    compact extreme-CC gold/ice cluster (log-count ~6-8) scores ~1.
+    """
+    dens = np.linspace(0.0, 8.0, 17)
+    c = GoldIceClusterConstraint(cc_thresh=3.5, cc_sharpness=1.5, blob_mix=0.0)
+    fp = c.forward(make_fm(cc_cluster_density=dens), {})
+    assert _nondecreasing(fp)
+    assert fp[dens <= 1.0].max() < 0.15  # isolated peak: near-neutral
+    assert fp[dens >= 7.0].min() > 0.95  # in a compact cluster: strongly flagged
+
+
+def test_membrane_flags_interior_vesicle_and_misfacing() -> None:
+    """membrane_geometry fires on the interior-vesicle side and on mis-facing on-membrane hits.
+
+    Three on-membrane candidates (|dist| small): outward +Z aligned (real), inward mis-facing on
+    a high-curvature closed vesicle (FP), and inside-sign interior (FP). The FP geometries must
+    score strictly higher than the coherent outward one.
+    """
+    c = MembraneGeometryConstraint(
+        shell_A=75.0,
+        dist_sharpness=0.05,
+        wrong_side_weight=0.5,
+        fp_side=-1.0,
+        closed_thresh=0.01,
+        closed_sharpness=200.0,
+        vesicle_weight=0.25,
+        misface_thresh=0.5,
+        misface_sharpness=5.0,
+        misface_weight=0.5,
+    )
+    fm = make_fm(
+        membrane_dist_A=np.array([12.0, 12.0, 12.0]),
+        inside_sign=np.array([1.0, -1.0, -1.0]),
+        membrane_facing=np.array([0.95, -0.95, 0.0]),
+        closed_shell=np.array([0.0, 0.15, 0.0]),
+    )
+    fp = c.forward(fm, {})
+    assert fp[0] < 0.2  # coherent outward, low-curv, correct side -> near-neutral
+    assert fp[1] > fp[0] and fp[2] > fp[0]  # mis-facing vesicle & interior side -> flagged higher

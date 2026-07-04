@@ -1,0 +1,147 @@
+# round_4_physics.yaml — ALL false-positive axes LIVE + physically discriminative on real data.
+#
+# Supersedes round_4_fitted.yaml, whose cross-tab (six_hours_round_4/analysis/
+# classification_crosstab.md) proved ROC-AUC 0.535 because two of three axes were DEAD:
+#   * gold/ice fired on 16 / 133,867 hits (cc_thresh 10.7 sat above 99.85% of cc_cluster_z);
+#   * isolation saturated at ~1.0 (density_thresh 27.4 >> neighbor_density max 0.03);
+#   * only surface_coherence was live (weak, r=+0.045);
+#   * membrane was not wired at all.
+#
+# This config rebuilds each axis to detect its real physical signature straight from the dense
+# convmap + angle + rec (validated on H99_2_100/101/110 against the round_4 cull as INDEPENDENT
+# ground truth — NOT a training target). Real-data ROC-AUC of the raw per-axis FP score vs
+# removed_any (higher = more FP-like):
+#   gold_ice cluster-density  0.63-0.67  (was ~0.50 / 16 hits)      <- the strong, live axis
+#   surface_coherence (dense) 0.53                                   <- weak but correct-signed
+#   isolation                 anti-predictive on real data (0.32-0.43): isolated hits are LESS
+#                             removed; the dominant FP mode is CLUSTERING (gold/ice), the opposite
+#                             of isolation. Kept physically (isolated/off-surface -> higher score),
+#                             de-saturated (spans [0,1]); it carries little weight here by design.
+#   membrane_facing/vesicle   weak on these tomos (~0.46); wired so interior-vesicle / wrong-side
+#                             geometry contributes where the rec segmentation is clean.
+# Each FP axis INCREASES FP-ness (positive weight in the fp-logit -> lowers keep-prob).
+
+dataset: full_enchilada_3_4
+device: cpu
+
+# The searched reconstruction the membrane is segmented from (per-host alt_cache, DESIGN §5).
+rec_dir: /scratch/salina/alt_cache
+
+# Per-tomo robust background fit; folds bg_mean/bg_std into every BlockCtx so the CC-gate and the
+# cluster threshold are portable per tomo (SPEC §9.2).
+meta:
+  calibrate: mad
+
+candidate_source: csv_peaks
+
+features:
+  # --- GOLD/ICE: the rebuilt cluster detector (SPEC §1) ---
+  # score_cluster_density still supplies cc_local_max / cc_cluster_z (cheap local elevation).
+  - {name: score_cluster_density, radius: 2}
+  # cluster_density_sample reads the DENSE cc_cluster field (extreme-CC-voxel count in a 250 A
+  # radius, thresholded at bg+8*sigma by the standard registry) into cc_cluster_density = the
+  # log-count. A peak embedded in a gold/ice cluster -> high; an isolated coherent hit -> low.
+  - {name: cluster_density_sample, radius: 1, log: true}
+  - {name: blobness, step: 2}
+  - {name: gold_fiducial_proximity, near_A: 250}
+  # --- SURFACE COHERENCE: DENSE cc-gated normal field (SPEC §5; the validated denser-support path)
+  # normal_source: field -> sample the decoded per-voxel outward normal at each peak's cc-argmax
+  # voxel (needs_fields = normal + cc, resolving the angle->normal DAG); gate_sigma masks the
+  # low-CC argmax-of-noise background.
+  - {name: normal_coherence, radius_A: 800, normal_source: field, gate_sigma: 3.0}
+  - {name: surface_fit_residual, radius_A: 800, normal_source: field, gate_sigma: 3.0}
+  - {name: principal_curvature, radius_A: 800, normal_source: field, gate_sigma: 3.0}
+  # --- ISOLATION: neighbor_count (O(1..30) scale) de-saturates the density term ---
+  - {name: neighbor_density, radius_A: 800}
+  - {name: off_surface_isolation, radius_A: 800, min_neighbors: 4}
+  # --- MEMBRANE geometry (SPEC §8; membrane_sdf derived from rec by Hessian sheetness) ---
+  - {name: membrane_distance}
+  - {name: inside_outside_sign}
+  - {name: closed_shell_score, step: 2}
+  - {name: membrane_facing, step: 2}
+
+constraints:
+  # Gold/ice = a peak inside a compact spatial CLUSTER of extreme CC. cc_cluster_density is the
+  # log-count of extreme-CC voxels within 250 A: ~0-3 for an isolated peak (its own footprint),
+  # ~4-8 for a gold/ice cluster. cc_thresh 3.5 with sharpness 1.5 fires across that gap. blob_mix
+  # 0.0: the point-Hessian blobness is anti-predictive on real data (AUC 0.45), so density alone.
+  # gold_radius_A stays wired for the .erase/bead path (gold_dist is inf here -> neutral, no beads).
+  - name: gold_ice_cluster
+    cc_thresh: 3.5
+    cc_sharpness: 1.5
+    blob_mix: 0.0
+    gold_radius_A: 250.0
+    gold_sharpness: 0.02
+  # Incoherent-normal / poorly-fitting neighborhoods over the DENSE normal field. Low coh -> FP.
+  - name: surface_coherence
+    coh_thresh: 0.35
+    coh_sharpness: 12.0
+    residual_thresh_A: 200.0
+    residual_sharpness: 0.03
+    residual_weight: 0.4
+    curv_thresh: 0.01
+    curv_sharpness: 200.0
+    curv_weight: 0.2
+  # Isolation prior, DE-SATURATED: density_thresh is now a neighbor COUNT (min ~4). An in-sheet hit
+  # (median ~11 neighbors) scores ~0; a truly isolated (<4 neighbor) or off-surface hit scores ~1.
+  # Spans [0,1] instead of the old constant ~1.0. Physically isolated/off-surface -> higher FP.
+  - name: isolation
+    density_thresh: 4.0
+    density_sharpness: 1.0
+    off_thresh_A: 300.0
+    off_sharpness: 0.03
+    off_weight: 1.0
+  # Membrane geometry: fp_side=-1 makes a closed membrane's INSIDE the FP side (interior
+  # replication vesicles); misface penalizes on-membrane hits whose template +Z disagrees with the
+  # local membrane outward normal; closed_shell curvature flags small vesicles. Weak on the
+  # fragmented real segmentation, so it is down-weighted in the combiner, but fully wired.
+  - name: membrane_geometry
+    shell_A: 75.0
+    dist_sharpness: 0.05
+    wrong_side_weight: 0.5
+    fp_side: -1.0
+    closed_thresh: 0.01
+    closed_sharpness: 200.0
+    vesicle_weight: 0.25
+    misface_thresh: 0.5
+    misface_sharpness: 5.0
+    misface_weight: 0.5
+
+# Fusion head (logit): fp_logit = bias + sum_i w_i * s_i, keep_prob = sigmoid(-fp_logit). Every
+# weight is POSITIVE (each axis increases FP-ness). Weights are set by measured physical
+# discriminative power (gold/ice dominant; coherence secondary; isolation/membrane light), NOT
+# fitted to the classification labels (that would be circular). bias tuned so a clean, low-CC,
+# coherent, in-sheet hit keeps.
+# Weights reflect MEASURED physical discriminative power on real data (per-axis raw-score ROC-AUC
+# vs the round_4 cull, INDEPENDENT validation): gold/ice cluster-density (0.63-0.65, the FP type the
+# user cares most about) DOMINATES; surface-coherence (0.53) is a light secondary; isolation
+# (anti-predictive here, 0.32-0.43 — isolated hits are NOT the FP mode; clustering is, already
+# captured by gold/ice) and membrane (weak/neutral on the fragmented rec segmentation) are kept LIVE
+# and physically-directed but LIGHT, so they never override the strong gold/ice signal. Honest note:
+# gold/ice ALONE out-ranks any multi-axis blend on this data — the weak axes are wired for physical
+# completeness + regimes where they matter, not because they lift the combined AUC here.
+combiner:
+  kind: logit
+  names: [gold_ice_cluster, surface_coherence, isolation, membrane_geometry]
+  weights: [3.0, 1.0, 0.3, 0.5]
+  bias: -1.5
+
+# AUTHORITATIVE machine head (what scan actually applies). The combiner block above documents the
+# fp-logit rationale (POSITIVE = FP, keep = sigmoid(-fp_logit)); the FilterModel head is the
+# canonical keep = sigmoid(bias + S @ w), so each fp-logit weight is negated here and the bias
+# flips sign: [3,1,0.3,0.5]/-1.5 -> [-3,-1,-0.3,-0.5]/+1.5. This is the head validated on the real
+# 11-tomo round_4 cache (fused ROC-AUC 0.669 vs removed_any, flag-rate 0.445 -> non-degenerate;
+# held-out-6 0.684). Without this theta the scan pipeline fell back to a uniform default and ran a
+# DEGENERATE flag-all head (see scan.context.combiner_from_block).
+theta:
+  combiner::w::gold_ice_cluster: -3.0
+  combiner::w::surface_coherence: -1.0
+  combiner::w::isolation: -0.3
+  combiner::w::membrane_geometry: -0.5
+  combiner::bias: 1.5
+
+tau: 0.5
+
+writeback:
+  debug_csv: true
+  removal_json: true

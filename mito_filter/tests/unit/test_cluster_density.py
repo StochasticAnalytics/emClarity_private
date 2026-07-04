@@ -18,7 +18,12 @@ from mito_filter.core.field import DenseField
 from mito_filter.core.grid import VoxelGrid
 from mito_filter.emclarity.mrc_io import open_dense_mmap
 from mito_filter.fields.derived import (
+    _FFT_KERNEL_THRESHOLD,
+    ClusterDensityProvider,
     MembraneDistanceProvider,
+    _sphere_kernel,
+    _sphere_kernel_size,
+    _tophat_sphere_convolve,
     blobness,
     cluster_density,
     hessian_membraneness,
@@ -50,6 +55,106 @@ def test_cluster_density_gaussian_peaks_at_cluster() -> None:
 def test_cluster_density_bad_mode_raises() -> None:
     with pytest.raises(ValueError):
         cluster_density(np.zeros((4, 4, 4), np.float32), radius_vox=1.0, mode="nope")
+
+
+def test_tophat_fft_matches_direct_for_large_kernel() -> None:
+    """The FFT fast-path (large sphere kernel) is numerically identical to the exact dense
+    ``ndi.convolve``. This is the perf fix for the 20-vox gold/ice radius: same physics, O(N log N)
+    instead of the dense O(N*r^3) sliding window that dominated the feature cache."""
+    import scipy.ndimage as ndi
+
+    rng = np.random.default_rng(0)
+    vol = (rng.random((48, 52, 50), dtype=np.float32) < 0.02).astype(np.float32)  # sparse mask
+    radius_vox = 9.0  # 19^3 = 6859 elements > _FFT_KERNEL_THRESHOLD -> FFT path
+    kernel = _sphere_kernel(radius_vox)
+    assert kernel.size > _FFT_KERNEL_THRESHOLD
+    direct = np.asarray(ndi.convolve(vol, kernel, mode="constant", cval=0.0), dtype=np.float32)
+    fast = cluster_density(vol, radius_vox=radius_vox, mode="tophat")
+    np.testing.assert_allclose(fast, direct, atol=1e-5)
+
+
+def test_tophat_small_kernel_uses_exact_direct_path() -> None:
+    """Small kernels stay on the exact direct convolution (bit-stable, no FFT), so the existing
+    tiny-radius tests are unaffected by the fast-path switch."""
+    import scipy.ndimage as ndi
+
+    vol = np.zeros((16, 16, 16), dtype=np.float32)
+    vol[7:9, 7:9, 7:9] = 1.0
+    kernel = _sphere_kernel(2.0)  # 5^3 = 125 <= threshold
+    assert kernel.size <= _FFT_KERNEL_THRESHOLD
+    got = _tophat_sphere_convolve(vol, kernel)
+    exact = np.asarray(ndi.convolve(vol, kernel, mode="constant", cval=0.0), dtype=np.float32)
+    np.testing.assert_array_equal(got, exact)  # identical, not just close
+
+
+class _FakeCcReg:
+    """Minimal FieldRegistry stand-in: resolve('cc') returns a fixed synthetic convmap."""
+
+    def __init__(self, vol: np.ndarray) -> None:
+        self._field = DenseField.from_array("cc", VoxelGrid(vol.shape, 12.5), vol, channels=1)
+
+    def resolve(self, name: str, tomo: object, *, device: Device) -> DenseField:
+        assert name == "cc"
+        return self._field
+
+
+def _cluster_convmap() -> np.ndarray:
+    """A background ~N(3.28, 0.42) volume with one compact extreme-CC (gold/ice) cluster."""
+    rng = np.random.default_rng(0)
+    vol = rng.normal(3.28, 0.42, size=(40, 40, 40)).astype(np.float32)
+    vol[18:23, 18:23, 18:23] = 10.0  # a 5^3 gold/ice cluster at ~z=16 sigma
+    return vol
+
+
+def test_cluster_density_provider_thr_sigma_isolates_extreme_band() -> None:
+    """thr_sigma thresholds in per-tomo robust sigmas; only the gold/ice cluster survives."""
+    vol = _cluster_convmap()
+    prov = ClusterDensityProvider(thr_sigma=8.0, radius_A=62.5, count=True)  # 5-voxel radius
+    field = prov.materialize(
+        tomo=cast(Any, object()), reg=cast(Any, _FakeCcReg(vol)), device=Device.CPU
+    )
+    # Threshold lands well above background (median ~3.28) and below the cluster (10).
+    assert 4.0 < prov.last_threshold < 9.0
+    # The count is high inside the cluster, ~0 in pure background.
+    at_cluster = float(
+        np.asarray(field.sample_at(np.array([[20.0, 20.0, 20.0]]), reduce="center")).reshape(-1)[0]
+    )
+    at_bg = float(
+        np.asarray(field.sample_at(np.array([[2.0, 2.0, 2.0]]), reduce="center")).reshape(-1)[0]
+    )
+    assert at_cluster >= 100.0  # 5^3 = 125 extreme voxels within the radius
+    assert at_bg <= 5.0
+
+
+def test_cluster_density_provider_count_vs_fraction() -> None:
+    """count=True yields fraction * sphere-size; the sphere size matches _sphere_kernel_size."""
+    vol = _cluster_convmap()
+    frac_prov = ClusterDensityProvider(thr_sigma=8.0, radius_A=62.5, count=False)
+    cnt_prov = ClusterDensityProvider(thr_sigma=8.0, radius_A=62.5, count=True)
+    ff = frac_prov.materialize(
+        tomo=cast(Any, object()), reg=cast(Any, _FakeCcReg(vol)), device=Device.CPU
+    )
+    cf = cnt_prov.materialize(
+        tomo=cast(Any, object()), reg=cast(Any, _FakeCcReg(vol)), device=Device.CPU
+    )
+    pt = np.array([[20.0, 20.0, 20.0]])
+    frac = float(np.asarray(ff.sample_at(pt, reduce="center")).reshape(-1)[0])
+    cnt = float(np.asarray(cf.sample_at(pt, reduce="center")).reshape(-1)[0])
+    size = _sphere_kernel_size(62.5 / 12.5)
+    assert cnt == pytest.approx(frac * size, rel=1e-4)
+    assert size > 1
+
+
+def test_cluster_density_provider_thr_precedence() -> None:
+    """Absolute thr wins over thr_sigma wins over percentile."""
+    vol = _cluster_convmap()
+    reg = _FakeCcReg(vol)
+    abs_prov = ClusterDensityProvider(thr=7.0, thr_sigma=8.0)
+    abs_prov.materialize(tomo=cast(Any, object()), reg=cast(Any, reg), device=Device.CPU)
+    assert abs_prov.last_threshold == pytest.approx(7.0)
+    pct_prov = ClusterDensityProvider(thr=None, thr_sigma=None, thr_percentile=99.0)
+    pct_prov.materialize(tomo=cast(Any, object()), reg=cast(Any, reg), device=Device.CPU)
+    assert pct_prov.last_threshold == pytest.approx(float(np.percentile(vol, 99.0)), rel=1e-4)
 
 
 def test_blobness_log_detects_a_bright_blob() -> None:

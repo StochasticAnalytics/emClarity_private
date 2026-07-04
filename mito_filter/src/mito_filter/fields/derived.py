@@ -171,15 +171,40 @@ class NormalFieldProvider(FieldProvider):
 class ClusterDensityProvider(FieldProvider):
     """Derive ``cc_cluster``: local density of thresholded extreme-CC voxels (gold/ice, SPEC §1).
 
-    Thresholds ``cc`` (absolute or percentile) into a high-CC mask, then convolves with a top-hat
-    sphere (or a Gaussian) of physical radius ``radius_A`` — a compact cluster of extreme CC
-    (gold/ice) produces a strong local density, an isolated true hit does not.
+    This is the load-bearing gold/ice detector: gold fiducials and vitreous-ice artifacts sit in
+    the raw convmap as **compact spatial CLUSTERS of extreme CC** (~8-13 over a bg of
+    ``N(3.28, 0.48)``, SPEC §1), whereas an isolated real target is a single peak whose only
+    elevated-CC voxels are its own correlation footprint. So the provider thresholds ``cc`` into a
+    high-CC mask and convolves with a top-hat sphere (or a Gaussian) of physical radius
+    ``radius_A``: a peak embedded in a gold/ice cluster reads a high local count/fraction of
+    extreme-CC voxels, an isolated coherent hit reads a low one.
+
+    **Threshold calibration (``thr_sigma``, the fix).** The extreme-CC band must be picked in
+    per-tomo *background sigmas*, not an absolute number — the older percentile default (99 %) lands
+    at ~``bg+2.5 sigma`` (the *membrane* band, ~4.7) and floods the mask, while an absolute cutoff
+    tuned on one tomo drifts on the next. ``thr_sigma`` sets the threshold at ``median + thr_sigma *
+    MAD-sigma`` of the field (robust to the heavy hit tail); ``thr_sigma ~ 8`` isolates the gold/ice
+    band (~6.6) above both background and the membrane sheets. Precedence: ``thr`` (absolute) if
+    given, else ``thr_sigma`` (bg-relative) if given, else ``thr_percentile``.
+
+    **``count`` output.** With ``count=True`` the field holds the local *count* of extreme-CC voxels
+    (the top-hat fraction times the sphere volume) rather than the fraction — a count is directly
+    interpretable ("how many extreme-CC voxels within ``radius_A``") and, log-compressed by the
+    sampling extractor, spans a threshold range that separates isolated peaks (a few footprint
+    voxels) from gold/ice clusters (hundreds-thousands). Validated on H99_2_100/101/110: the
+    log-count of extreme (``thr_sigma=8``) voxels in a 250 A radius scores ROC-AUC ~0.65 against the
+    round_4 classification cull (vs the dead 16-hit ``cc_cluster_z`` path).
 
     Args:
-        thr: Absolute CC threshold; if None, :attr:`thr_percentile` of the field is used.
-        thr_percentile: Percentile threshold when :attr:`thr` is None (default 99.0).
+        thr: Absolute CC threshold; wins if given.
+        thr_sigma: Background-relative threshold in robust sigmas (``median + thr_sigma*MAD``);
+            used when ``thr`` is None. The portable, per-tomo-calibrated cutoff.
+        thr_percentile: Percentile threshold when both ``thr`` and ``thr_sigma`` are None
+            (default 99.0).
         radius_A: Convolution radius in Angstrom (default 250).
         mode: ``"tophat"`` (mean over a sphere) or ``"gaussian"``.
+        count: If True, emit the local extreme-CC voxel COUNT (fraction * sphere volume) instead of
+            the fraction.
         cache_dir: If set, content-addressed cache directory.
     """
 
@@ -187,7 +212,7 @@ class ClusterDensityProvider(FieldProvider):
         name="cc_cluster",
         channels=1,
         dtype=np.dtype(np.float32),
-        semantics="local fraction of high-CC voxels in a radius (gold/ice cluster density)",
+        semantics="local count/fraction of high-CC voxels in a radius (gold/ice cluster density)",
     )
     requires = ("cc",)
 
@@ -195,29 +220,46 @@ class ClusterDensityProvider(FieldProvider):
         self,
         *,
         thr: Optional[float] = None,
+        thr_sigma: Optional[float] = None,
         thr_percentile: float = 99.0,
         radius_A: float = 250.0,
         mode: str = "tophat",
+        count: bool = False,
         cache_dir: Optional[Path] = None,
     ) -> None:
         if mode not in ("tophat", "gaussian"):
             raise ValueError(f"mode must be 'tophat' or 'gaussian', got {mode!r}")
         self.thr = thr
+        self.thr_sigma = None if thr_sigma is None else float(thr_sigma)
         self.thr_percentile = float(thr_percentile)
         self.radius_A = float(radius_A)
         self.mode = mode
+        self.count = bool(count)
         self._cache_dir = Path(cache_dir) if cache_dir is not None else None
         self.last_threshold: float = 0.0
 
     def available(self, tomo: "TomogramRef") -> Availability:
         return Availability.GENERATABLE
 
+    def _threshold(self, arr: NDArray[np.float32]) -> float:
+        """Resolve the extreme-CC threshold: absolute, else bg-sigma, else percentile."""
+        if self.thr is not None:
+            return float(self.thr)
+        if self.thr_sigma is not None:
+            med = float(np.median(arr))
+            mad = float(np.median(np.abs(arr - med))) * 1.4826
+            return med + self.thr_sigma * (mad if mad > 1e-6 else 1.0)
+        return float(np.percentile(arr, self.thr_percentile))
+
     def materialize(self, tomo: "TomogramRef", reg: FieldRegistry, *, device: Device) -> DenseField:
         cc = reg.resolve("cc", tomo, device=device)
         arr = whole_array(cc)
-        thr = self.thr if self.thr is not None else float(np.percentile(arr, self.thr_percentile))
+        thr = self._threshold(arr)
         mask = (arr >= thr).astype(np.float32)
-        density = cluster_density(mask, radius_vox=self.radius_A / cc.grid.apix, mode=self.mode)
+        radius_vox = self.radius_A / cc.grid.apix
+        density = cluster_density(mask, radius_vox=radius_vox, mode=self.mode)
+        if self.count:
+            density = (density * _sphere_kernel_size(radius_vox)).astype(np.float32)
         field = DenseField.from_array(
             self.produces.name, cc.grid, density.astype(np.float32), channels=1, provider=self
         )
@@ -417,6 +459,56 @@ def _sphere_kernel(radius_vox: float) -> NDArray[np.float32]:
     return out
 
 
+def _sphere_kernel_size(radius_vox: float) -> float:
+    """Number of voxels inside the solid sphere of the given voxel radius (top-hat normaliser).
+
+    ``cluster_density`` (tophat) returns the *fraction* of set voxels within the sphere (a
+    normalised convolution); multiplying by this size recovers the absolute voxel *count*.
+
+    Args:
+        radius_vox: Sphere radius in voxels.
+
+    Returns:
+        The count of integer voxels within ``radius_vox`` (>= 1).
+    """
+    r = max(int(round(radius_vox)), 1)
+    ax = np.arange(-r, r + 1)
+    zz, yy, xx = np.meshgrid(ax, ax, ax, indexing="ij")
+    return float(((zz * zz + yy * yy + xx * xx) <= (r * r)).sum())
+
+
+# A solid-sphere top-hat kernel is NOT separable, so ``ndi.convolve`` runs the full dense
+# sliding window: for the production gold/ice radius (250 A / 12.5 apix = 20 vox, a 41^3 = 68,921
+# element kernel) over a 279 M-voxel convmap that is ~1.9e13 multiply-adds -> ~10 min/tomo and the
+# single biggest cost in the feature cache. Above this kernel-element count we switch to an FFT
+# convolution (O(N log N)); the sphere kernel is symmetric and the boundary is zero-padded in both
+# paths, so ``fftconvolve(mode="same")`` is numerically identical to ``ndi.convolve(mode=constant,
+# cval=0)`` (verified < 1e-4 abs on the real convmap, tested in test_cluster_density). Small kernels
+# (the unit tests, tiny radii) stay on the exact direct path so their results are bit-stable.
+_FFT_KERNEL_THRESHOLD: int = 4000
+
+
+def _tophat_sphere_convolve(
+    m: NDArray[np.float32], kernel: NDArray[np.float32]
+) -> NDArray[np.float32]:
+    """Zero-boundary convolution of ``m`` with a symmetric sphere ``kernel`` (FFT for big kernels).
+
+    Args:
+        m: The float32 volume (a 0/1 mask).
+        kernel: The normalised solid-sphere kernel (symmetric, odd-sized per axis).
+
+    Returns:
+        The convolved float32 volume, identical to ``ndi.convolve(m, kernel, mode="constant",
+        cval=0.0)`` up to floating-point error, but computed via FFT when ``kernel`` is large.
+    """
+    if kernel.size <= _FFT_KERNEL_THRESHOLD:
+        return np.asarray(ndi.convolve(m, kernel, mode="constant", cval=0.0), dtype=np.float32)
+    from scipy.signal import fftconvolve
+
+    out = fftconvolve(m, kernel, mode="same")
+    return np.asarray(out, dtype=np.float32)
+
+
 def cluster_density(
     mask: NDArray[np.generic], *, radius_vox: float, mode: str = "tophat"
 ) -> NDArray[np.float32]:
@@ -436,7 +528,7 @@ def cluster_density(
     m = np.asarray(mask, dtype=np.float32)
     if mode == "tophat":
         kernel = _sphere_kernel(radius_vox)
-        return np.asarray(ndi.convolve(m, kernel, mode="constant", cval=0.0), dtype=np.float32)
+        return _tophat_sphere_convolve(m, kernel)
     if mode == "gaussian":
         sigma = max(radius_vox / 2.0, 0.5)
         return np.asarray(ndi.gaussian_filter(m, sigma=sigma, mode="constant"), dtype=np.float32)
@@ -629,7 +721,13 @@ def register_derived(
     providers: List[FieldProvider] = [
         SnrFieldProvider(cache_dir=cache_dir),
         NormalFieldProvider(),
-        ClusterDensityProvider(cache_dir=cache_dir),
+        # Gold/ice cluster density: the standard registry produces the extreme-CC-voxel COUNT in a
+        # 250 A radius, thresholded at bg median + 8*MAD-sigma (the gold/ice band ~6.6 over
+        # N(3.28,0.48), above both background and the membrane sheets). This is the field the
+        # ``cluster_density_sample`` extractor reads into ``cc_cluster_density`` (validated ROC-AUC
+        # ~0.65 vs the round_4 cull on H99_2_100/101/110). No extractor consumed cc_cluster before,
+        # so these params only affect the rebuilt gold/ice path.
+        ClusterDensityProvider(thr_sigma=8.0, radius_A=250.0, count=True, cache_dir=cache_dir),
         BlobnessProvider(cache_dir=cache_dir),
         MembraneDistanceProvider(cache_dir=cache_dir),
     ]

@@ -31,7 +31,7 @@ from ..features.extractor import BlockCtx, FeatureExtractor
 from ..fields import _tomo
 from ..fields.provider import FieldRegistry
 from ..model.config import FittedConfig
-from ..model.filter_model import FilterModel
+from ..model.filter_model import Combiner, FilterModel
 
 __all__ = [
     "RunContext",
@@ -117,6 +117,40 @@ def constraints_from_specs(specs: Sequence[Any]) -> list[Constraint]:
         params = dict(getattr(spec, "params", {}))
         out.append(CONSTRAINT_REGISTRY.create(name, **params))
     return out
+
+
+def combiner_from_block(names: Sequence[str], block: Mapping[str, Any]) -> Optional[Combiner]:
+    """Build a uniform :class:`Combiner` from a pipeline-config ``combiner:`` scalar stanza.
+
+    The fusion head is **canonical FilterModel convention** ``keep = sigmoid(bias + S @ w)``, so a
+    false-positive axis carries a *negative* weight. Only the **uniform scalar** form
+    ``{weight: <float>, bias: <float>}`` is materialized here (every axis gets ``weight`` and the
+    scalar ``bias`` -> :meth:`Combiner.default`). Before this, that scalar form was silently dropped
+    and the head fell back to the built-in default ``bias=0`` (ignoring a config's ``bias``).
+
+    A per-axis ``weights`` **list** stanza is intentionally *not* materialized here -- list weights
+    travel through ``theta`` (``combiner::w::<axis>`` / ``combiner::bias``), the authoritative
+    machine channel every fitted config already uses (e.g. ``round_4_fitted.yaml``). A list block is
+    treated as human-readable documentation of that theta, so there is no silent-override ambiguity
+    between the two. ``theta`` is applied by the caller after this and always wins.
+
+    Args:
+        names: Constraint names in column order (the model's constraint order).
+        block: The parsed ``combiner`` mapping (may be empty).
+
+    Returns:
+        A uniform :class:`Combiner` for the scalar form, else ``None`` (list form / empty block ->
+        weights come from ``theta``).
+    """
+    if not block:
+        return None
+    if "weight" in block and block["weight"] is not None:
+        return Combiner.default(
+            list(names),
+            weight=float(block["weight"]),
+            bias=float(block.get("bias", 0.0)),
+        )
+    return None
 
 
 @dataclass
@@ -329,6 +363,9 @@ class RunContext:
 
         constraints = constraints_from_specs(config.constraints)
         model = FilterModel(constraints)
+        block_combiner = combiner_from_block([c.name for c in constraints], config.combiner)
+        if block_combiner is not None:
+            model.combiner = block_combiner
         if config.theta:
             model.set_theta(config.theta)
         tau = config.tau

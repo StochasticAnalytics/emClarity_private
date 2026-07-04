@@ -26,6 +26,7 @@ from mito_filter.features.extractor import ArrayT, BlockCtx, FeatureExtractor
 from mito_filter.features.isolation import NeighborDensity, OffSurfaceIsolation
 from mito_filter.features.local_stats import (
     Blobness,
+    ClusterDensitySample,
     GoldFiducialProximity,
     ScoreClusterDensity,
 )
@@ -110,6 +111,28 @@ def test_score_cluster_density_elevated() -> None:
     out = ScoreClusterDensity(radius=2).extract(c, {"cc": f}, _ctx(g))
     assert out["cc_cluster_z"][0] > out["cc_cluster_z"][1]
     assert out["cc_local_max"][0] == pytest.approx(10.0)
+
+
+def test_cluster_density_sample_reads_dense_field() -> None:
+    """cluster_density_sample log-samples the dense cc_cluster field: high in a cluster, low out."""
+    g = _grid()
+    cluster = np.zeros(g.shape, dtype=np.float32)
+    cluster[18:23, 18:23, 18:23] = 500.0  # a gold/ice cluster's local extreme-CC count
+    f = DenseField.from_array("cc_cluster", g, cluster)
+    c = _cand([[20, 20, 20], [5, 5, 5]], g)
+    out = ClusterDensitySample(radius=1, log=True).extract(c, {"cc_cluster": f}, _ctx(g))
+    assert out["cc_cluster_density"][0] == pytest.approx(np.log1p(500.0), rel=1e-4)
+    assert out["cc_cluster_density"][1] == pytest.approx(0.0)
+    assert out["cc_cluster_density"][0] > out["cc_cluster_density"][1]
+
+
+def test_cluster_density_sample_neutral_without_field() -> None:
+    """No cc_cluster field -> neutral NaN column (gold/ice constraint falls back to its aliases)."""
+    g = _grid()
+    c = _cand([[20, 20, 20], [5, 5, 5]], g)
+    out = ClusterDensitySample().extract(c, {}, _ctx(g))
+    assert out["cc_cluster_density"].shape == (2,)
+    assert np.isnan(out["cc_cluster_density"]).all()
 
 
 def test_blobness_blob_vs_sheet() -> None:

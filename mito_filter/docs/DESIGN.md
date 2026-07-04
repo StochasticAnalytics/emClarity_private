@@ -1,13 +1,35 @@
 # mito_filter — Architecture (definitive)
 
 Status: **BUILT and validated on real data** — Phase A (spatial filter), Phase B (dense
-orientation), the joint optimizer over all 112 convmaps (`configs/round_4_fitted.yaml`), and
-Phase C (membrane reference) are all implemented and pass the full test suite (288 passed,
-1 skipped; lint + `mypy src tests` clean). See `docs/STATUS.md` for the capability summary,
-real-data validation, and known limitations, and the per-section status notes below. This
-document is the single source of truth for the package structure; when code and this doc
-disagree, fix one of them in the same change. Companion to `docs/SPEC.md` (authoritative
-data/format spec — every convention number below is verified there).
+orientation), the joint optimizer over all 112 convmaps, and Phase C (membrane reference) are all
+implemented and pass the full test suite (330 passed, 1 skipped; lint + `mypy src tests` clean).
+See `docs/STATUS.md` for the capability summary, real-data validation, and known limitations, and
+the per-section status notes below. This document is the single source of truth for the package
+structure; when code and this doc disagree, fix one of them in the same change. Companion to
+`docs/SPEC.md` (authoritative data/format spec — every convention number below is verified there).
+
+> **v2 physics fix — DEFINITIVE full-112 validation (2026-07-04).** Two shipped heads:
+> **`configs/round_4_goldice.yaml`** (the fast validated workhorse — lean gold/ice + isolation, cheap
+> features, ~5–30 s/tomo; use in production) and **`configs/round_4_fitted_v2.yaml`** (the full physics
+> head with dense-normal surface-coherence + membrane interior-vesicle diagnostics, ~20 min/tomo). The
+> old tuned `round_4_fitted.yaml` barely discriminated (cross-tab fused ROC-AUC **0.535** vs the round_4
+> classification cull) because its dominant axis was dead on real data (**gold/ice fired on 16/136,418
+> hits** — `cc_thresh 10.7` sat above 99.85 % of the cluster field; isolation saturated ~1.0; membrane
+> unwired). The gold/ice axis was **rebuilt to detect a peak inside a compact cluster of extreme-CC
+> voxels** (`bg + 8σ` threshold, 250 Å `fftconvolve` top-hat count, read straight from the convmap — no
+> bead file), weighted by **measured** per-axis discriminative power (gold/ice-dominant, **not** fitted
+> to the labels). **Validated over all 112 tomos** against the classification cull as independent GT:
+> gold/ice axis ROC-AUC **0.681** vs the union cull (**0.748** vs the round-1/cyc2 gold-ice cull it
+> targets; anti-predictive ~0.44 on the later structural cyc5/cyc8 culls), **fused 0.657**, OR 4.06,
+> precision(flag→removed) 0.826, keeps 84.6 % of survivors, flag-rate 0.326 (non-degenerate).
+> A conservative high-precision **PRE-filter**, strongest on the gold/ice cull it targets, weak on the
+> later structural culls — **not a replacement for classification**. (The interim 11-tomo 0.705/0.669
+> was a favorable subset; the honest full-search gold/ice AUC is 0.681.) The label-free self-supervised
+> re-tune is **degenerate on this data** (over-weights the anti-predictive coherence axis → fused AUC
+> < 0.5) and is **not shipped**. A real defect was also fixed: `RunContext.from_pipeline_config`
+> silently ignored the config's `combiner:` block (falling back to the uniform default → a degenerate
+> flag-all head); it now materializes the scalar `{weight, bias}` form (`combiner_from_block`) and the
+> per-axis weights travel via the `theta:` block (§7, §13).
 
 Location: `/sa_shared/git/emClarity_private/mito_filter/` — an **editable-install package with its
 own venv** (`./.venv`), independent of the parent `emclarity` package so it is free to add

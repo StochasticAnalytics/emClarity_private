@@ -19,12 +19,24 @@ data + known limitations), and `docs/SPEC.md` (authoritative emClarity TM data/f
   normal to the dense field via one YAML line.
 - **Joint optimizer.** Featurize all 112 convmaps to a parquet cache, then jointly tune every
   constraint parameter + the fusion head against a self-supervised objective. The tuned result is
-  `configs/round_4_fitted.yaml`.
+  `configs/round_4_fitted.yaml`. (On this data the label-free tune is degenerate — the shipped
+  default is the physics head below, not a self-supervised fit; see `docs/STATUS.md`.)
 - **Phase C — membrane reference.** Segment membrane sheets straight from the tomogram
   reconstruction (`rec`) by Hessian sheetness, take the signed EDT, and score four membrane
   features (distance / inside-outside sign / closed-shell curvature / template-vs-membrane facing)
-  with the `membrane_geometry` constraint. Config: `configs/round_4_membrane.yaml`. See
-  `docs/STATUS.md` for the honest signal-strength assessment on real data.
+  with the `membrane_geometry` constraint. Config: `configs/round_4_membrane.yaml`.
+- **Physics head, gold/ice-dominant (the shipped filter, DEFINITIVE full-112 validation).** The
+  false-positive axes rebuilt to read their real physical signatures directly from the dense convmap
+  CC + angle + rec (gold/ice = a peak inside a compact cluster of extreme-CC voxels, detected at
+  `bg + 8σ` via a 250 Å top-hat; membrane interior-vesicle geometry; de-saturated isolation;
+  dense-normal surface coherence), weighted by **measured** discriminative power — gold/ice-dominant,
+  **not** fitted to the classification labels. Validated over **all 112 tomos** against the round_4
+  classification cull as independent ground truth: gold/ice **axis ROC-AUC 0.681** vs the union cull
+  (**0.748** vs the round-1/cyc2 gold-ice cull it targets), **fused 0.657**, OR 4.06, precision 0.826,
+  keeps 84.6 % of survivors — up from the old dead-axis 0.535. **Two configs:**
+  **`configs/round_4_goldice.yaml`** (the fast validated workhorse — cheap features, use in
+  production) and **`configs/round_4_fitted_v2.yaml`** (the full physics head with membrane /
+  surface interpretability; sibling `configs/round_4_physics.yaml`). See `docs/STATUS.md`.
 
 ## Layout
 
@@ -67,10 +79,12 @@ not-yet-wired message (the optimize loop is driven programmatically today — se
 
 ```bash
 .venv/bin/mito-filter scan \
-    --config configs/round_4_fitted.yaml \
+    --config configs/round_4_goldice.yaml \
     --data-dir /scratch/salina/round4_angle_rerun/convmap_wedgeType_2_bin5 \
     --work-dir ./run_round4 \
     --jobs 4
+# round_4_goldice.yaml = the fast validated workhorse (~5-30 s/tomo). Swap in
+# round_4_fitted_v2.yaml for the full physics head (surface + membrane; ~20 min/tomo).
 # --data-dir overrides the config's dataset; --limit N for a debug subset;
 # --dry-run to discover + report only; --force to ignore per-tomo done sentinels.
 ```
@@ -90,8 +104,11 @@ All configs are plain YAML; `features` are `FEATURE_REGISTRY` names and `constra
 | --- | --- |
 | `round_4.yaml` | **Phase A** — existing convmaps only, no re-run. Sparse csv candidates + dense `cc`; gold/ice-cluster + surface-coherence (on **sparse csv normals**) + isolation. The day-one filter. |
 | `round_4_dense.yaml` | **Phase B** — same recipe, but the surface features consume the **dense per-voxel normal field** (`angle` → `normal`) with CC-gating instead of the csv normal. One YAML swap, zero constraint changes. |
-| `round_4_fitted.yaml` | **The tuned filter.** The joint optimizer's output over all 112 convmaps — every constraint parameter + the logit fusion weights + `tau`, plus a `meta.report` provenance block. This is what `scan` should use in production. |
+| `round_4_fitted.yaml` | **The old tuned filter.** The joint optimizer's output over all 112 convmaps. **Superseded** — its cross-tab fused ROC-AUC was only 0.535 (its gold/ice axis was dead: fired on 16/136,418 hits). Kept for provenance; not the default. |
 | `round_4_membrane.yaml` | **Phase C** — adds the membrane-reference geometry: segments membranes from the `rec` (`rec_dir: /scratch/salina/alt_cache`), derives `membrane_sdf`, and adds the four membrane features + the `membrane_geometry` constraint on top of the round_4 base. |
+| **`round_4_goldice.yaml`** | **The fast validated workhorse — use in production.** Lean gold/ice-dominant head (gold/ice cluster + light isolation only; cheap CC + candidate-position features, ~5–30 s/tomo — drops the slow surface/membrane decodes). Weights mirror the physics head exactly on the two kept axes (`w = [-3,-0.3]`, bias +1.5). **DEFINITIVE full-112 validation:** gold/ice axis ROC-AUC **0.681** vs the union cull (**0.748** vs the round-1/cyc2 cull it targets), fused **0.657**, OR 4.06, precision 0.826, keeps 84.6 % of survivors. |
+| `round_4_fitted_v2.yaml` | **The full physics head** (identical to `round_4_physics.yaml`). All four FP axes live + physically-directed; gold/ice-dominant head (`w = [-3,-1,-0.3,-0.5]`, bias +1.5) set from measured discriminative power, **not** fitted to labels. Adds the dense-normal surface-coherence + membrane interior-vesicle diagnostics (~20 min/tomo) for interpretability; holds beyond 11 tomos (fused 0.666 on 19 full-feature parquets) but does **not** beat the lean head on this data. |
+| `round_4_physics.yaml` | Documented sibling of `round_4_fitted_v2.yaml` (identical head): carries the full per-axis physics rationale in comments + the fp-logit `combiner:` documentation block. |
 
 ## The joint optimize over a search
 

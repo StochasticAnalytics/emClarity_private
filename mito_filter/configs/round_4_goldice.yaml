@@ -1,0 +1,85 @@
+# round_4_goldice.yaml — the LEAN, CHEAP gold/ice-dominant head for the DEFINITIVE full-112-tomo
+# validation of the gold/ice false-positive axis against the round_4 classification cull.
+#
+# This is a strict subset of round_4_physics.yaml / round_4_fitted_v2.yaml (the physics-fixed head,
+# fused ROC-AUC 0.669, gold/ice axis 0.705 on the 11-19 tomo cache). It keeps ONLY the features that
+# read the convmap + candidate positions directly and are cheap (~15-30 s/tomo):
+#   * gold/ice cluster detection  — score_cluster_density (cc_local_max / cc_cluster_z from the cc
+#     field) + cluster_density_sample (cc_cluster_density = log extreme-CC-voxel count in a 250 A
+#     top-hat over the bg+8sigma-thresholded dense convmap) + blobness (point Hessian on cc)
+#     + gold_fiducial_proximity (gold_dist, inf here -> neutral).
+#   * isolation                   — neighbor_density (neighbor_count) + off_surface_isolation
+#     (both derived from candidate positions alone, no dense field).
+#
+# It DROPS the slow surface + membrane axes of the physics head — they each need a heavy dense
+# decode and are weak/anti-predictive on this data anyway:
+#   * normal_coherence / surface_fit_residual / principal_curvature (normal_source: field) needs the
+#     ~3.2 GB dense angle->normal decode (surface_coherence axis AUC ~0.45 here).
+#   * membrane_distance / inside_outside_sign / closed_shell_score / membrane_facing need the
+#     membrane_sdf Hessian-sheetness segmentation of the rec (~90 s/tomo).
+# Removing them drops per-tomo cost from ~20 min to ~15-30 s with NO loss on the strong gold/ice
+# axis (the physics head fused 0.669 is BELOW the gold/ice axis 0.705 — the weak axes do not lift it
+# on this data; see round_4_physics.yaml header).
+#
+# Combiner mirrors the physics head EXACTLY on the two kept axes: gold/ice dominant (fp-weight 3.0),
+# isolation light (0.3), same bias. No surface/membrane terms. Applied via the canonical FilterModel
+# theta (keep = sigmoid(bias + S @ w); a positive fp-logit weight negates to a negative keep-weight).
+
+dataset: full_enchilada_3_4
+device: cpu
+
+# Per-tomo robust background fit; folds bg_mean/bg_std into every BlockCtx so the CC-gate and the
+# cluster threshold are portable per tomo (SPEC §9.2). Required by cc_cluster_z / cc_cluster_density.
+meta:
+  calibrate: mad
+
+candidate_source: csv_peaks
+
+features:
+  # --- GOLD/ICE cluster detection (cheap: cc field + candidate positions) ---
+  - {name: score_cluster_density, radius: 2}
+  - {name: cluster_density_sample, radius: 1, log: true}
+  - {name: blobness, step: 2}
+  - {name: gold_fiducial_proximity, near_A: 250}
+  # --- ISOLATION (cheap: candidate positions only, no dense field) ---
+  - {name: neighbor_density, radius_A: 800}
+  - {name: off_surface_isolation, radius_A: 800, min_neighbors: 4}
+
+constraints:
+  # Gold/ice = a peak inside a compact spatial CLUSTER of extreme CC. cc_cluster_density is the
+  # log-count of extreme-CC voxels within 250 A. Identical params to the physics head.
+  - name: gold_ice_cluster
+    cc_thresh: 3.5
+    cc_sharpness: 1.5
+    blob_mix: 0.0
+    gold_radius_A: 250.0
+    gold_sharpness: 0.02
+  # Isolation prior, DE-SATURATED neighbor-COUNT term. Identical params to the physics head.
+  - name: isolation
+    density_thresh: 4.0
+    density_sharpness: 1.0
+    off_thresh_A: 300.0
+    off_sharpness: 0.03
+    off_weight: 1.0
+
+# Fusion head (documentation of the fp-logit): fp_logit = bias + sum_i w_i * s_i, keep_prob =
+# sigmoid(-fp_logit). Gold/ice DOMINATES (3.0), isolation LIGHT (0.3) — mirrors the physics head's
+# gold/isolation weights and bias exactly, with the surface(1.0)/membrane(0.5) terms dropped.
+combiner:
+  kind: logit
+  names: [gold_ice_cluster, isolation]
+  weights: [3.0, 0.3]
+  bias: -1.5
+
+# AUTHORITATIVE machine head (canonical FilterModel keep = sigmoid(bias + S @ w)): each fp-logit
+# weight is negated and the bias flips sign. [3.0, 0.3] / -1.5 -> [-3.0, -0.3] / +1.5.
+theta:
+  combiner::w::gold_ice_cluster: -3.0
+  combiner::w::isolation: -0.3
+  combiner::bias: 1.5
+
+tau: 0.5
+
+writeback:
+  debug_csv: true
+  removal_json: true
