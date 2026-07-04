@@ -681,15 +681,36 @@ Bootstrap mito-membrane-vs-interior-vesicle labels via normal-coherence/closed-s
 `bin10/*.rec` (the only substrate on disk), validated by the phantom (§9.5).
 
 ### 10.3 Phasing — what to build first
-- **Phase A (existing convmaps only, no re-run):** `core/` + `emclarity/` + `ConvmapProvider` +
+- **Phase A (existing convmaps only, no re-run): DONE.** `core/` + `emclarity/` + `ConvmapProvider` +
   `CsvPeakSource` + `BackgroundModel` calibration + `SurfaceCoherenceConstraint` on **sparse csv
   normals** + `GoldIceClusterConstraint` on the dense `cc` field + `GoldFiducialProvider` +
-  `scan` + `.mat` writeback. End-to-end csv+cc filter on day one.
-- **Phase B (after the salina re-run):** `AngleIndexLoader` + `NormalFieldProvider` +
-  `NoiseVarLoader`/`SnrFieldProvider` + dense (CC-gated) curvature + `DenseFieldPeakSource`. Swap
-  sparse→dense normals via YAML; zero constraint changes.
-- **Phase C:** `MembraneSearchProvider` + `MembraneGeometryConstraint`; then the `optimize` layer
-  (feature cache + joint tuner + self-sup objective) and `validate/`.
+  `scan` + `.mat` writeback. End-to-end csv+cc filter, `configs/round_4.yaml`.
+- **Phase B (after the salina re-run): DONE.** `AngleIndexLoader` + `NormalFieldProvider` +
+  `SnrFieldProvider` + dense (CC-gated) curvature + `DenseFieldPeakSource`. Sparse→dense normals is
+  a one-line YAML swap, zero constraint changes (`configs/round_4_dense.yaml`). Reads the
+  `<base>_angles.mrc` + `_angles.list` from the salina angle re-run.
+- **Optimizer: DONE.** `optimize/` feature cache (`python -m mito_filter.optimize.feature_cache`,
+  fan-out) + joint `Tuner` + the self-supervised `Objective`. Tuned over all 112 convmaps →
+  `configs/round_4_fitted.yaml` (theta + logit fusion head + tau + a `meta.report` provenance block).
+- **Phase C (membrane reference): DONE — but with a SIMPLER approach than the §10.2 plan.** The
+  original plan was `MembraneSearchProvider` (a synthetic-bilayer CC search, a second emClarity-style
+  run). What is actually built is `fields/derived.py:MembraneDistanceProvider` — it segments membrane
+  sheets **directly from the tomogram reconstruction `rec`** (already on disk at
+  `/scratch/salina/alt_cache/<base>.rec`, voxel-exact to the convmap) by **Hessian sheetness**
+  (`hessian_membraneness` → `membrane_segmentation`, one dominant eigenvalue = locally planar bilayer,
+  bright density ridge), then takes the **signed EDT** (`signed_edt`, negative inside a closed
+  membrane). No template, no recompile, no second search — it is `GENERATABLE` on the real data today
+  (~90–150 s / tomo full-res on CPU, content-addressed cached). Four features
+  (`features/membrane.py`: `membrane_distance` / `inside_outside_sign` / `closed_shell_score` /
+  `membrane_facing`) feed the `membrane_geometry` constraint (`constraints/membrane.py`,
+  `configs/round_4_membrane.yaml`). **Honest caveat (validated on `H99_2_100_1_bin5`, see
+  `docs/STATUS.md`):** the Hessian segmentation is fragmented (≈2.4 k components, few closed shells;
+  signed-EDT `inside` fraction ≈ 0.001), and only ≈4 % of the sparse csv hits fall within 75 Å of a
+  segmented membrane, so on the current csv hit set the membrane term is **mostly neutral** and its
+  per-hit facing signal is weak (median facing ≈ 0.27 at on-membrane hits, not the outer-membrane
+  best case). The mechanism is correct and neutral-safe; its discriminative power on this data is
+  limited. `validate/` is a namespace stub (only `__init__.py`; the `validate.holdout` module the
+  CLI dispatches to does not exist yet) — the downstream-quality loop is not yet built.
 
 ---
 
@@ -816,3 +837,46 @@ so providers, constraints, features, and datasets are independently implementabl
 8. **RAM/VRAM OOM on 125 G hosts during dense generation** (TM history). → chunked halo streaming +
    config-driven per-host worker caps + live `free -g` guard; generate-once-cache amortizes it.
 9. **Cross-block cluster split.** → union-find seam merge (§3); unit test on a straddling cluster.
+
+---
+
+## 16. Operational notes (real-cluster deployment)
+
+Verified facts about running this package on the etna / siracusa / salina cluster, recorded so a
+future operator does not re-discover them the hard way.
+
+### 16.1 Cross-host Python heterogeneity — the package runs on **salina only**
+
+The venv is built with **Python 3.12** (`.venv/pyvenv.cfg` → `/usr/bin/python3.12`, 3.12.11), and
+3.12 exists on **only one host**:
+
+| host | default `python3` | `python3.12` |
+| --- | --- | --- |
+| etna | 3.8.10 | **absent** |
+| siracusa | 3.10.12 | **absent** |
+| salina | 3.8.10 | **`/usr/bin/python3.12` (3.12.11)** |
+
+Consequence: `mito-filter`, the pytest gate, and the feature-cache fan-out **all run on salina
+only** — the feature-extract parallelism (`--index/--total`) is salina-centric (spread slots across
+salina's cores, not across hosts), unlike the emClarity split stages that fan across all three
+hosts. This is the single biggest scaling limiter. **Recommended fixes** (either unblocks
+cross-host fan-out): (a) build a **relocatable Python 3.12** (e.g. a `python-build-standalone`
+tarball or conda-pack) on `/sa_shared` and point every host's jobs at it — `/sa_shared` and
+`/scratch` are mounted identically everywhere, so a shared interpreter + shared venv would fan the
+feature cache across etna + siracusa + salina like the emClarity pipeline; or (b) **lower the
+floor to Python 3.10** (siracusa's version) — the code uses no 3.11/3.12-only syntax, so a
+`python_requires = ">=3.10"` venv would additionally light up siracusa. Until then, treat salina
+as the sole mito_filter host.
+
+### 16.2 `NormalFieldProvider` memory — **~31.7 GB RSS / tomo**
+
+Decoding one dense angle volume to a per-voxel normal field is memory-heavy. Measured on the real
+`H99_2_100_1_bin5` angle volume (662×942×448): **peak RSS 31.71 GB**, ~36 s (baseline 0.06 GB).
+The final `(nz,ny,nx,3)` fp32 normal array is only ~3.3 GB — the ~10× overshoot is the decode
+intermediates (the `angle_idx` fancy-index into `angles_list` and the fp64 euler→normal
+trigonometry over ~2.8×10⁸ voxels). So the Phase B / dense-orientation and membrane-facing paths
+need a host with **>32 GB free per concurrent tomo**: salina has 125 GB, so cap dense-normal
+concurrency at **~3 tomos** and never run it alongside the 50 GB/proc CTF-estimate hog. The
+block-streaming design (DESIGN §3, §11) keeps the *scalar* field paths to a few blocks of RSS; it
+is specifically the whole-volume normal **decode** that spikes — a future win is to decode the
+normal per halo-block on demand instead of materializing the whole `(…,3)` volume.
