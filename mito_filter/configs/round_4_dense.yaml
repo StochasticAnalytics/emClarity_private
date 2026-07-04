@@ -1,0 +1,75 @@
+# Phase B DENSE-orientation scan for six_hours_round_4 (DESIGN §6, §9.3; SPEC §5).
+#
+# Same recipe as round_4.yaml, but the SurfaceCoherence / curvature features consume the DENSE
+# per-voxel normal field instead of the sparse csv normals: the FieldRegistry resolves
+#   angle  (AngleIndexLoader  -> <base>_angles.mrc, packed argmax index in [1,2592])
+#   normal (NormalFieldProvider -> decode via <base>_angles.list, outward normal (z,y,x))
+# and each surface extractor runs with `normal_source: field`, so it SAMPLES the dense normal at
+# the candidate voxel rather than reading the csv `normal` attr. CC-gating (gate_sigma) is the
+# load-bearing rule (DESIGN §9.3): only voxels whose co-located cc/snr clears bg_mean +
+# gate_sigma*bg_std contribute — the low-CC background is argmax-of-noise and is masked out.
+#
+# The angle volume is a 1.1 GB mode-2 fp32 file; NormalFieldProvider decodes it whole once per
+# tomo (~35 s, ~3.3 GB peak for the (nz,ny,nx,3) fp32 normal array) — see `issues` in the report.
+# Requires the angle re-run to have emitted <base>_angles.mrc + <base>_angles.list next to the
+# convmap (present under /scratch/salina/round4_angle_rerun/convmap_wedgeType_2_bin5, symlinked
+# into the round dir as convmap_wedgeType_2_bin5).
+
+dataset: full_enchilada_3_4
+device: cpu
+
+meta:
+  calibrate: mad
+
+# Candidate feed. `csv_peaks` (default) keeps the SAME ~1249 sparse hits as round_4.yaml so the
+# dense-vs-sparse comparison is one-to-one on flagged hits (only the NORMAL source changes).
+# `dense_peaks` is the ALTERNATIVE source: re-detect local maxima straight from the convmap CC
+# field (threshold ~ the p99 elevated-CC band) and de-dup with the oriented erase cylinder, using
+# the dense `normal` field to orient the NMS cylinder — this recovers the membrane-sheet /
+# gold-cluster structure the csv NMS collapses, so surface fitting gets far denser support.
+candidate_source: csv_peaks
+# candidate_source:
+#   name: dense_peaks
+#   field_name: cc
+#   threshold: 4.5          # ~ bg_mean + ~2.5 sigma; the elevated-CC band (SPEC §1)
+#   normal_field_name: normal
+
+features:
+  - {name: score_cluster_density, radius: 2}
+  - {name: blobness, step: 2}
+  - {name: gold_fiducial_proximity, near_A: 250}
+  # DENSE normal field (SPEC §5): sample the decoded per-voxel outward normal at each candidate.
+  # normal_source: field forces needs_fields = (normal, cc) so the angle->normal DAG resolves.
+  - {name: normal_coherence, radius_A: 800, normal_source: field, gate_sigma: 3.0}
+  - {name: surface_fit_residual, radius_A: 800, normal_source: field, gate_sigma: 3.0}
+  - {name: principal_curvature, radius_A: 800, normal_source: field, gate_sigma: 3.0}
+  - {name: neighbor_density, radius_A: 800}
+  - {name: off_surface_isolation, radius_A: 800, min_neighbors: 4}
+
+constraints:
+  - name: gold_ice_cluster
+    cc_thresh: 6.0
+    cc_sharpness: 2.0
+    blob_mix: 0.3
+    gold_radius_A: 250.0
+  - name: surface_coherence
+    coh_thresh: 0.35
+    coh_sharpness: 12.0
+    residual_weight: 0.5
+    curv_weight: 0.2
+  - name: isolation
+    density_thresh: 2.0
+    density_sharpness: 1.0
+    off_thresh_A: 300.0
+    off_sharpness: 0.03
+    off_weight: 1.0
+
+combiner:
+  weight: -1.0
+  bias: 0.5
+
+tau: 0.5
+
+writeback:
+  debug_csv: true
+  removal_json: true
