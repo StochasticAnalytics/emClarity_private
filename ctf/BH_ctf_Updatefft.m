@@ -39,6 +39,17 @@ end
   ITER_LIST = cell(nWorkers,1);
   
   [STACK_LIST, nTiltSeries] = BH_returnIncludedTilts( subTomoMeta.mapBackGeometry );
+  % If no tilt-series are included there is nothing to update. Say so explicitly
+  % (otherwise the function just completes silently) and remind the operator of the
+  % prerequisites -- a common cause is that the upstream tomoCPR steps were not run.
+  if (nTiltSeries == 0)
+    fprintf(['\nctf update: NOTHING TO UPDATE -- no included tilt-series in subTomoMeta.\n', ...
+             'The tomoCPR pipeline must be completed first:\n', ...
+             '  1. run tomoCPR              (writes the mapBack *.align scripts + reprojection),\n', ...
+             '  2. run the run scripts      (the tiltalign optimization over those *.align -- run EXTERNALLY),\n', ...
+             '  3. apply the geometry update (emClarity geometry <param> <cycle> ... SwitchCurrentTomoCpr).\n\n']);
+    return
+  end
   clear STACK_LIST_tmp
   for iGPU = 1:nWorkers
     ITER_LIST{iGPU} = STACK_LIST(iGPU:nWorkers:nTiltSeries);
@@ -449,7 +460,41 @@ parfor iGPU = 1:nWorkers
     
     % Once updated the reconstructions are no longer valid
     system(eraseStack);
-    system(eraseRec);
+    % Clean reconstructions via the authoritative paths recorded by ctf 3d
+    % (covers alt_cache, not just cache/), warning on any recorded rec that is
+    % missing. Falls back to the legacy cache/ glob if none were recorded
+    % (e.g. an older subTomoMeta with no reconstructionPaths field) -- and that
+    % fallback is NOT silent, since it can miss alt_cache recs.
+    if (isfield(subTomoMeta, 'reconstructionPaths') && ...
+        isfield(subTomoMeta.mapBackGeometry, STACK_PRFX))
+      cleanTomoList = subTomoMeta.mapBackGeometry.(STACK_PRFX).tomoList;
+      for iCleanTomo = 1:numel(cleanTomoList)
+        cleanTomo = cleanTomoList{iCleanTomo};
+        if isfield(subTomoMeta.reconstructionPaths, cleanTomo)
+          cleanRec = subTomoMeta.reconstructionPaths.(cleanTomo);
+          if isfile(cleanRec)
+            system(sprintf('rm %s', cleanRec));
+          else
+            fprintf('WARNING: ctf update cleanup: recorded reconstruction not found: %s\n', cleanRec);
+          end
+        end
+      end
+    elseif (isempty(emc.alt_cache))
+      % No recorded paths and no alt_cache: cache/ holds everything, so the legacy
+      % glob is complete. Warn (recording did not happen) but proceed.
+      fprintf(['WARNING: ctf update cleanup: no recorded reconstructionPaths for %s; ', ...
+               'falling back to legacy "rm cache/%s_*.rec" (no alt_cache set, so cache/ is complete).\n'], ...
+              STACK_PRFX, STACK_PRFX);
+      system(eraseRec);
+    else
+      % No recorded paths but alt_cache IS configured: the legacy cache/-only glob
+      % would MISS recs in alt_cache and silently reuse stale reconstructions.
+      error(['ctf update cleanup: no recorded reconstructionPaths for %s, but alt_cache ', ...
+             'is set in the param. The legacy "rm cache/%s_*.rec" would MISS recs in ', ...
+             'alt_cache and silently reuse stale reconstructions. Re-run `ctf 3d` (its ', ...
+             'single-process assembly pass) to record reconstruction paths into ', ...
+             'subTomoMeta before `ctf update`.'], STACK_PRFX, STACK_PRFX);
+    end
   end % end of loop over tilts
 end % end of par for loop
 

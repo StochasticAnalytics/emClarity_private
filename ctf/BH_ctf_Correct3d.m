@@ -732,6 +732,33 @@ parfor iParProc = 1:nParProcesses
   end % end of loop over tilt-series
 end % end of parfor over gpus
 
+% Record the authoritative on-disk path of each reconstruction so that `ctf update`
+% cleans the correct files (including any that landed in alt_cache) rather than
+% globbing cache/ only. Done ONLY in the single-process assembly pass
+% (recon_subset(2) == -1, never a split partition) and never for the _filtered
+% phakePhasePlate reconstructions.
+if (recon_for_subTomo && recon_subset(2) == -1 && ~phase_plate_mode)
+  nRecorded = 0;
+  for iRecStack = 1:nTilts
+    recTomoList = subTomoMeta.mapBackGeometry.(tiltList{iRecStack}).tomoList;
+    for iRecTomo = 1:numel(recTomoList)
+      recPath = EMC_checkCacheForFile(emc.alt_cache, ...
+                  sprintf('cache/%s_bin%d.rec', recTomoList{iRecTomo}, samplingRate));
+      if isfile(recPath)
+        if ~startsWith(recPath, '/')
+          recPath = fullfile(CWD, recPath);
+        end
+        subTomoMeta.reconstructionPaths.(recTomoList{iRecTomo}) = recPath;
+        nRecorded = nRecorded + 1;
+      end
+    end
+  end
+  if (nRecorded > 0)
+    BH_saveSubTomoMeta(emc.('subTomoMeta'), subTomoMeta);
+  end
+  fprintf('Recorded %d reconstruction paths in subTomoMeta for ctf update cleanup.\n', nRecorded);
+end
+
 if (flgCleanCache)
   % Double check that this exists to avoid data loss.
   checkDir = dir(tmpCache);

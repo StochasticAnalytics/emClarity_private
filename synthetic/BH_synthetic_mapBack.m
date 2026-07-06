@@ -1784,6 +1784,15 @@ for iTiltSeries = tiltStart:nTiltSeries
 
   % We'll make two copies, one that can be re-run from the local project directory
   % and one that is run while mapBack is running.
+  %
+  % NOTE (convention): tomoCPR only WRITES these .align (tiltalign com) scripts; it
+  % does NOT execute the tiltalign optimization itself -- flgRunAlignments is vestigial
+  % and no system() runs the .align here. The optimization is run EXTERNALLY over these
+  % .align files (the driver fans master_align.sh / tiltalign_reproject.py across them).
+  % Pipeline order: (1) tomoCPR (this, writes the scripts), (2) run the run scripts
+  % externally (the tiltalign optimization), (3) apply the geometry update
+  % (emClarity geometry ... SwitchCurrentTomoCpr) -- only then do ctf update / ctf 3d
+  % have a refined alignment to act on.
   aliCom_name = sprintf('%smapBack%d/%s.align',mbOutAlt{1:3});
   aliCom_name_rerun = sprintf('cache/mapBack%d/%s.align',mbOutAlt{2:3});
   aliCom = fopen(aliCom_name,'w');
