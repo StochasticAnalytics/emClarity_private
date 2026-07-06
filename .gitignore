@@ -168,6 +168,8 @@ CLAUDE.md
 dot-claude
 .mcp.json
 
+plasmon-labs-devcontainer/
+
 worktrees/
 
 pyrightconfig.json
