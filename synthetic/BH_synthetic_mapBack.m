@@ -31,9 +31,10 @@ CYCLE = EMC_str2double(CYCLE);
 cycle_numerator = '';
 cycle_denominator ='';
 
-% When tomoCPR is run on one node (start to finish) or is being finalized on a many node run using the [cycle, nodeIDX, totalNodes] syntax with we [ cycle, 0, 0 ]
-% this is set to true. For the many node alignment, we want to defer running the final alignment until all the nodes have finished their work, which we do by setting this to false.
-flgRunAlignments = true;
+% multi_node_run is true when CYCLE is given as [cycle, nodeIDX, totalNodes].
+% skip_to_the_end_and_run is true only for the [cycle, 0, 0] finalize invocation,
+% which defers the tiltalign sweep (and the cache/mapBack -> mapBack promotion)
+% until every node has written its .align files.
 multi_node_run = false;
 skip_to_the_end_and_run = false;
 
@@ -42,8 +43,6 @@ if numel(CYCLE) == 3
   % After splitting, run the alignments while skipping everything else
   if CYCLE(2) == 0 && CYCLE(3) == 0
     skip_to_the_end_and_run = true;
-  else
-    flgRunAlignments = false;
   end
   cycle_numerator = CYCLE(2);
   cycle_denominator = CYCLE(3);
@@ -1775,68 +1774,26 @@ for iTiltSeries = tiltStart:nTiltSeries
   end
   
   mbOutAlt = mbOUT;
-  tilt_script_name = iRawTltName;
-  if (multi_node_run)
-    mbOutAlt{1} = 'cache/';
-    [~,tn2,tn3] = fileparts(iRawTltName);
-    tilt_script_name = sprintf('cache/mapBack%d/%s%s',mbOUT{2},tn2,tn3);
-  end
+  % Arg 8 (the input tilt file) is written mapBackN/-relative like every other
+  % path in the .align, so the script runs as-is once cache/mapBack%d/ is promoted
+  % to mapBack%d/ at the project root -- no path rewrite (the old awk pass) needed.
+  [~,tn2,tn3] = fileparts(iRawTltName);
+  tilt_script_name = sprintf('mapBack%d/%s%s',mbOUT{2},tn2,tn3);
 
-  % We'll make two copies, one that can be re-run from the local project directory
-  % and one that is run while mapBack is running.
-  %
-  % NOTE (convention): tomoCPR only WRITES these .align (tiltalign com) scripts; it
-  % does NOT execute the tiltalign optimization itself -- flgRunAlignments is vestigial
-  % and no system() runs the .align here. The optimization is run EXTERNALLY over these
-  % .align files (the driver fans master_align.sh / tiltalign_reproject.py across them).
-  % Pipeline order: (1) tomoCPR (this, writes the scripts), (2) run the run scripts
-  % externally (the tiltalign optimization), (3) apply the geometry update
+  % tomoCPR WRITES one tiltalign com script (.align) per tilt series into
+  % cache/mapBack%d/, every path mapBackN/-relative; it does NOT run the tiltalign
+  % optimization here. That sweep is run EXTERNALLY over the .align files by
+  % tomoCPR_tilt_align_sweep.sh, fanned across hosts by tomoCPR_tilt_align_fanout.sh
+  % (both generated after this loop, into the same folder). Pipeline order:
+  % (1) tomoCPR (this) writes the .align + run scripts, (2) run the fanout driver
+  % externally (the tiltalign sweep), (3) apply the geometry update
   % (emClarity geometry ... SwitchCurrentTomoCpr) -- only then do ctf update / ctf 3d
   % have a refined alignment to act on.
-  aliCom_name = sprintf('%smapBack%d/%s.align',mbOutAlt{1:3});
-  aliCom_name_rerun = sprintf('cache/mapBack%d/%s.align',mbOutAlt{2:3});
+  aliCom_name = sprintf('cache/mapBack%d/%s.align',mbOutAlt{2:3});
   aliCom = fopen(aliCom_name,'w');
 
-  % Testing local alignment with optimized parameters using the new imod options for leave out
-  fprintf(aliCom,['%smapBack%d/%s_fit-full.fid\n',... %1
-                  '%smapBack%d/%s%s.3dmod\n',... %2
-                  '%smapBack%d/%s%s.resid\n',... %3
-                  '%smapBack%d/%s%s.xyz\n',... %4
-                  '%smapBack%d/%s%s.tlt\n',... %5
-                  '%smapBack%d/%s%s.xtilt\n',... %6
-                  '%smapBack%d/%s%s.tltxf\n',... %7
-                  '%s\n',... %8 input tilt file
-                  '%3.3f\n',... KFactorScaling %9
-                  '%smapBack%d/%s%s.local\n',... OutputLocalFile %10
-                  '%d\n%d\n', ...TargetPatchSizeXandY %11 12
-                  '%d\n%d\n',... MinFidsTotalAndEachSurface %13 14
-                  '%f\n%f\n',... MinSizeOrOverlapXandY %15 16
-                  '%smapBack%d/%s.align_ta.log\n',... output log file %17 
-                  '%smapBack%d/%s.align_ta_optimizer.log\n'],... output log file for optimizer %18
-                  mbOutAlt{1:3},... % for ModelFile
-                  mbOutAlt{1:3},outCTF,... %2
-                  mbOutAlt{1:3},outCTF,... %3
-                  mbOutAlt{1:3},outCTF,... %4
-                  mbOutAlt{1:3},outCTF,... %5
-                  mbOutAlt{1:3},outCTF,... %6
-                  mbOutAlt{1:3},outCTF, ... %7
-                  tilt_script_name,...
-                  emc.k_factor_scaling, ...
-                  mbOutAlt{1:3},outCTF, ...
-                  targetPatchSize(1), ...
-                  targetPatchSize(2),...
-                  nFiducialsPerPatch, ...
-                  floor(nFiducialsPerPatch/3),...
-                  emc.min_overlap, ...
-                  emc.min_overlap,...
-                  mbOutAlt{1:3},...
-                  mbOutAlt{1:3});
-  fclose(aliCom);
-
-  aliCom_rerun = fopen(aliCom_name_rerun,'w');
-
-% Testing local alignment with optimized parameters using the new imod options for leave out
-fprintf(aliCom_rerun,[...
+  % Local alignment with optimized parameters using the imod leave-out options.
+  fprintf(aliCom,[...
                 'mapBack%d/%s_fit-full.fid\n',... %1
                 'mapBack%d/%s%s.3dmod\n',... %2
                 'mapBack%d/%s%s.resid\n',... %3
@@ -1850,7 +1807,7 @@ fprintf(aliCom_rerun,[...
                 '%d\n%d\n', ...TargetPatchSizeXandY %11 12
                 '%d\n%d\n',... MinFidsTotalAndEachSurface %13 14
                 '%f\n%f\n',... MinSizeOrOverlapXandY %15 16
-                'mapBack%d/%s.align_ta.log\n',... output log file %17 
+                'mapBack%d/%s.align_ta.log\n',... output log file %17
                 'mapBack%d/%s.align_ta_optimizer.log\n'],... output log file for optimizer %18
                 mbOutAlt{2:3},... % for ModelFile
                 mbOutAlt{2:3},outCTF,... %2
@@ -1870,7 +1827,7 @@ fprintf(aliCom_rerun,[...
                 emc.min_overlap,...
                 mbOutAlt{2:3},...
                 mbOutAlt{2:3});
-  fclose(aliCom_rerun);
+  fclose(aliCom);
 
   
  
@@ -1881,7 +1838,541 @@ fprintf(aliCom_rerun,[...
 
 end % loop over tilts
 
+% When tomoCPR runs to completion on a single node (tomoCPR <param> N) or is
+% finalized after a multi-node split (tomoCPR <param> [N 0 0]), promote the staged
+% cache/mapBack%d to mapBack%d at the project root and generate the external
+% tiltalign sweep, its GNU-parallel fan-out driver, and a host-config example into
+% that folder. Multi-node partial runs ([N nodeIDX totalNodes], nodeIDX>=1) only
+% accumulate .align files in cache/mapBack%d and defer this step to the finalize.
+if (~multi_node_run || skip_to_the_end_and_run)
+  cacheMapBackDir = sprintf('cache/mapBack%d',mbOUT{2});
+  mapBackDir = sprintf('mapBack%d',mbOUT{2});
+  if exist(cacheMapBackDir,'dir')
+    system(sprintf('mv %s %s',cacheMapBackDir,mapBackDir));
+  end
+  local_write_tomoCPR_sweep_script(sprintf('%s/tomoCPR_tilt_align_sweep.sh',mapBackDir));
+  local_write_tomoCPR_fanout_driver(sprintf('%s/tomoCPR_tilt_align_fanout.sh',mapBackDir));
+  local_write_tomoCPR_host_config_example(sprintf('%s/tomoCPR_tilt_align_hosts.conf.example',mapBackDir),mapBackDir);
+end
 
+end
 
+% ========================================================================
+% Local helpers: generate the external tomoCPR tilt-align run scripts. Each writes
+% its file line-by-line with fprintf('%s\n', C{:}) so bash $, %, {}, and " need no
+% MATLAB escaping -- only the literal single quote is doubled per MATLAB rules.
+% ========================================================================
+
+function local_write_tomoCPR_sweep_script(fname)
+  % tomoCPR_tilt_align_sweep.sh: the external IMOD tiltalign parameter sweep.
+  % Consumes the 18 positional args that make up one .align file, runs a
+  % coarse-then-fine search over rot/tilt/mag options and groupings scored by
+  % tiltalign's leave-out cross-validation, then a final RobustFitting pass.
+  fid = fopen(fname,'w');
+  if (fid < 0)
+    error('BH_synthetic_mapBack:openSweep','Could not open %s for writing',fname);
+  end
+  C = {
+    '#!/bin/bash'
+    ''
+    'set -eou pipefail'
+    '#iTiltSeries 1'
+    ''
+    'model_file=$1'
+    'output_model_file=$2'
+    'output_residual_file=$3'
+    'output_fidxyz_file=$4'
+    'output_tilt_file=$5'
+    'output_x_axis_tilt_file=$6'
+    'transform_file=$7'
+    'input_tilt_file=$8'
+    'k_factor=$9'
+    'output_local_file=${10}'
+    'target_patch_size_x=${11}'
+    'target_patch_size_y=${12}'
+    'min_fids_1=${13}'
+    'min_fids_2=${14}'
+    'min_overlap_x=${15}'
+    'min_overlap_y=${16}'
+    'output_log_file=${17}'
+    'output_optimize_file=${18}'
+    ''
+    'do_robust="" #RobustFitting'
+    'do_local="" #LocalAlignments'
+    'do_fixedXYZ=FixXYZCoordinates'
+    'best_score=1000000'
+    'best_local_score=1000000'
+    'score=$best_score'
+    'echo "" > $output_optimize_file'
+    ''
+    'best_mag_group=1'
+    'best_tilt_group=1'
+    'best_rot_group=1'
+    'best_mag_option=4'
+    'best_tilt_option=6'
+    'best_rot_option=4'
+    ''
+    'best_local_mag_group=5'
+    'best_local_tilt_group=4'
+    'best_local_rot_group=7'
+    'best_local_mag_option=4'
+    'best_local_tilt_option=6'
+    'best_local_rot_option=4'
+    ''
+    'new_peak_found=0'
+    ''
+    'function run_align {'
+    ''
+    'new_peak_found=0'
+    ''
+    'tiltalign -StandardInput << EOF > $output_log_file'
+    'ModelFile $model_file'
+    'ImagesAreBinned 1'
+    'OutputModelFile $output_model_file'
+    'OutputResidualFile $output_residual_file'
+    'OutputFidXYZFile $output_fidxyz_file'
+    'OutputTiltFile $output_tilt_file'
+    'OutputXAxisTiltFile $output_x_axis_tilt_file'
+    'OutputTransformFile $transform_file'
+    'RotationAngle 0.00'
+    'TiltFile $input_tilt_file'
+    'SurfacesToAnalyze 1'
+    'RotOption $rot_option'
+    'RotDefaultGrouping $rot_group'
+    'TiltOption $tilt_option'
+    'TiltDefaultGrouping $tilt_group'
+    'MagOption $mag_option'
+    'MagDefaultGrouping $mag_group'
+    'XStretchOption 0'
+    'SkewOption 0'
+    'BeamTiltOption 0'
+    'XTiltOption 0'
+    'ResidualReportCriterion 0.001'
+    'KFactorScaling $k_factor'
+    'LocalRotOption $local_rot_option'
+    'LocalRotDefaultGrouping $local_rot_group'
+    'LocalTiltOption $local_tilt_option'
+    'LocalTiltDefaultGrouping $local_tilt_group'
+    'LocalMagOption $local_mag_option'
+    'LocalMagDefaultGrouping $local_mag_group'
+    'OutputLocalFile $output_local_file'
+    'TargetPatchSizeXandY $target_patch_size_x,$target_patch_size_y'
+    'MinFidsTotalAndEachSurface $min_fids_1,$min_fids_2'
+    'MinSizeOrOverlapXandY $min_overlap_x,$min_overlap_y'
+    'ShiftZFromOriginal'
+    'AxisZShift 0.0'
+    'LocalOutputOptions 1,1,1'
+    'CrossValidate 1'
+    'RandomSeed 0'
+    '$do_fixedXYZ'
+    '$do_local'
+    '$do_robust'
+    'EOF'
+    'if [[ -z $do_local ]]; then'
+    '  score=$(grep -i "global leave-out" $output_log_file | awk ''{print $6}'')'
+    '    if [[ $(echo "print($score < $best_score)" | python3) == "True" ]]; then'
+    '        best_score=$score'
+    '        best_rot_option=$rot_option'
+    '        best_tilt_option=$tilt_option'
+    '        best_mag_option=$mag_option'
+    '        best_rot_group=$rot_group'
+    '        best_tilt_group=$tilt_group'
+    '        best_mag_group=$mag_group'
+    '        echo "Best score: $best_score" >> $output_optimize_file'
+    '        echo "Best rot_option: $best_rot_option" >> $output_optimize_file'
+    '        echo "Best tilt_option: $best_tilt_option" >> $output_optimize_file'
+    '        echo "Best mag_option: $best_mag_option" >> $output_optimize_file'
+    '        echo "Best rot_group: $best_rot_group" >> $output_optimize_file'
+    '        echo "Best tilt_group: $best_tilt_group" >> $output_optimize_file'
+    '        echo "Best mag_group: $best_mag_group" >> $output_optimize_file'
+    '        echo "" >> $output_optimize_file'
+    '        new_peak_found=1'
+    '    fi'
+    'else'
+    '  score=$(grep -i "local leave-out" $output_log_file | awk ''{print $6}'')'
+    '    if [[ $(echo "print($score < $best_local_score)" | python3) == "True" ]]; then'
+    '        best_local_score=$score'
+    '        best_local_rot_option=$local_rot_option'
+    '        best_local_tilt_option=$local_tilt_option'
+    '        best_local_mag_option=$local_mag_option'
+    '        best_local_rot_group=$local_rot_group'
+    '        best_local_tilt_group=$local_tilt_group'
+    '        best_local_mag_group=$local_mag_group'
+    '        echo "Best local score: $best_local_score" >> $output_optimize_file'
+    '        echo "Best local rot_option: $best_local_rot_option" >> $output_optimize_file'
+    '        echo "Best local tilt_option: $best_local_tilt_option" >> $output_optimize_file'
+    '        echo "Best local mag_option: $best_local_mag_option" >> $output_optimize_file'
+    '        echo "Best local rot_group: $best_local_rot_group" >> $output_optimize_file'
+    '        echo "Best local tilt_group: $best_local_tilt_group" >> $output_optimize_file'
+    '        echo "Best local mag_group: $best_local_mag_group" >> $output_optimize_file'
+    '        echo "" >> $output_optimize_file'
+    '        new_peak_found=1'
+    '    fi'
+    'fi'
+    ''
+    '}'
+    ''
+    ''
+    ''
+    '# Start off with some default values that seem to be generally good.'
+    'local_rot_option=$best_local_rot_option'
+    'local_tilt_option=$best_local_tilt_option'
+    'local_mag_option=$best_local_mag_option'
+    'local_rot_group=$best_local_rot_group'
+    'local_tilt_group=$best_local_tilt_group'
+    'local_mag_group=$best_local_mag_group'
+    ''
+    ''
+    'tilt_group=$best_tilt_group'
+    'rot_group=$best_rot_group'
+    'mag_group=$best_mag_group'
+    'mag_option=$best_mag_option'
+    'tilt_option=$best_tilt_option'
+    'rot_option=$best_rot_option'
+    ''
+    '# Search all the parameters exhaustively would take too long, and I don''t think trying to figure out a proper optimization is worth the time, so'
+    '# Just do a coarse search over each parameter at a time, then do a finer search around the best parameters found.'
+    ''
+    'coarse_group="5 9 13 17"'
+    ''
+    'for mag_group in $coarse_group; do'
+    '  run_align'
+    'done'
+    ''
+    'mag_group=$best_mag_group'
+    ''
+    '# then search over just the tilt group'
+    ''
+    'for tilt_group in $coarse_group; do'
+    '  run_align'
+    'done'
+    ''
+    'tilt_group=$best_tilt_group'
+    ''
+    '# now search over the mag options'
+    'for mag_option in 3 4; do'
+    '    for mag_group_offset in -4 4; do'
+    '        mag_group=$(($best_mag_group + $mag_group_offset))'
+    '        if [[ $mag_group -ge 1 ]]; then'
+    '            run_align'
+    '        fi'
+    '    done'
+    '  run_align'
+    'done'
+    ''
+    'mag_option=$best_mag_option'
+    'mag_group=$best_mag_group'
+    ''
+    ''
+    '# then search over just the tilt options'
+    'for tilt_option in 5 6 ; do'
+    '    for tilt_group_offset in -4 4; do'
+    '        tilt_group=$(($best_tilt_group + $tilt_group_offset))'
+    '        if [[ $tilt_group -ge 1 ]]; then'
+    '            run_align'
+    '        fi'
+    '    done'
+    'done'
+    ''
+    'tilt_option=$best_tilt_option'
+    'tilt_group=$best_tilt_group'
+    ''
+    '# Now check to see if just shutting this off would have been better'
+    'for tilt_option in 0; do'
+    '    run_align'
+    'done'
+    ''
+    'tilt_option=$best_tilt_option'
+    ''
+    'for mag_option in 0; do'
+    '    run_align'
+    'done'
+    ''
+    'mag_option=$best_mag_option'
+    ''
+    '# Do one last round if the best option wasn''t zero'
+    'if [[ $best_tilt_option -ne 0 ]]; then'
+    '    for tilt_group_offset in -2 2; do'
+    '        tilt_group=$(($best_tilt_group + $tilt_group_offset))'
+    '        if [[ $tilt_group -ge 1 ]]; then'
+    '            run_align'
+    '        fi'
+    '    done'
+    'fi'
+    ''
+    'tilt_group=$best_tilt_group'
+    ''
+    'if [[ $best_mag_option -ne 0 ]]; then'
+    '    for mag_group_offset in -2 2; do'
+    '        mag_group=$(($best_mag_group + $mag_group_offset))'
+    '        if [[ $mag_group -ge 1 ]]; then'
+    '            run_align'
+    '        fi'
+    '    done'
+    'fi'
+    ''
+    '# now test with local and fixedXYZ on off'
+    'do_local="LocalAlignments"'
+    ''
+    ''
+    '# first search over just the mag group'
+    'for local_mag_group in $coarse_group; do'
+    '  run_align'
+    'done'
+    ''
+    'local_mag_group=$best_local_mag_group'
+    ''
+    '# then search over just the tilt group'
+    'for local_tilt_group in $coarse_group; do'
+    '  run_align'
+    'done'
+    ''
+    'local_tilt_group=$best_local_tilt_group'
+    ''
+    '# then search over just the rot group'
+    'for local_rot_group in $coarse_group; do'
+    '  run_align'
+    'done'
+    ''
+    'local_rot_group=$best_local_rot_group'
+    ''
+    ''
+    '# Now search the tilt options around the best tilt group'
+    'for local_tilt_option in 5 6 ; do'
+    '    for local_tilt_group_offset in -4 4; do'
+    '        local_tilt_group=$(($best_local_tilt_group + $local_tilt_group_offset))'
+    '        if [[ $local_tilt_group -ge 1 ]]; then'
+    '            run_align'
+    '        fi'
+    '    done'
+    'done'
+    ''
+    'local_tilt_option=$best_local_tilt_option'
+    'local_tilt_group=$best_local_tilt_group'
+    ''
+    '# Now do the same thing for the mag option'
+    'for local_mag_option in 3 4 ; do'
+    '    for local_mag_group_offset in -4 4; do'
+    '        local_mag_group=$(($best_local_mag_group + $local_mag_group_offset))'
+    '        if [[ $local_mag_group -ge 1 ]]; then'
+    '            run_align'
+    '        fi'
+    '    done'
+    'done'
+    ''
+    'local_mag_option=$best_local_mag_option'
+    'local_mag_group=$best_local_mag_group'
+    ''
+    '# Now check with the rotation options'
+    'for local_rot_option in 3 4; do'
+    '    for local_rot_group_offset in -4 4; do'
+    '        local_rot_group=$(($best_local_rot_group + $local_rot_group_offset))'
+    '        if [[ $local_rot_group -ge 1 ]]; then'
+    '            run_align'
+    '        fi'
+    '    done'
+    'done'
+    ''
+    'local_rot_option=$best_local_rot_option'
+    'local_rot_group=$best_local_rot_group'
+    ''
+    '# Now check to see if just shutting this off would have been better'
+    'for local_rot_option in 0; do'
+    '    run_align'
+    'done'
+    ''
+    'local_rot_option=$best_local_rot_option'
+    ''
+    'for local_mag_option in 0; do'
+    '    run_align'
+    'done'
+    ''
+    'local_mag_option=$best_local_mag_option'
+    ''
+    'for local_tilt_option in 0; do'
+    '    run_align'
+    'done'
+    ''
+    'local_tilt_option=$best_local_tilt_option'
+    ''
+    '# Do one last round if the best option wasn''t zero'
+    'if [[ $best_local_tilt_option -ne 0 ]]; then'
+    '    for local_tilt_group_offset in -2 2; do'
+    '        local_tilt_group=$(($best_local_tilt_group + $local_tilt_group_offset))'
+    '        if [[ $local_tilt_group -ge 1 ]]; then'
+    '            run_align'
+    '        fi'
+    '    done'
+    'fi'
+    ''
+    'local_tilt_group=$best_local_tilt_group'
+    ''
+    'if [[ $best_local_mag_option -ne 0 ]]; then'
+    '    for local_mag_group_offset in -2 2; do'
+    '        local_mag_group=$(($best_local_mag_group + $local_mag_group_offset))'
+    '        if [[ $local_mag_group -ge 1 ]]; then'
+    '            run_align'
+    '        fi'
+    '    done'
+    'fi'
+    ''
+    'local_mag_group=$best_local_mag_group'
+    ''
+    'if [[ $best_local_rot_option -ne 0 ]]; then'
+    '    for local_rot_group_offset in -2 2; do'
+    '        local_rot_group=$(($best_local_rot_group + $local_rot_group_offset))'
+    '        if [[ $local_rot_group -ge 1 ]]; then'
+    '            run_align'
+    '        fi'
+    '    done'
+    'fi'
+    ''
+    'local_rot_group=$best_local_rot_group'
+    ''
+    '# Now test with fixedXYZ off'
+    ''
+    ''
+    '{'
+    '    echo "Best score: $best_score"'
+    '    echo "Best rot_option: $best_rot_option"'
+    '    echo "Best tilt_option: $best_tilt_option"'
+    '    echo "Best mag_option: $best_mag_option"'
+    '    echo "Best rot_group: $best_rot_group"'
+    '    echo "Best tilt_group: $best_tilt_group"'
+    '    echo "Best mag_group: $best_mag_group"'
+    '    echo "Best local score: $best_local_score"'
+    '    echo "Best local rot_option: $best_local_rot_option"'
+    '    echo "Best local tilt_option: $best_local_tilt_option"'
+    '    echo "Best local mag_option: $best_local_mag_option"'
+    '    echo "Best local rot_group: $best_local_rot_group"'
+    '    echo "Best local tilt_group: $best_local_tilt_group"'
+    '    echo "Best local mag_group: $best_local_mag_group"'
+    '    echo ""'
+    '} >> $output_optimize_file'
+    ''
+    '# Now run one final time with the best aligments found and robust fitting enabled'
+    'do_robust="RobustFitting"'
+    'run_align'
+    };
+  fprintf(fid,'%s\n',C{:});
+  fclose(fid);
+end
+
+function local_write_tomoCPR_fanout_driver(fname)
+  % tomoCPR_tilt_align_fanout.sh: fan the sweep across hosts with GNU parallel,
+  % dynamic slot filling from one shared queue of all mapBackN/*.align files.
+  fid = fopen(fname,'w');
+  if (fid < 0)
+    error('BH_synthetic_mapBack:openFanout','Could not open %s for writing',fname);
+  end
+  C = {
+    '#!/bin/bash'
+    '# tomoCPR tilt-align fan-out driver (generated by BH_synthetic_mapBack.m).'
+    '#'
+    '# Runs tomoCPR_tilt_align_sweep.sh over every mapBackN/*.align file, fanning the'
+    '# jobs across the hosts named in a config file with GNU parallel. Slot filling is'
+    '# DYNAMIC: all .align files feed one parallel invocation, so a host that finishes'
+    '# early pulls the next file instead of working a pre-split share.'
+    '#'
+    '# Usage (run from the emClarity project root that contains the mapBackN/ folder):'
+    '#   bash mapBackN/tomoCPR_tilt_align_fanout.sh <host_config_file>'
+    '#'
+    '# Copy tomoCPR_tilt_align_hosts.conf.example, edit it for your cluster, and pass'
+    '# the edited copy as <host_config_file>.'
+    'set -eou pipefail'
+    ''
+    'config_file="${1:?usage: tomoCPR_tilt_align_fanout.sh <host_config_file>}"'
+    'if [[ ! -f "$config_file" ]]; then'
+    '  echo "ERROR: host config file not found: $config_file" >&2'
+    '  exit 1'
+    'fi'
+    ''
+    '# The config defines MAPBACK_DIR, THREADS_PER_JOB, and the HOSTS array.'
+    'source "$config_file"'
+    ''
+    ': "${MAPBACK_DIR:?host config must set MAPBACK_DIR}"'
+    ': "${THREADS_PER_JOB:?host config must set THREADS_PER_JOB}"'
+    'if [[ "${#HOSTS[@]}" -eq 0 ]]; then'
+    '  echo "ERROR: host config HOSTS array is empty" >&2'
+    '  exit 1'
+    'fi'
+    ''
+    'sweep_script="${MAPBACK_DIR}/tomoCPR_tilt_align_sweep.sh"'
+    'if [[ ! -f "$sweep_script" ]]; then'
+    '  echo "ERROR: sweep script not found: $sweep_script" >&2'
+    '  exit 1'
+    'fi'
+    ''
+    '# Build the GNU parallel --sshlogin string "<jobs>/<login>,<jobs>/<login>,...".'
+    '# The number before the slash is the slot count parallel keeps busy on that host;'
+    '# ":" is the local host (no ssh).'
+    'sshlogins=""'
+    'for entry in "${HOSTS[@]}"; do'
+    '  jobs="${entry%% *}"'
+    '  login="${entry#* }"'
+    '  sshlogins+="${jobs}/${login},"'
+    'done'
+    'sshlogins="${sshlogins%,}"'
+    ''
+    'align_count=$(find "$MAPBACK_DIR" -maxdepth 1 -name ''*.align'' | wc -l)'
+    'if [[ "$align_count" -eq 0 ]]; then'
+    '  echo "ERROR: no .align files found in $MAPBACK_DIR" >&2'
+    '  exit 1'
+    'fi'
+    'echo "Fanning $align_count .align jobs over slots [$sshlogins], OMP_NUM_THREADS=$THREADS_PER_JOB"'
+    ''
+    '# One parallel invocation over all .align files -> dynamic slot filling. --workdir'
+    '# "$PWD" runs each remote job in this same (shared-filesystem) directory, so the'
+    '# mapBackN/-relative paths inside every .align resolve identically on each host.'
+    '# Each .align''s 18 lines expand into the sweep''s 18 positional arguments.'
+    'find "$MAPBACK_DIR" -maxdepth 1 -name ''*.align'' | \'
+    '  parallel --lb --sshdelay 0.1 --workdir "$PWD" --sshlogin "$sshlogins" \'
+    '    "OMP_NUM_THREADS=${THREADS_PER_JOB} bash ${sweep_script} \$(cat {})"'
+    };
+  fprintf(fid,'%s\n',C{:});
+  fclose(fid);
+end
+
+function local_write_tomoCPR_host_config_example(fname,mapBackDir)
+  % tomoCPR_tilt_align_hosts.conf.example: the fan-out host configuration the user
+  % copies, edits once, and points the driver at. MAPBACK_DIR defaults to this
+  % run's mapBack directory.
+  fid = fopen(fname,'w');
+  if (fid < 0)
+    error('BH_synthetic_mapBack:openHostConf','Could not open %s for writing',fname);
+  end
+  C = {
+    '# ---------------------------------------------------------------------------'
+    '# tomoCPR tilt-align fan-out -- host configuration EXAMPLE'
+    '# (generated by BH_synthetic_mapBack.m)'
+    '#'
+    '# Copy this file, edit it for your cluster, and pass the copy to the driver:'
+    sprintf('#   bash %s/tomoCPR_tilt_align_fanout.sh /path/to/your_hosts.conf',mapBackDir)
+    '#'
+    '# Run the driver from the emClarity project root (the directory that holds the'
+    '# mapBackN/ folder): every path inside a .align file is mapBackN/-relative.'
+    '# ---------------------------------------------------------------------------'
+    ''
+    '# Folder holding the .align files and the generated scripts, relative to the'
+    '# project root. Defaulted to this run''s mapBack directory.'
+    sprintf('MAPBACK_DIR="%s"',mapBackDir)
+    ''
+    '# OpenMP threads each job may use (exported as OMP_NUM_THREADS per sweep).'
+    'THREADS_PER_JOB=4'
+    ''
+    '# One entry per host, written as "<jobs> <sshlogin>":'
+    '#   <jobs>     concurrent sweeps this host runs (its GNU parallel slot count)'
+    '#   <sshlogin> '':'' for the local host (no ssh), or user@host to run over ssh'
+    '#'
+    '# GNU parallel fills these slots DYNAMICALLY from one shared queue of all .align'
+    '# files, so a faster host simply pulls more work -- nothing is pre-allocated.'
+    'HOSTS=('
+    '  "8 :"'
+    '  "6 user@host-b"'
+    '  "4 user@host-c"'
+    ')'
+    };
+  fprintf(fid,'%s\n',C{:});
+  fclose(fid);
 end
 
