@@ -366,6 +366,21 @@ end
 tomoList = fieldnames(geometry);
 nTomograms = length(tomoList);
 
+% Any peak scoring below zero is a failed alignment. Mark it ignored (-9999 in the
+% class column, col 26 of each 26-wide peak block) BEFORE the score statistics, so
+% avgCCC / maxCCC / ccc_cutoff and the include filters all drop it through the
+% existing -9999 machinery -- independent of ccc_cutoff, which may be 0 (score
+% filtering off). geometry_tmp = geometry (below) inherits these marks, so the
+% averaging loop sees the same excluded set.
+for iPreTomo = 1:nTomograms
+  gPre = geometry.(tomoList{iPreTomo});
+  negScore = gPre(:, 1:26:26*emc.nPeaks) < 0;      % score column of each peak block
+  ignoreCol = gPre(:, 26:26:26*emc.nPeaks);        % class column of each peak block (-9999 == ignored)
+  ignoreCol(negScore) = -9999;
+  gPre(:, 26:26:26*emc.nPeaks) = ignoreCol;
+  geometry.(tomoList{iPreTomo}) = gPre;
+end
+
 
 if (emc.classification)
   
@@ -882,7 +897,11 @@ parfor iParProc = parVect
           
           for iPeak = 1:emc.nPeaks
             
-            if peakWgt(iPeak) == -9999
+            % A peak scoring below zero is a failed alignment: ignore it (mark the
+            % class column -9999 and skip) regardless of ccc_cutoff, which may be 0
+            % (score filtering off). This also keeps a negative iCCC out of the
+            % quality-weight acosd below, whose domain is [-1,1].
+            if peakWgt(iPeak) == -9999 || positionList(iSubTomo, 1+26*(iPeak-1)) < 0
               positionList(iSubTomo, 26*iPeak) = -9999;
               % Skip this peak
               continue
@@ -913,12 +932,16 @@ parfor iParProc = parVect
               
               if (emc.track_stats)
                 % Downweight higher frequency in all subTomos with iCCC below the mean
-                iBfactor = (emc.flgQualityWeight.*(iCCC - maxCCC)./4)
+                iBfactor = (emc.flgQualityWeight.*(iCCC - maxCCC)./4);
                 iCCCweight = exp(iBfactor.*cccWeight);
               else
                 if iCCC < avgCCC
                   % Downweight higher frequency in all subTomos with iCCC below the mean
-                  iBfactor = -1.*(emc.flgQualityWeight.*(acosd(iCCC/avgCCC) - acosd(avgCCC/avgCCC)))^2;
+                  % Clamp the ratio to acosd's [-1,1] domain: with a small avgCCC a low
+                  % (or, absent the score>=0 skip above, negative) iCCC sends iCCC/avgCCC
+                  % past -1, where acosd returns a finite COMPLEX value that passes
+                  % isfinite and poisons the SF3D weight.
+                  iBfactor = -1.*(emc.flgQualityWeight.*(acosd(max(min(iCCC/avgCCC,1),-1)) - acosd(avgCCC/avgCCC)))^2;
                   iCCCweight = exp(iBfactor.*cccWeight);
                   
                 else
