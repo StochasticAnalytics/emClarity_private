@@ -15,24 +15,18 @@ if isempty(local_cache_root)
 end
 
 
-[~,emc_rand_name,~] = fileparts( local_cache_root );
-
-
-% check to see if we have already made a parpool in this call to emClarity.
-profile_does_not_exist = true;
-current_profiles = parallel.clusterProfiles;
-for iProf = 1:length(current_profiles)
-  if strcmp(current_profiles{iProf},emc_rand_name)
-    profile_does_not_exist = false;
-  end
-end
-
-% if the profile doesn't exist, create it
-if (profile_does_not_exist)
-  emc_parcluster = parcluster(parallel.defaultClusterProfile);
-  emc_parcluster.JobStorageLocation = local_cache_root;
-  saveAsProfile(emc_parcluster, emc_rand_name);
-end
+% Build a local cluster with a per-process JobStorageLocation and start the pool
+% directly from the cluster OBJECT.  We intentionally do NOT saveAsProfile(): that
+% persists the profile into the shared per-user settings store
+% (prefdir -> ~/.matlab/<release>/matlab.mlsettings).  Under the driver many
+% emClarity processes start pools concurrently on one host, and concurrent writes to
+% that single shared file race -> intermittent exit 249 (write error) or a futex
+% deadlock (hang).  Passing the object straight to parpool starts an identical pool
+% with no write to the shared store, eliminating the race at the source.
+% (verified interactively on salina 2026-07-15: parpool(object) starts + runs + tears
+%  down a pool with saveAsProfile removed, live shared DB mtime untouched.)
+emc_parcluster = parcluster(parallel.defaultClusterProfile);
+emc_parcluster.JobStorageLocation = local_cache_root;
 
 % Clean up any existing parpool before creating new one
 % This consolidates cleanup logic that was scattered throughout the codebase
@@ -42,7 +36,7 @@ if ~isempty(current_pool)
     delete(current_pool);
 end
 
-[ pool ] = parpool(emc_rand_name, nWorkers);
+[ pool ] = parpool(emc_parcluster, nWorkers);
 
 end
 
