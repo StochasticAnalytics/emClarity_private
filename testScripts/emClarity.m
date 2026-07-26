@@ -195,6 +195,10 @@ if nArgs > 1 && ~(emcHelp || emcProgramHelp)
     case 'simulate'
       % simulate commands are standalone (no parameter file)
       multiGPUs = 0;
+    case 'montage'
+      % Tile geometry is read from the mrc header, so no parameter file is
+      % needed and there is nothing here to parse.
+      multiGPUs = 0;
     otherwise
       emc = emC_testParse(varargin{2});
   end
@@ -259,7 +263,7 @@ switch varargin{1}
       '  mask                - Create masks for volumes\n',...
       '  rescale             - Change magnification of volume\n',...
       '  reconstruct         - Reconstruct volume from subtomograms\n',...
-      '  montage             - Unstack/rotate montage elements\n',...
+      '  montage             - Rotate and re-tile montage sub-volumes\n',...
       '  experimental        - Access experimental features\n\n',...
       '--- Simulation ---\n',...
       '  simulate            - Generate synthetic data (tomograms, tilt files, projections)\n\n']);
@@ -922,135 +926,17 @@ switch varargin{1}
     
   case 'montage'
       if emcProgramHelp || ...
-         length(varargin) ~= 7
-        fprintf(['parameterfile\n',...
-          'cycle #\n',...
-          'stage of alignment [RawAlignment or Cluster_cls]\n', ...
-          'class number\n',...
-          'operation [unstack or angles to rotate volume by [ZXZ]]\n', ...
-          'halfset [odd, eve, or std (combine)]\n ']);  
+         length(varargin) ~= 3
+        fprintf(['\nUsage: emClarity montage montageIN.mrc [zRot,xRot,zRot]\n\n',...
+          'Rotates each sub-volume of a montage and re-tiles the result.\n',...
+          'Tile geometry is read from the mrc header, so any montage written\n',...
+          'by BH_montage4d works - including the eigenImage montages from pca.\n\n',...
+          'If the name ends in _ODD.mrc or _EVE.mrc the partner half-set is\n',...
+          'summed in and the output is labelled STD.\n']);
       else
-        % FIMXE: move all this to a different file
-        % FIXME: eve/odd 
-        % FIXME: unstack (add counts too)
-        % FIXME: set pixel size
-        % Check the input arguments
-        EMC_assert_string_value(varargin{7}, {'odd', 'eve', 'std'}, false);
-        halfset = 0; % default is combine
-        if strcmpi(varargin{7},'eve')
-          halfset = 2;
-        elseif strcmpi(varargin{7},'odd')
-          halfset = 1;
-        end
-        if halfset ~= 0
-          error('partial implementation only good for std right now')
-        end
-        operation_val = varargin{6};
-        if strcmpi(operation_val,'unstack')
-          operation = 'unstack';
-        else
-          operation = 'rotx';
-          operation_val = EMC_str2double(operation_val);
-          EMC_assert_numeric(operation_val, 3);
-        end
-          
-        n_classes = EMC_str2double(varargin{5});
-        EMC_assert_numeric(n_classes, 1, [0, 1000]);
-        
-        EMC_assert_string_value(varargin{4}, {'RawAlignment', 'Cluster_cls'}, false)
-        if strcmpi(varargin{4},'RawAlignment')
-          prfx = 'Ref';
-        else
-          prfx = 'Cls';
-        end
-        cycle = EMC_str2double(varargin{3});
-        EMC_assert_numeric(cycle, 1, [0, 1000]);
-        
-        % Read in the parameter file and subTomoMeta
-        cycleNumber = sprintf('cycle%0.3u', cycle);
-        % Load using wrapper
-        subTomoMeta = BH_loadSubTomoMeta(emc.('subTomoMeta'), emc.('metadata_format'));
-        emc = BH_parseParameterFile(varargin{2});
-        % Make sure the cycle has been run
-        if ~isfield(subTomoMeta, cycleNumber)
-          error('Cycle %s has not been run yet', cycleNumber);
-        end
-        % Make sure the class locations information is present
-        if (halfset == 0 || halfset == 1)
-          fname = sprintf('class_%d_Locations_%s_%s', n_classes, prfx, 'ODD');
-          if ~isfield(subTomoMeta.(cycleNumber),fname)
-            error('Class locations (%s) for odd half-set are not present', fname);
-          end
-        end
-        if (halfset == 0 || halfset == 2)
-          fname = sprintf('class_%d_Locations_%s_%s', n_classes, prfx, 'EVE');
-          if ~isfield(subTomoMeta.(cycleNumber),fname)
-            error('Class locations (%s) for even half-set are not present', fname);
-          end
-        end
-        % Eve/Odd should always have the same size windows, grab the first
-        % Field is a cell, 1 file names of the references, 2 locations in the image (6 indices), 3 number added to the averages.
-        window_size = subTomoMeta.(cycleNumber).(fname){2}{1}(2:2:end);
-        odd_stack = [];
-        eve_stack = [];
-        if (halfset == 0 || halfset == 1)
-          fname = sprintf('class_%d_Locations_%s_%s', n_classes, prfx, 'ODD');
-          odd_stack = BH_unStackMontage4d(1:length(subTomoMeta.(cycleNumber).(fname){2}), ...
-                                          subTomoMeta.(cycleNumber).(fname){1}, ...
-                                          subTomoMeta.(cycleNumber).(fname){2}, ...
-                                          window_size);
-        end
-        if (halfset == 0 || halfset == 2)
-          fname = sprintf('class_%d_Locations_%s_%s', n_classes, prfx, 'EVE');
-          eve_stack = BH_unStackMontage4d(1:length(subTomoMeta.(cycleNumber).(fname){2}), ...
-                                          subTomoMeta.(cycleNumber).(fname){1}, ...
-                                          subTomoMeta.(cycleNumber).(fname){2}, ...
-                                          window_size);
-        end
-        if strcmpi(operation,'unstack')
-          error('not setup yet')
-        elseif strcmpi(operation,'rotx')
-          if (halfset == 0 || halfset == 1)
-            for i = 1:length(odd_stack)
-              [~,img] = interpolator(gpuArray(odd_stack{i}),operation_val,[0,0,0], 'Bah' , 'forward', 'C1', false);
-              odd_stack{i} = gather(img);
-            end
-          end
-          if (halfset == 0 || halfset == 2)
-            for i = 1:length(eve_stack)
-              [~,img] = interpolator(gpuArray(eve_stack{i}),operation_val,[0,0,0], 'Bah' , 'forward', 'C1', false);
-              eve_stack{i} = gather(img);
-            end
-          end
-          % Combine them if we want to
-          switch halfset
-            case 0
-              % Combine the two half-sets
-              for i = 1:length(odd_stack)
-                odd_stack{i} = odd_stack{i} + eve_stack{i};
-                check_vals = ~isfinite(odd_stack{i}(:));
-                odd_stack{i}(check_vals) = randn(size(odd_stack{i}(check_vals)));
-              end
-              montOUT = BH_montage4d(odd_stack,'');
-              fname = strjoin(strsplit(subTomoMeta.(cycleNumber).(sprintf('class_%d_Locations_%s_%s',n_classes, prfx,'ODD')){1},'_ODD.mrc'),sprintf('_rot_%2.2f_%2.2f_%2.2f_STD_rotx.mrc',operation_val(1),operation_val(2),operation_val(3)));
-              % TODO pixels size 
-              SAVE_IMG(montOUT, fname); %,pixelSize);
-              
-            case 1
-              % Save the odd half-set
-              for i = 1:length(odd_stack)
-                odd_stack{i} = odd_stack{i};
-              end
-            case 2
-              % Save the even half-set
-              for i = 1:length(odd_stack)
-                eve_stack{i} = eve_stack{i};
-              end
-            otherwise
-              error('halfset must be 0, 1, or 2')
-          end
-          % Save the stack
-        end
+        euler_zxz = EMC_str2double(varargin{3});
+        EMC_assert_numeric(euler_zxz, 3);
+        BH_montage_rotate(varargin{2}, euler_zxz);
       end
     
   case 'reconstruct'
