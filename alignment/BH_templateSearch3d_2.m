@@ -18,13 +18,16 @@ if length(varargin) > 0
 else
   gpuIDX = 1;
 end
+% mapBackIter is still accepted so existing command lines keep working, but it
+% is ignored. It only ever chose which generation of aligned tilt-stack primed
+% the binned cache; template search reads the reconstruction, so the value
+% never reached anything this function returns or writes.
 if length(varargin) == 2
-  mapBackIter = EMC_str2double(varargin{2});
-else
-  mapBackIter = 0;
+  warning(['Passing mapBackIter to templateSearch is deprecated and is now a ', ...
+    'no-op. Template search reads the reconstruction, not the aligned stack.']);
 end
 if length(varargin) > 2
-  error('emClarity templateSearch paramN.m tiltN regionN referenceName symmetry(C1) <optional gpuIDX> <optional mapBackITer>');
+  error('emClarity templateSearch paramN.m tiltN regionN referenceName symmetry(C1) <optional gpuIDX>');
 end
 
 tomoIdx = EMC_str2double(tomoIdx);
@@ -145,8 +148,6 @@ mapPath = './cache';
 mapName = sprintf('%s_%d_bin%d',tomoName,tomoIdx,samplingRate);
 mapExt = '.rec';
 
-% [ recGeom, ~, ~, ~] = BH_multi_recGeom( sprintf('recon/%s_recon.coords',tomoName), mapBackIter);
-
 
 % bp_vals(2) = 2.*max(latticeRadius);
 statsRadiusAng = stats_diameter_fraction.*[2,2,2].*max(latticeRadius);
@@ -170,9 +171,11 @@ particleThickness =  latticeRadius(3);
 
 
 do_load = true;
+% Empty mapBackIter: this call needs only the reconstruction, so skip priming
+% the binned aligned-stack cache that later stages build.
 [ tomogram ] = BH_multi_loadOrBuild(emc.alt_cache, ...
                                     sprintf('%s_%d',tomoName,tomoIdx),  ...
-                                    mapBackIter, ...
+                                    [], ...
                                     samplingRate,...
                                     gpuIDX, ...
                                     do_load, ...

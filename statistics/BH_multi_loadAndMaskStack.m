@@ -52,18 +52,6 @@ end
 THICKNESS = 75;
 if ~isnumeric(STACK)
   error('This branch is deprecated and should not be reached.');
-  if samplingRate > 1
-    fullStack = sprintf('aliStacks/%s_ali%d.fixed', STACK,mapBackIter+1);
-    inputStack = sprintf('cache/%s_ali%d%s_bin%d.fixed',STACK,mapBackIter+1,samplingRate);
-    
-    if ~exist(inputStack, 'file')
-      BH_multi_loadOrBin(fullStack, samplingRate, 2, false);
-    end
-    
-  else
-    inputStack = sprintf('aliStacks/%s_ali%d%s.fixed',STACK,mapBackIter+1,suffix);
-  end
-  STACK = OPEN_IMG('single',inputStack);
 end
 
 [d1,d2,d3] = size(STACK);

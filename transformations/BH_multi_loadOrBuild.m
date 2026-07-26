@@ -34,26 +34,25 @@ nameSplit = strsplit(tomoName,'_');
 tomoName = strjoin(nameSplit(1:end-1),'_');
 tomoIdx = EMC_str2double(nameSplit{end});
 
-checkStack = sprintf('%sStacks/%s_ali%d.fixed',ali,tomoName,mapBackIter+1);
-
 if isempty(recon)
   % Otherwise name is varargin 8 from mapBack
   recon = EMC_checkCacheForFile(alt_cache, sprintf('cache/%s_%d_bin%d.rec',tomoName,tomoIdx,SAMPLING));
 end
 
 
-if SAMPLING > 1
+% mapBackIter picks which generation of aligned stack primes the binned cache
+% that later stages read by name. It has no bearing on IMG_OUT, which comes
+% from recon, so a caller needing only the reconstruction passes [] to skip
+% this. Unbinned data needs no cache entry, hence the SAMPLING test.
+if ~isempty(mapBackIter) && SAMPLING > 1
+  checkStack = sprintf('%sStacks/%s_ali%d.fixed',ali,tomoName,mapBackIter+1);
   stack = sprintf('cache/%s_ali%d_bin%d.fixed',tomoName,mapBackIter+1,SAMPLING);
   if ~exist(stack, 'file')
     BH_multi_loadOrBin(checkStack, SAMPLING, 2, true); %%%%% med filt flag
   end
-else
-  stack = sprintf('%sStacks/%s_ali%d.fixed',ali,tomoName,mapBackIter+1);
 end
 
-if exist(recon,'file')
-  header = getHeader(MRCImage(stack,0));
-else
+if ~exist(recon,'file')
   error('An appropriate reconstruction was not found for %s\n',recon)
 end
 
