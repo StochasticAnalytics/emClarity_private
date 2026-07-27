@@ -389,9 +389,16 @@ switch OPERATION
    fprintf(fileOUT, '\nremoved:\t%d\nremaining:%d\norig:%d\n',nRemoved,nRemain,nTotal);
     fclose(fileOUT);
 
-    % Store the modified geometry in Post_ field instead of overwriting
+    % Write the culled geometry straight to RawAlign (the field the next cycle reads). This folds
+    % in the old `skip ... RemoveClasses` promotion, so the cull is a SINGLE command. geometry_copy
+    % is ClusterClsGeom (the pristine source, read into a copy above) with dropped classes marked
+    % -9999. RawAlign is a flat, keyless field, so re-running always CLOBBERS it fresh from source --
+    % no keyed accumulation, no separate skip. (Folded 2026-07-21; replaces the old
+    % Post_RemoveClasses.ClusterResults.<cluster_key> parking, which is no longer written.)
+    % The trailing STAGEofALIGNMENT switch writes ClusterClsGeom=geometry (pristine, unchanged) for
+    % the Cluster stage -- NOT RawAlign -- so it does not clobber this write.
     if strcmpi(STAGEofALIGNMENT, 'Cluster')
-      subTomoMeta.(cycleNumber).Post_RemoveClasses.ClusterResults.(cluster_key) = geometry_copy;
+      subTomoMeta.(cycleNumber).RawAlign = geometry_copy;
     end
 
     % Optional 2nd positional mod = the curated KEEP selection. The inline remove
