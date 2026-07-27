@@ -2135,6 +2135,8 @@ function local_write_tomoCPR_sweep_script(fname)
     '    done'
     'fi'
     ''
+    'mag_group=$best_mag_group'
+    ''
     '# now test with local and fixedXYZ on off'
     'do_local="LocalAlignments"'
     ''
