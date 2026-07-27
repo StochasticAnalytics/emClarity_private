@@ -261,33 +261,8 @@ nTomograms = length(tomoList);
 
 
 switch OPERATION
-  case 'SwitchCurrentCycle'
-    subTomoMeta.currentCycle = VECTOR_OP(1);
   case 'SwitchCurrentTomoCpr'
-    subTomoMeta.currentTomoCPR = VECTOR_OP(1);    
-  case 'SwitchExposureDose'
-    % While transitioning , edit the dose column in the tilt geometry.
-    
-    for iTomo = 1:nTomograms
-      tilt_table = geometry.(tomoList{iTomo});
-      n_projs = size(tilt_table,1);
-      % Assuming a bi-directional tilt scheme with smallest abs value as first tilt,
-      % which could be wrong
-  dose_per_tilt = [tilt_table(:,1), tilt_table(:,4), zeros(n_projs,1)];
-      % Make sure arranged from negative to positive
-      dose_per_tilt = sortrows(dose_per_tilt,2);
-      [~,first_tilt] = min(abs(dose_per_tilt(:,2)));
-      dose_per_tilt(1:first_tilt,:) = sortrows(dose_per_tilt(1:first_tilt,:),-2);
-      exposure = VECTOR_OP(1)./n_projs
-      for iExposure = 1:n_projs
-        dose_per_tilt(iExposure,3) = iExposure .* exposure;
-      end
-      dose_per_tilt
-      for iPrj = 1:n_projs
-        cum_dose = dose_per_tilt(find(dose_per_tilt(:,1) == tilt_table(iPrj,1)),3);
-        geometry.(tomoList{iTomo})(iPrj,11) = cum_dose
-      end
-    end
+    subTomoMeta.currentTomoCPR = VECTOR_OP(1);
   case 'UpdateTilts'
  
     
@@ -1107,7 +1082,7 @@ switch OPERATION
     fprintf(fID,'%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t\n%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t%-4.3f\t\n',percentiles');
     fclose(fID);
   otherwise
-  error('OPERATION must be WriteCsv, RemoveClasses, AssignToBranch, AssignToTrunk, AssignAndMerge, AssignAndMergeAll, ShiftAll, RemoveFraction, RemoveIgnoredParticles, TrimOldCycles, not %s', OPERATION)
+  error('OPERATION must be SwitchCurrentTomoCpr, UpdateTilts, WriteCsv, TrimOldCycles, RemoveClasses, RemoveFraction, RemoveIgnoredParticles, ShiftAll, ShiftBin, RandomizeEulers, ListTomos, RemoveTomos, ListPercentiles, AssignClassToBranch, AssignClassFromBranch, AssignAndMergeToBranch, AssignAndMergeAll, not %s', OPERATION)
 end 
 
 % Redundant for WriteCsv, otherwise update the new geometry, which was backed up
