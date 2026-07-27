@@ -1065,11 +1065,36 @@ end
 % Alignment parameters
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-% Whether to constrain alignment search based on symmetry
+% Symmetry constrained search: expand the in-plane angular search by a Cn symmetry.
+% The alignment code (BH_alignRaw3d_v2) keys on the STRING 'none' for OFF and a 'Cn' string
+% (e.g. C4) for ON, so normalize every OFF spelling to 'none' here. This field is a
+% stringValue (parsed as char), so false/0 arrive as 'false'/'0'.
+%   OFF: false | 0 | 'false' | '0' | 'off' | 'none' | absent   (default)
+%   ON : a Cn symmetry string, e.g. C4   (validated downstream: must start with 'C')
+% (Fixed 2026-07-21: EMC_assert_boolean let strings pass silently, so 'false'/'0' stayed as-is
+%  and failed strcmpi(...,'none') downstream -> wrongly triggered the search -> "symmetry
+%  constrained search only implemented for Cn symmetry".)
 if isfield(emc, 'symmetry_constrained_search')
-  EMC_assert_boolean(emc.symmetry_constrained_search);
+  scs = emc.symmetry_constrained_search;
+  if (islogical(scs) || isnumeric(scs))
+    if (isscalar(scs) && scs == 0)
+      emc.symmetry_constrained_search = 'none';
+    else
+      error(['symmetry_constrained_search as a logical/number may only be false/0 (off); ', ...
+             'to enable, give a Cn symmetry string such as C4']);
+    end
+  elseif (ischar(scs) || isstring(scs))
+    scs = strtrim(char(scs));
+    if (any(strcmpi(scs, {'none', 'false', 'off', '0'})))
+      emc.symmetry_constrained_search = 'none';
+    else
+      emc.symmetry_constrained_search = scs;
+    end
+  else
+    error('symmetry_constrained_search must be false/0/none (off) or a Cn string (e.g. C4)');
+  end
 else
-  emc.symmetry_constrained_search = false;
+  emc.symmetry_constrained_search = 'none';
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
