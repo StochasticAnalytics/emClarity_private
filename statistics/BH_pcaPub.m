@@ -155,10 +155,8 @@ reconScaling = 1;
 %%% Put this in the param file later - the input values should be in angstrom
 %%% and are the relevant scale spaces for classification.
 
-use_notch_filter = true;
-if (emc.Pca_use_real_space_conv)
-  use_notch_filter = false;
-end
+use_notch_filter = ~(emc.Pca_use_real_space_conv);
+
 
 samplingRate   = emc.('Cls_samplingRate');
 refSamplingRate= emc.('Ali_samplingRate');
@@ -524,7 +522,7 @@ if ~(test_multi_ref_diffmap)
   for iScale = 1:emc.n_scale_spaces
     
     if (use_notch_filter)
-      masks.('scaleMask').(sprintf('s%d',iScale)) = gather(BH_bandpass3d(sizeMask,0.1, emc.pca_scale_spaces(iScale)*1.1, emc.pca_scale_spaces(iScale)*0.9,'GPU',pixelSize));
+      masks.('scaleMask').(sprintf('s%d',iScale)) = gather(BH_bandpass3d(sizeMask,1.0, emc.pca_scale_spaces(iScale)*1.1, emc.pca_scale_spaces(iScale)*0.9,'GPU',pixelSize));
     else
       kernelSize = ceil(threeSigma(iScale).*3) + 3;
       kernelSize = kernelSize + (1-mod(kernelSize,2));
@@ -540,7 +538,7 @@ if ~(test_multi_ref_diffmap)
   end
 end
 
-default_highpass = [1e-6,400,2.2*pixelSize];
+default_highpass = [0.1,1200,2.0*pixelSize];
 avgMotif_FT = cell(1+flgGold,emc.n_scale_spaces);
 avgFiltered = cell(1+flgGold,emc.n_scale_spaces);
 % Here always read in both, combine if flgGold = 0
@@ -594,8 +592,6 @@ end
 montOUT = BH_montage4d(avgFiltered(1,:),'');
 SAVE_IMG(montOUT, sprintf('%s_filt.mrc', outputPrefix),pixelSize);
 clear montOUT
-
-
 
 % If emc.Pca_randSubset is string with a previous matfile use this, without any
 % decomposition.
@@ -799,9 +795,18 @@ for iGold = 1:1+flgGold
     if ~(test_multi_ref_diffmap)
       gpuMasks.('scaleMask').(stSCALE) = gpuArray(masks.('scaleMask').(stSCALE));
     end
+    % Two distinct roles, kept in separate fields.
+    % highPass band-limits the WEDGE (wdgBP), and BH_diffMap multiplies the
+    % reference by that wedge to match the reference's sampling to the particle's.
+    % Only sampling functions belong there: the scale mask is already applied to
+    % the average, so folding it in here would leave the reference filtered by
+    % scaleMask^2 against a particle filtered by scaleMask, and the flgNorm shell
+    % matching corrects that radially but not angularly.
     gpuMasks.('highPass').(stSCALE) = gpuArray(masks.('highPass').(stSCALE));
+    % bandLimit is what the PARTICLE is filtered by, and carries the scale mask.
+    gpuMasks.('bandLimit').(stSCALE) = gpuMasks.('highPass').(stSCALE);
     if (use_notch_filter && ~test_multi_ref_diffmap)
-      gpuMasks.('highPass').(stSCALE) =  gpuMasks.('highPass').(stSCALE) .* gpuArray(masks.('scaleMask').(stSCALE));
+      gpuMasks.('bandLimit').(stSCALE) = gpuMasks.('bandLimit').(stSCALE) .* gpuArray(masks.('scaleMask').(stSCALE));
     end
     
 
@@ -891,7 +896,13 @@ for iGold = 1:1+flgGold
       
     end
     
-    wdgBP = ifftshift(gpuMasks.('highPass').(sprintf('s%d',iScale)));
+    % highPass is in FFT layout (BH_bandpass3d builds its grid with flgShiftOrigin
+    % 0, so the origin sits at index 1); wedgeMask from BH_weightMaskMex is
+    % centered, and stays centered until the ifftshift at the BH_diffMap call.
+    % fftshift is the FFT->centered direction. ifftshift is its inverse and agrees
+    % only when every dimension is even, so the wrong one is silent on an even box
+    % and displaces the band limit by one voxel per odd axis on an odd one.
+    wdgBP = fftshift(gpuMasks.('highPass').(sprintf('s%d',iScale)));
     for iSubTomo = 1:nSubTomos
       %%%%% %%%%%
       
@@ -997,11 +1008,12 @@ for iGold = 1:1+flgGold
               if ~(test_multi_ref_diffmap) && ~(use_notch_filter)
                 iTrimParticle = EMC_convn(iTrimParticle , gpuMasks.('scaleMask').(sprintf('s%d',iScale)));
               end
-              % if using the notch filter, it is integrated with the highPass at this point
+              % bandLimit carries the notch when use_notch_filter; the real-space
+              % branch has already convolved it in above.
               iTrimParticle = BH_bandLimitCenterNormalize( ...
                 iTrimParticle .* ...
                 gpuMasks.('volMask').(sprintf('s%d',iScale)), ...
-                gpuMasks.('highPass').(sprintf('s%d',iScale)),...
+                gpuMasks.('bandLimit').(sprintf('s%d',iScale)),...
                 gpuMasks.('binary').(sprintf('s%d',iScale)),...
                 [0,0,0;0,0,0],'single');
               
@@ -1344,9 +1356,12 @@ for iScale = 1:emc.n_scale_spaces
   if ~(test_multi_ref_diffmap)
     gpuMasks_w.('scaleMask').(stSCALE) = gpuArray(masks.('scaleMask').(stSCALE));
   end
+  % highPass band-limits the wedge; bandLimit filters the particle and carries the
+  % scale mask. See the serial build for why the two must not be merged.
   gpuMasks_w.('highPass').(stSCALE)    = gpuArray(masks.('highPass').(stSCALE));
+  gpuMasks_w.('bandLimit').(stSCALE)   = gpuMasks_w.('highPass').(stSCALE);
   if (use_notch_filter && ~test_multi_ref_diffmap)
-    gpuMasks_w.('highPass').(stSCALE)  = gpuMasks_w.('highPass').(stSCALE) .* gpuArray(masks.('scaleMask').(stSCALE));
+    gpuMasks_w.('bandLimit').(stSCALE) = gpuMasks_w.('bandLimit').(stSCALE) .* gpuArray(masks.('scaleMask').(stSCALE));
   end
   avgMotif_w{iScale} = gpuArray(avgMotif_FT_host{iScale});
 end
@@ -1363,9 +1378,10 @@ function [ td, tidx, tpeak, tskip, tnIgnored ] = local_pca_extractTomo( ...
 %   - kept columns returned in td{iScale} (host) with tidx/tpeak the id/peak;
 %   - skips returned in tskip = [iTomo, particleIDX, iPeak] and applied to
 %     subTomoMeta by the CALLER (never mutate the broadcast struct in a parfor);
-%   - iScale is set explicitly to the coarsest scale before the wedge setup (the
-%     serial code relied on a leftover loop value there; parfor would treat it as
-%     an uninitialised temporary, and the value is load-bearing for wdgBP).
+%   - iScale is set explicitly to the coarsest scale before the wedge setup; the
+%     serial code relies on a leftover loop value there, which parfor would treat
+%     as an uninitialised temporary. wdgBP reads gpuMasks_w.highPass, which is
+%     scale-invariant, so the assignment is what matters, not the scale it names.
 
 tomoName = tomoList{iTomo};
 iGPU = 1;
@@ -1415,7 +1431,9 @@ if (flgNorm)
   radialGrid = '';
 end
 
-wdgBP = ifftshift(gpuMasks_w.('highPass').(sprintf('s%d',iScale)));
+% FFT->centered, to match the centered wedgeMask. See the serial copy for why
+% ifftshift is not interchangeable here.
+wdgBP = fftshift(gpuMasks_w.('highPass').(sprintf('s%d',iScale)));
 for iSubTomo = 1:nSubTomos
   includeParticle = positionList(iSubTomo, 8);
   particleIDX = positionList(iSubTomo, 4);
@@ -1478,7 +1496,7 @@ for iSubTomo = 1:nSubTomos
           end
           iTrimParticle = BH_bandLimitCenterNormalize( ...
             iTrimParticle .* gpuMasks_w.('volMask').(sprintf('s%d',iScale)), ...
-            gpuMasks_w.('highPass').(sprintf('s%d',iScale)),...
+            gpuMasks_w.('bandLimit').(sprintf('s%d',iScale)),...
             gpuMasks_w.('binary').(sprintf('s%d',iScale)),...
             [0,0,0;0,0,0],'single');
           [iWmd,~] = BH_diffMap(avgMotif_w{iScale},iTrimParticle,ifftshift(iWedge),...

@@ -44,8 +44,8 @@ outName="$(basename ${mFile} .m)${post}"
 # bugs line. e.g. bugs=5testingFeature
 major=1
 minor=8
-bugs=7
-nightly=9
+bugs=8
+nightly=0
 binaryOutName="${major}_${minor}_${bugs}_${nightly}"
 scriptOutName="${major}_${minor}_${bugs}_${nightly}_v23a"
 
