@@ -522,7 +522,7 @@ if ~(test_multi_ref_diffmap)
   for iScale = 1:emc.n_scale_spaces
     
     if (use_notch_filter)
-      masks.('scaleMask').(sprintf('s%d',iScale)) = gather(BH_bandpass3d(sizeMask,1.0, emc.pca_scale_spaces(iScale)*1.1, emc.pca_scale_spaces(iScale)*0.9,'GPU',pixelSize));
+      masks.('scaleMask').(sprintf('s%d',iScale)) = gather(BH_bandpass3d(sizeMask,0.95, emc.pca_scale_spaces(iScale)*1.1, emc.pca_scale_spaces(iScale)*0.9,'GPU',pixelSize));
     else
       kernelSize = ceil(threeSigma(iScale).*3) + 3;
       kernelSize = kernelSize + (1-mod(kernelSize,2));
