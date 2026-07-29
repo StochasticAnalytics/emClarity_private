@@ -54,45 +54,52 @@ end
 
 function success = save_legacy(identifier, subTomoMeta)
     %save_legacy Save metadata using traditional method
-    
+
+    % Verbose DEBUG output gated behind EMC_SAVE_VERBOSE (default off) to keep the
+    % diary clean. Defined before any file operation, so every write this function
+    % performs is loggable: a copy that runs before the handle exists is a write
+    % you cannot see when diagnosing a file that arrived corrupt.
+    verbose = ~isempty(getenv('EMC_SAVE_VERBOSE'));
+    dbg = @(varargin) verbose && fprintf(varargin{:});
+
     % Determine file path
     if contains(identifier, '.mat')
         mat_file = identifier;
     else
         mat_file = sprintf('%s.mat', identifier);
     end
-    
-    % Create backup if file exists and is large enough
-    if exist(mat_file, 'file')
-        file_info = dir(mat_file);
-        if file_info.bytes > 1000  % Only backup non-trivial files
-            backup_file = sprintf('%s.backup', mat_file);  % single rolling backup (overwrite; no timestamp pileup)
-            try
-                copyfile(mat_file, backup_file);
-            catch
-                warning('BH_saveSubTomoMeta:BackupFailed', ...
-                        'Could not create backup of %s', mat_file);
-            end
-        end
-    end
+
+    % No pre-write copy of the existing file. The original stays at mat_file until
+    % a verified temp is renamed over it, so a bad write cannot destroy the good
+    % copy -- a backup would insure against a failure the rename already prevents.
     
     % Atomic save with integrity checking and retry logic
     max_retries = 2;
     success = false;
 
-    % Verbose DEBUG output gated behind EMC_SAVE_VERBOSE (default off) to keep the diary clean.
-    verbose = ~isempty(getenv('EMC_SAVE_VERBOSE'));
-    dbg = @(varargin) verbose && fprintf(varargin{:});
     dbg('DEBUG: Starting atomic save for %s\n', mat_file);
     dbg('DEBUG: subTomoMeta is %s with %d fields\n', class(subTomoMeta), length(fieldnames(subTomoMeta)));
     if isstruct(subTomoMeta) && isfield(subTomoMeta, 'currentCycle')
         dbg('DEBUG: currentCycle = %s\n', num2str(subTomoMeta.currentCycle));
     end
 
-    % Check available disk space
+    % Check available disk space. fileparts returns empty for a bare filename, so
+    % this probed df with an empty path and reported nothing for every identifier
+    % carrying no directory component -- removing the one signal that explains a
+    % short write. The status is checked because a probe that fails silently is
+    % worse than no probe: it looks like it ran.
     if isunix()
-        [~, df_output] = system(['df -h "' fileparts(mat_file) '"']);
-        dbg('DEBUG: Disk space info:\n%s\n', df_output);
+        target_dir = fileparts(mat_file);
+        if isempty(target_dir)
+            target_dir = pwd;
+        end
+        [df_status, df_output] = system(['df -h "' target_dir '"']);
+        if df_status == 0
+            dbg('DEBUG: Disk space for %s:\n%s\n', target_dir, df_output);
+        else
+            dbg('DEBUG: df probe FAILED on %s (status %d): %s\n', ...
+                target_dir, df_status, strtrim(df_output));
+        end
     end
 
     for attempt = 1:max_retries
@@ -259,14 +266,17 @@ function success = save_legacy(identifier, subTomoMeta)
 end
 
 function [is_valid, error_msg] = check_mat_file_integrity_robust(filename, format_version)
-    %check_mat_file_integrity_robust Robust integrity check for MAT files
-    %   Returns [is_valid, error_msg] where is_valid is true if file can be loaded successfully
-    %   format_version: 'v7' or 'v7.3' to handle format-specific quirks
-
-    % Keep backward compatibility when format_version not provided
-    if nargin < 2
-        format_version = 'unknown';
-    end
+    %check_mat_file_integrity_robust Verify a written MAT file loads
+    %   Returns [is_valid, error_msg]. format_version ('v7' or 'v7.3') selects
+    %   format-specific retry quirks.
+    %
+    %   WHY the load alone is the integrity check: v7 data elements are zlib
+    %   streams carrying an Adler-32 of the uncompressed bytes, which inflate
+    %   verifies. A truncated file fails on a short stream and a bit-rotted one
+    %   fails the checksum, so neither can reach the end of a successful load.
+    %   Comparing the result against the in-memory source would add coverage only
+    %   for a self-consistently wrong serialization, at the price of walking the
+    %   whole structure.
 
     is_valid = false;
     error_msg = '';
@@ -381,25 +391,19 @@ function [is_valid, error_msg] = check_mat_file_integrity_robust(filename, forma
             return;
         end
 
-        if ~isstruct(temp_struct.subTomoMeta)
-            error_msg = 'subTomoMeta is not a valid structure';
-            dbg('DEBUG: Integrity check failed - subTomoMeta is not a structure (class: %s)\n', class(temp_struct.subTomoMeta));
+        loaded_meta = temp_struct.subTomoMeta;
+
+        % Type check before fieldnames, so a non-struct reports what it actually is
+        % rather than surfacing as a generic fieldnames error from the catch below.
+        if ~isstruct(loaded_meta)
+            error_msg = sprintf('subTomoMeta is not a struct (class: %s)', class(loaded_meta));
+            dbg('DEBUG: Integrity check failed - subTomoMeta is not a struct\n');
             return;
         end
 
-        % Basic structure validation
-        loaded_meta = temp_struct.subTomoMeta;
         loaded_fields = fieldnames(loaded_meta);
         dbg('DEBUG: Loaded structure has %d fields: %s\n', length(loaded_fields), strjoin(loaded_fields, ', '));
 
-        % Check for key fields
-        if isfield(loaded_meta, 'currentCycle')
-            dbg('DEBUG: currentCycle = %s\n', num2str(loaded_meta.currentCycle));
-        else
-            dbg('DEBUG: currentCycle field not found\n');
-        end
-
-        % If we get here, file passed all checks
         is_valid = true;
         error_msg = 'OK';
         dbg('DEBUG: Integrity check passed successfully\n');
@@ -424,9 +428,4 @@ function [is_valid, error_msg] = check_mat_file_integrity_robust(filename, forma
             dbg('DEBUG: Detected general load error\n');
         end
     end
-end
-
-function [is_valid, error_msg] = check_mat_file_integrity_simple(filename)
-    %check_mat_file_integrity_simple Wrapper for backward compatibility
-    [is_valid, error_msg] = check_mat_file_integrity_robust(filename, 'unknown');
 end

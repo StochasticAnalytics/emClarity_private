@@ -46,7 +46,7 @@ classdef BH_subTomoMeta_io < handle
             end
             
             fprintf('  Loading legacy format from %s...\n', mat_file);
-            tmp = load(mat_file, 'subTomoMeta');
+            tmp = load(mat_file, '-mat', 'subTomoMeta');
             
             if isfield(tmp, 'subTomoMeta')
                 data = tmp.subTomoMeta;
@@ -220,7 +220,7 @@ classdef BH_subTomoMeta_io < handle
 
                 % Try to load just the structure metadata (not the full data)
                 % This will catch HDF5 corruption errors
-                temp_struct = load(filename, 'subTomoMeta');
+                temp_struct = load(filename, '-mat', 'subTomoMeta');
                 if ~isfield(temp_struct, 'subTomoMeta')
                     return;
                 end

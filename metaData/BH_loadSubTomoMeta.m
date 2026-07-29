@@ -67,8 +67,10 @@ function subTomoMeta = load_legacy(identifier)
         end
     end
     
-    % Load the file
-    tmp = load(mat_file, 'subTomoMeta');
+    % Load the file. -mat is explicit so the file is never subjected to load's
+    % MAT-vs-ASCII autodetection, which is the only behavioural difference
+    % between this call and the post-write verification in BH_saveSubTomoMeta.
+    tmp = load(mat_file, '-mat', 'subTomoMeta');
     
     if isfield(tmp, 'subTomoMeta')
         subTomoMeta = tmp.subTomoMeta;

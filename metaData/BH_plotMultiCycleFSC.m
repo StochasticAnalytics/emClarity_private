@@ -50,9 +50,9 @@ highestCycle = cycles(end);
 
 % Load subTomoMeta
 try
-    load(sprintf('%s.mat', SUBTOMO_META_NAME), 'subTomoMeta');
-catch
-    error('Could not load %s.mat', SUBTOMO_META_NAME);
+    load(sprintf('%s.mat', SUBTOMO_META_NAME), '-mat', 'subTomoMeta');
+catch load_error
+    error('Could not load %s.mat: %s', SUBTOMO_META_NAME, load_error.message);
 end
 
 % Create output directory if needed
