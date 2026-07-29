@@ -11,7 +11,11 @@ function success = BH_saveSubTomoMeta(identifier, subTomoMeta)
 %       subTomoMeta - Metadata to save (wrapper object or struct)
 %
 %   Output:
-%       success - True if save succeeded
+%       success - Always true. Every failure path throws rather than returning,
+%                 so a caller that reaches the next statement has a verified file
+%                 on disk. Testing the return value tests nothing; guard the write
+%                 with try/catch if the failure needs handling rather than
+%                 propagating.
 
     success = false;
     
@@ -40,7 +44,7 @@ function success = BH_saveSubTomoMeta(identifier, subTomoMeta)
             try
                 backup_file = sprintf('%s_emergency_backup_%s.mat', ...
                                       identifier, datestr(now, 'yyyymmdd_HHMMSS'));
-                save(backup_file, 'subTomoMeta', '-v7.3');
+                save(backup_file, 'subTomoMeta', '-v7');
                 warning('BH_saveSubTomoMeta:BackupSaved', ...
                         'Emergency backup saved to %s', backup_file);
             catch
@@ -117,26 +121,16 @@ function success = save_legacy(identifier, subTomoMeta)
                 pause(0.1); % Brief pause to ensure deletion completes
             end
 
-            % Try -v7 format first for better compatibility
-            % (v7.3 can have issues with immediate loading)
-            dbg('DEBUG: Attempting save with -v7 format\n');
+            % v7 is the only format written, and there is deliberately no fallback
+            % to v7.3. The cycle-geometry trim keeps subTomoMeta inside what v7 can
+            % represent, so a v7 failure means that invariant has broken -- and the
+            % honest response is to stop, not to silently change the file's
+            % container format underneath every reader of it.
+            dbg('DEBUG: Saving with -v7 format\n');
             save_start_time = tic;
-            try
-                save(temp_file, 'subTomoMeta', '-v7');
-                save_version = 'v7';
-                save_time = toc(save_start_time);
-                dbg('DEBUG: Save completed in %.2f seconds using %s\n', save_time, save_version);
-            catch save_error
-                dbg('DEBUG: v7 save failed: %s\n', save_error.message);
-                % Fall back to v7.3 if v7 fails (e.g., file too large)
-                dbg('DEBUG: Attempting fallback to -v7.3 format\n');
-                save(temp_file, 'subTomoMeta', '-v7.3');
-                save_version = 'v7.3';
-                save_time = toc(save_start_time);
-                dbg('DEBUG: Fallback save completed in %.2f seconds using %s\n', save_time, save_version);
-                warning('BH_saveSubTomoMeta:UsingV73Format', ...
-                        'Using -v7.3 format due to file size or complexity');
-            end
+            save(temp_file, 'subTomoMeta', '-v7');
+            save_time = toc(save_start_time);
+            dbg('DEBUG: Save completed in %.2f seconds\n', save_time);
 
             % Check temp file was created and has reasonable size
             if exist(temp_file, 'file')
@@ -149,31 +143,19 @@ function success = save_legacy(identifier, subTomoMeta)
                 error('Temp file was not created');
             end
 
-            % For v7.3 files, add extra wait time and multiple sync attempts
-            if strcmp(save_version, 'v7.3')
-                dbg('DEBUG: v7.3 format detected, adding extra sync time\n');
-                pause(0.5);  % Give HDF5 library time to fully flush
-
-                % Multiple sync attempts for HDF5 files
-                if isunix()
-                    for sync_attempt = 1:3
-                        dbg('DEBUG: Forcing filesystem sync (attempt %d/3)\n', sync_attempt);
-                        sync_start = tic;
-                        system('sync');
-                        sync_time = toc(sync_start);
-                        dbg('DEBUG: Sync %d completed in %.2f seconds\n', sync_attempt, sync_time);
-                        pause(0.1);
-                    end
+            % Status is checked because this is the last chance to learn the write
+            % did not reach the disk. A failed sync before the verify-and-rename
+            % means the file about to be promoted was never committed.
+            if isunix()
+                dbg('DEBUG: Forcing filesystem sync\n');
+                sync_start = tic;
+                sync_status = system('sync');
+                sync_time = toc(sync_start);
+                if sync_status ~= 0
+                    error('BH_saveSubTomoMeta:SyncFailed', ...
+                          'sync returned %d before verifying %s', sync_status, temp_file);
                 end
-            else
-                % Single sync for v7 format
-                if isunix()
-                    dbg('DEBUG: Forcing filesystem sync\n');
-                    sync_start = tic;
-                    system('sync');
-                    sync_time = toc(sync_start);
-                    dbg('DEBUG: Sync completed in %.2f seconds\n', sync_time);
-                end
+                dbg('DEBUG: Sync completed in %.2f seconds\n', sync_time);
             end
 
             % Add a brief pause to ensure file operations complete
@@ -182,7 +164,7 @@ function success = save_legacy(identifier, subTomoMeta)
             % Verify file integrity before moving
             dbg('DEBUG: Starting integrity check on temp file\n');
             integrity_start = tic;
-            [is_valid, error_msg] = check_mat_file_integrity_robust(temp_file, save_version);
+            [is_valid, error_msg] = check_mat_file_integrity_robust(temp_file);
             integrity_time = toc(integrity_start);
             dbg('DEBUG: Integrity check completed in %.2f seconds, result: %s\n', integrity_time, error_msg);
 
@@ -209,7 +191,7 @@ function success = save_legacy(identifier, subTomoMeta)
                         dbg('DEBUG: Final file size = %d bytes\n', final_info.bytes);
                         success = true;
                         dbg('DEBUG: Save operation succeeded on attempt %d\n', attempt);
-                        fprintf('Saved %s using %s format\n', mat_file, save_version);
+                        fprintf('Saved %s (%d bytes)\n', mat_file, final_info.bytes);
                         break;
                     else
                         error('Destination file does not exist after move');
@@ -265,10 +247,9 @@ function success = save_legacy(identifier, subTomoMeta)
     dbg('DEBUG: Save operation completed successfully\n');
 end
 
-function [is_valid, error_msg] = check_mat_file_integrity_robust(filename, format_version)
+function [is_valid, error_msg] = check_mat_file_integrity_robust(filename)
     %check_mat_file_integrity_robust Verify a written MAT file loads
-    %   Returns [is_valid, error_msg]. format_version ('v7' or 'v7.3') selects
-    %   format-specific retry quirks.
+    %   Returns [is_valid, error_msg].
     %
     %   WHY the load alone is the integrity check: v7 data elements are zlib
     %   streams carrying an Adler-32 of the uncompressed bytes, which inflate
@@ -283,7 +264,7 @@ function [is_valid, error_msg] = check_mat_file_integrity_robust(filename, forma
 
     verbose = ~isempty(getenv('EMC_SAVE_VERBOSE'));
     dbg = @(varargin) verbose && fprintf(varargin{:});
-    dbg('DEBUG: Integrity check starting for %s (format: %s)\n', filename, format_version);
+    dbg('DEBUG: Integrity check starting for %s\n', filename);
 
     try
         % Basic file existence and size check
@@ -305,25 +286,7 @@ function [is_valid, error_msg] = check_mat_file_integrity_robust(filename, forma
         dbg('DEBUG: Getting variable information\n');
         var_info_start = tic;
 
-        % For v7.3 files, whos might not work immediately after save
-        max_whos_attempts = 3;
-        var_info = [];
-        for whos_attempt = 1:max_whos_attempts
-            try
-                var_info = whos('-file', filename);
-                if ~isempty(var_info)
-                    break;
-                end
-            catch whos_error
-                if whos_attempt < max_whos_attempts
-                    dbg('DEBUG: whos attempt %d failed, retrying...\n', whos_attempt);
-                    pause(0.2);
-                else
-                    rethrow(whos_error);
-                end
-            end
-        end
-
+        var_info = whos('-file', filename);
         var_info_time = toc(var_info_start);
         dbg('DEBUG: Variable info completed in %.2f seconds\n', var_info_time);
 
@@ -347,43 +310,11 @@ function [is_valid, error_msg] = check_mat_file_integrity_robust(filename, forma
         dbg('DEBUG: subTomoMeta variable: size = [%s], class = %s, bytes = %d\n', ...
                 num2str(submeta_info.size), submeta_info.class, submeta_info.bytes);
 
-        % For v7.3 format, try multiple load attempts with delays
-        if strcmp(format_version, 'v7.3')
-            dbg('DEBUG: Using robust loading for v7.3 format\n');
-            max_load_attempts = 3;
-            load_successful = false;
-
-            for load_attempt = 1:max_load_attempts
-                dbg('DEBUG: Load attempt %d/%d\n', load_attempt, max_load_attempts);
-                try
-                    load_start = tic;
-                    temp_struct = load(filename, '-mat', 'subTomoMeta');
-                    load_time = toc(load_start);
-                    dbg('DEBUG: Load completed in %.2f seconds\n', load_time);
-                    load_successful = true;
-                    break;
-                catch load_error
-                    dbg('DEBUG: Load attempt %d failed: %s\n', load_attempt, load_error.message);
-                    if load_attempt < max_load_attempts
-                        dbg('DEBUG: Waiting before retry...\n');
-                        pause(0.5 * load_attempt); % Increasing delay
-                    else
-                        rethrow(load_error);
-                    end
-                end
-            end
-
-            if ~load_successful
-                error('Failed to load after multiple attempts');
-            end
-        else
-            % Standard load for v7 format - explicitly specify -mat flag
-            dbg('DEBUG: Attempting to load subTomoMeta structure (with -mat flag)\n');
-            load_start = tic;
-            temp_struct = load(filename, '-mat', 'subTomoMeta');
-            load_time = toc(load_start);
-            dbg('DEBUG: Load completed in %.2f seconds\n', load_time);
-        end
+        dbg('DEBUG: Attempting to load subTomoMeta structure (with -mat flag)\n');
+        load_start = tic;
+        temp_struct = load(filename, '-mat', 'subTomoMeta');
+        load_time = toc(load_start);
+        dbg('DEBUG: Load completed in %.2f seconds\n', load_time);
 
         if ~isfield(temp_struct, 'subTomoMeta')
             error_msg = 'subTomoMeta field not found in loaded structure';

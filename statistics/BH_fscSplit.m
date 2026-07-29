@@ -117,7 +117,10 @@ subTomoMeta.('cycle000').geometry=geometry;
 if (returnStruct)
   GEOMETRY_SPLIT = subTomoMeta;
 else
-  save(GEOMETRY, 'subTomoMeta', '-v7.3');
+  % Route through BH_saveSubTomoMeta so the write is verified. A bare v7 save
+  % would silently drop an oversized subTomoMeta and leave a file that loads
+  % to nothing.
+  BH_saveSubTomoMeta(GEOMETRY, subTomoMeta);
 end
 
 end % end of fscSplit

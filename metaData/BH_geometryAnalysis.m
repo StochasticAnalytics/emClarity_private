@@ -814,11 +814,12 @@ switch OPERATION
         end
     end
 
-    % Save to <base>_merged.mat
+    % Save to <base>_merged.mat through the verified save path. A bare v7 save
+    % silently drops any variable above ~2GB and reports success -- the caller
+    % never learns the file it just wrote is missing subTomoMeta.
     output_file = sprintf('%s_merged', base_name);
     fprintf('AssignAndMergeAll: saving merged metadata to %s.mat\n', output_file);
-    subTomoMeta = merged_meta; %#ok<NASGU>
-    save(output_file, 'subTomoMeta', '-v7.3');
+    BH_saveSubTomoMeta(output_file, merged_meta);
 
     % Report final statistics
     total_particles = sum(total_particles_per_branch);
@@ -1122,7 +1123,10 @@ if (remove_cycles)
 end
 
 if assignBranchTriggered
-  % Save per-branch variants without modifying subTomoMeta
+  % Save per-branch variants without modifying subTomoMeta. Routed through
+  % BH_saveSubTomoMeta so each branch file is verified before the next write --
+  % a bare v7 save would silently drop an oversized subTomoMeta and leave a
+  % file that loads to nothing.
   for b = 1:assignBranch_nBranches
     branchMasterTM = subTomoMeta;
     % Only Cluster stage supported for AssignClassToBranch
@@ -1131,13 +1135,10 @@ if assignBranchTriggered
     else
       error('AssignClassToBranch saving encountered unexpected stage: %s', STAGEofALIGNMENT);
     end
-    subTomoMeta = branchMasterTM; %#ok<NASGU>
     outBase = sprintf('%s_branch_%d', emc.('subTomoMeta'), b);
-    save(outBase, 'subTomoMeta', '-v7.3');
+    BH_saveSubTomoMeta(outBase, branchMasterTM);
   end
 else
-  % No longer need to copy back - just save subTomoMeta directly
-  % Save using wrapper
   BH_saveSubTomoMeta(emc.('subTomoMeta'), subTomoMeta);
 end
 end

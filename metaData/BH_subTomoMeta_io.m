@@ -65,73 +65,15 @@ classdef BH_subTomoMeta_io < handle
         end
         
         function save_legacy(obj, data)
-            %save_legacy Save to legacy .mat file with atomic operation and integrity checks
+            %save_legacy Write the legacy .mat through the verified save path.
+            %
+            %   WHY delegate rather than write here: this method carried its own
+            %   temp-write-and-move that skipped the integrity check, so a v7 save
+            %   dropping an oversized variable left a readable file holding nothing
+            %   and reported success. Two implementations of one atomic save cannot
+            %   both stay correct, and this was the one without the check.
 
-            mat_file = sprintf('%s.mat', obj.base_path);
-
-            % Create backup if file exists
-            if exist(mat_file, 'file')
-                backup_file = sprintf('%s_backup_%s.mat', obj.base_path, ...
-                                      datestr(now, 'yyyymmdd_HHMMSS'));
-                copyfile(mat_file, backup_file);
-            end
-
-            % Atomic save with integrity checking and retry logic
-            max_retries = 2;
-            success = false;
-
-            for attempt = 1:max_retries
-                try
-                    % Use temporary file for atomic operation
-                    temp_file = sprintf('%s.tmp', mat_file);
-
-                    % Check for variables that might exceed v7 format limits
-                    large_var_warning = obj.check_large_variables(data);
-
-                    if large_var_warning
-                        warning('BH_subTomoMeta_io:LargeVariables', ...
-                                'Detected very large variables. If save fails, data may exceed v7 format limits.');
-                    end
-
-                    % Save to temporary file using v7 format to avoid corruption
-                    subTomoMeta = data;
-                    fprintf('  Using v7 format to avoid corruption\n');
-                    save(temp_file, 'subTomoMeta', '-v7');
-
-                    % Simple atomic move without integrity checks or sync
-                    [move_success, move_msg] = movefile(temp_file, mat_file);
-                    if move_success
-                        success = true;
-                        fprintf('  Saved legacy format to %s\n', mat_file);
-                        break;
-                    else
-                        warning('BH_subTomoMeta_io:MoveFailed', ...
-                                'Move operation failed on attempt %d/%d: %s', attempt, max_retries, move_msg);
-                    end
-
-                catch ME
-                    % Clean up temp file on error
-                    if exist(temp_file, 'file')
-                        delete(temp_file);
-                    end
-
-                    if attempt == max_retries
-                        error('BH_subTomoMeta_io:SaveFailed', ...
-                              'Failed to save after %d attempts. Last error: %s', ...
-                              max_retries, ME.message);
-                    else
-                        warning('BH_subTomoMeta_io:SaveAttemptFailed', ...
-                                'Save attempt %d/%d failed: %s. Retrying...', ...
-                                attempt, max_retries, ME.message);
-                        pause(0.1); % Brief pause before retry
-                    end
-                end
-            end
-
-            if ~success
-                error('BH_subTomoMeta_io:SaveFailed', ...
-                      'Failed to save file after %d attempts', max_retries);
-            end
+            BH_saveSubTomoMeta(obj.base_path, data);
         end
         
         function save_partitioned(obj, data)
@@ -189,73 +131,6 @@ classdef BH_subTomoMeta_io < handle
     end
     
     methods (Access = private)
-        function is_valid = check_mat_file_integrity(obj, filename)
-            %check_mat_file_integrity Verify MAT file can be loaded without corruption
-            %   Returns true if file can be loaded successfully, false otherwise
-
-            is_valid = false;
-
-            try
-                % Basic file existence and size check
-                if ~exist(filename, 'file')
-                    return;
-                end
-
-                file_info = dir(filename);
-                if file_info.bytes == 0
-                    return;
-                end
-
-                % Try to get variable information without loading data
-                var_info = whos('-file', filename);
-                if isempty(var_info)
-                    return;
-                end
-
-                % Check that subTomoMeta variable exists
-                var_names = {var_info.name};
-                if ~ismember('subTomoMeta', var_names)
-                    return;
-                end
-
-                % Try to load just the structure metadata (not the full data)
-                % This will catch HDF5 corruption errors
-                temp_struct = load(filename, '-mat', 'subTomoMeta');
-                if ~isfield(temp_struct, 'subTomoMeta')
-                    return;
-                end
-
-                % Basic structure validation
-                data = temp_struct.subTomoMeta;
-                if ~isstruct(data)
-                    return;
-                end
-
-                % Check for essential fields that should always exist
-                essential_fields = {'currentCycle', 'currentTomoCPR'};
-                for i = 1:length(essential_fields)
-                    if ~isfield(data, essential_fields{i})
-                        % Not necessarily an error for new projects, just continue
-                    end
-                end
-
-                % If we get here, file passed all checks
-                is_valid = true;
-
-            catch ME
-                % Any error during loading indicates corruption
-                if contains(ME.message, 'HDF5') || contains(ME.message, 'inflate')
-                    % Specific corruption patterns we've seen
-                    is_valid = false;
-                else
-                    % Other errors might still indicate corruption
-                    warning('BH_subTomoMeta_io:IntegrityCheckError', ...
-                            'Unexpected error during integrity check: %s', ME.message);
-                    is_valid = false;
-                end
-            end
-        end
-
         function format = detect_format(obj)
             %detect_format Auto-detect metadata format
 
@@ -496,63 +371,5 @@ classdef BH_subTomoMeta_io < handle
             fclose(fid);
         end
 
-        function has_large_vars = check_large_variables(obj, data_struct)
-            %check_large_variables Check for variables that might exceed v7 format limits
-            %   v7 format has 2GB limit per variable, not total file size
-
-            has_large_vars = false;
-
-            try
-                if ~isstruct(data_struct)
-                    % Check single variable
-                    assignin('base', 'temp_size_var', data_struct);
-                    info = evalin('base', 'whos(''temp_size_var'')');
-                    evalin('base', 'clear temp_size_var');
-
-                    if info.bytes > 1.5 * 1024^3  % > 1.5GB warning threshold
-                        fprintf('  Large variable detected: %.2f GB\n', info.bytes / 1024^3);
-                        has_large_vars = true;
-                    end
-                    return;
-                end
-
-                field_names = fieldnames(data_struct);
-
-                for i = 1:length(field_names)
-                    field_name = field_names{i};
-                    field_data = data_struct.(field_name);
-
-                    try
-                        % Get memory info for this field
-                        assignin('base', 'temp_size_var', field_data);
-                        info = evalin('base', 'whos(''temp_size_var'')');
-                        evalin('base', 'clear temp_size_var');
-
-                        field_gb = info.bytes / 1024^3;
-
-                        % Log fields > 100MB
-                        if info.bytes > 100*1024^2
-                            fprintf('  Field ''%s'': %.2f GB (%s)\n', ...
-                                    field_name, field_gb, info.class);
-                        end
-
-                        % Warn if approaching v7 2GB per-variable limit
-                        if info.bytes > 1.5 * 1024^3  % > 1.5GB
-                            fprintf('  WARNING: Field ''%s'' is %.2f GB (approaching 2GB v7 limit)\n', ...
-                                    field_name, field_gb);
-                            has_large_vars = true;
-                        end
-
-                    catch
-                        % If we can't check, assume it's not too large
-                        continue;
-                    end
-                end
-
-            catch ME
-                fprintf('  Error checking variable sizes: %s\n', ME.message);
-                has_large_vars = false; % Default to allowing save attempt
-            end
-        end
     end
 end

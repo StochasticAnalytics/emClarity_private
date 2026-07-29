@@ -230,9 +230,22 @@ end
 if subTomoMeta.('currentCycle') == CYCLE - 1
   
   cycleRead = sprintf('cycle%0.3u', CYCLE - 1);
-  % Save a backup of the cycles total geometry
-  save(sprintf('%s_%s_backup.mat',cycleRead,emc.('subTomoMeta')), ...
-    'subTomoMeta', '-v7.3');
+
+  % Snapshot the complete state through the verified save path rather than a bare
+  % save(). The trim below removes the live copy of everything older, so the
+  % archive has to be known good before anything is dropped against it.
+  % BH_saveSubTomoMeta throws on any failure -- it has no false return -- so
+  % reaching the trim below is itself the confirmation that the snapshot landed.
+  backup_name = sprintf('%s_%s_backup.mat',cycleRead,emc.('subTomoMeta'));
+  BH_saveSubTomoMeta(backup_name, subTomoMeta);
+
+  % Cycles below CYCLE-1 are superseded -- their geometry is in the snapshot just
+  % written and nothing reads it again. CYCLE-1 itself is kept because this
+  % function reads its geometry below, through cycleRead.
+  [subTomoMeta, droppedFields] = BH_trimCycleGeometry(subTomoMeta, CYCLE - 1);
+  if ~isempty(droppedFields)
+    fprintf('Trimmed superseded cycle geometry: %s\n', strjoin(droppedFields(:)', ', '));
+  end
 end
 
 if strcmpi(STAGEofALIGNMENT, 'RawAlignment')
