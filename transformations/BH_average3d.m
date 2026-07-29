@@ -217,31 +217,26 @@ peakCOM      = [1,1,1].*3;
 
 
 
-if ~(isfield(subTomoMeta,'currentCycle'))
-  subTomoMeta.('currentCycle') = 0;
-end
+% Snapshot + trim runs on every RawAlignment cycle from 2 onward. The earlier
+% guard subTomoMeta.currentCycle == CYCLE - 1 filtered on a bookkeeping value
+% that only advances via this function's write at the end, so any re-run of
+% avg N saw currentCycle == N (not N-1) and silently skipped the trim. The
+% actual precondition is "there exist cycles < CYCLE-1 that can be trimmed",
+% which is knowable from CYCLE alone -- BH_trimCycleGeometry is idempotent, so
+% a re-run on an already-trimmed cycle just drops nothing and returns.
+if CYCLE >= 2
 
-% Somewhere I am saving currentCycle as a string. Haven't taken the time to
-% track it down, but probably in this function.
-if isa(subTomoMeta.('currentCycle'), 'char')
-  subTomoMeta.('currentCycle') = EMC_str2double(subTomoMeta.('currentCycle'))
-end
-
-if subTomoMeta.('currentCycle') == CYCLE - 1
-  
   cycleRead = sprintf('cycle%0.3u', CYCLE - 1);
 
-  % Snapshot the complete state through the verified save path rather than a bare
-  % save(). The trim below removes the live copy of everything older, so the
-  % archive has to be known good before anything is dropped against it.
-  % BH_saveSubTomoMeta throws on any failure -- it has no false return -- so
-  % reaching the trim below is itself the confirmation that the snapshot landed.
+  % Snapshot the complete state through the verified save path rather than a
+  % bare save(). The trim below removes the live large-geometry copies for
+  % everything older, so the archive has to be known good before anything is
+  % dropped against it. BH_saveSubTomoMeta throws on any failure -- it has no
+  % false return -- so reaching the trim below is itself the confirmation that
+  % the snapshot landed.
   backup_name = sprintf('%s_%s_backup.mat',cycleRead,emc.('subTomoMeta'));
   BH_saveSubTomoMeta(backup_name, subTomoMeta);
 
-  % Cycles below CYCLE-1 are superseded -- their geometry is in the snapshot just
-  % written and nothing reads it again. CYCLE-1 itself is kept because this
-  % function reads its geometry below, through cycleRead.
   [subTomoMeta, droppedFields] = BH_trimCycleGeometry(subTomoMeta, CYCLE - 1);
   if ~isempty(droppedFields)
     fprintf('Trimmed superseded cycle geometry: %s\n', strjoin(droppedFields(:)', ', '));

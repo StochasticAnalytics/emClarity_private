@@ -40,8 +40,14 @@ if (nargin ~= 2)
 end
 
 
-% Backup the current geometry
-system(sprintf('cp %s.mat preDupRemoval_%s.mat',emc.('subTomoMeta'),emc.('subTomoMeta')));
+% No preDupRemoval cp here. The bare system(cp) it did before had no error
+% check, bypassed the safe-cp aliases, and named the backup without a cycle
+% number -- on any re-run of avg the cp overwrote its own prior output with
+% whatever was on disk at that moment (currentCycle already advanced), so the
+% file's name (preDupRemoval) stopped describing its contents. The pre-avg
+% checkpoint that survives is the cycleN-1_<name>_backup.mat written through
+% BH_saveSubTomoMeta at the top of BH_average3d, which is verified and named
+% per cycle.
 
 % Load using wrapper function
 subTomoMeta = BH_loadSubTomoMeta(emc.('subTomoMeta'), emc.('metadata_format'));

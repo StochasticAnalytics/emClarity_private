@@ -1,35 +1,41 @@
 function [subTomoMeta, droppedFields] = BH_trimCycleGeometry(subTomoMeta, keepFromCycle)
-%BH_trimCycleGeometry Rebuild superseded cycles from their small bookkeeping only.
+%BH_trimCycleGeometry Remove large per-particle geometry arrays from superseded cycles.
 %
 %   [subTomoMeta, droppedFields] = BH_trimCycleGeometry(subTomoMeta, keepFromCycle)
-%   replaces each cycleXXX struct with XXX < keepFromCycle by one holding only the
-%   fields in PRESERVE_FIELDS. Cycles at or above keepFromCycle are untouched, as
-%   is everything outside the cycleXXX fields. droppedFields lists the field names
-%   discarded, so the log records what a cycle actually contained.
+%   walks each cycleXXX struct with XXX < keepFromCycle and rmfields the members
+%   named in DROP_FIELDS_EXACT plus any Pre_<OPERATION>_<suffix> backup whose
+%   suffix is in DROP_PRE_SUFFIXES. Everything else in the cycle is untouched,
+%   as is cycleXXX for XXX >= keepFromCycle. droppedFields lists what was
+%   removed, in field-name order, so the caller can log it.
 %
-%   WHY rebuild rather than remove: several cycle members are written through
-%   dynamically built field names, so any enumeration of what to delete stops
-%   matching as the schema grows and silently leaves bulk behind. Constructing the
-%   replacement from a known keep-list inverts that -- whatever was in the cycle is
-%   gone because it was never carried across, and nothing has to know it existed.
+%   WHY drop-list rather than keep-list: an earlier keep-list rebuild also
+%   discarded bookkeeping that BH_average3d and BH_plotMultiCycleFSC read across
+%   cycles (SymmetryApplied, ClassVector, class_N_Locations_*, nSubTomoAveraged,
+%   score_sigma, and the Ref/EVE/ODD location pointers). The drop-list direction
+%   keeps everything by default and removes only the per-particle geometry
+%   arrays that dominate the file's size. The failure modes are inverted: a new
+%   large-geometry field added later stays as silent bulk until added to this
+%   list, but nothing that a downstream reader depends on vanishes silently.
 %
-%   WHY these five survive: they are scalars and small fits rather than
-%   per-particle tables. fitFSC is the one that earns its keep beyond size --
-%   BH_plotMultiCycleFSC walks every cycle for it, so dropping whole cycleXXX
-%   structs would destroy that plot's input to reclaim space that is almost
-%   entirely geometry.
+%   WHY the Pre_* pattern: BH_geometryAnalysis parks a copy of RawAlign,
+%   tiltGeometry, or ClusterResults under a Pre_<OPERATION>_<suffix> name before
+%   destructive operations. Those are dynamic (OPERATION varies) and per-particle
+%   sized, so a suffix match reaches them without hardcoding every OPERATION.
 %
-%   WHY a keep-list is the safe direction: if a field belongs here and is missing,
-%   the next read of it raises immediately. The failure is loud and local. A
-%   delete-list gets the same uncertainty wrong in the silent direction.
-%
-%   WHY this is safe to run automatically: BH_average3d writes a complete snapshot
-%   of subTomoMeta at the start of each cycle, so what is discarded here stays
-%   recoverable from cycleXXX_<name>_backup.mat, and the live copy is a duplicate
-%   rather than the only record. The caller MUST confirm that snapshot succeeded
-%   first -- trimming against an unverified write deletes the last copy.
+%   WHY safe to run automatically: BH_average3d writes a complete snapshot of
+%   subTomoMeta at the start of each cycle. The caller MUST confirm that
+%   snapshot succeeded first -- trimming against an unverified write deletes the
+%   last copy of what is removed here.
 
-PRESERVE_FIELDS = {'fitFSC', 'nParticles', 'bad_tiles', 'class_weights', 'KmsSampling'};
+DROP_FIELDS_EXACT = {'RawAlign', ...
+                     'geometry', ...
+                     'Avg_geometry', ...
+                     'ClusterClsGeom', ...
+                     'ClusterRefGeom', ...
+                     'ClusterResults', ...
+                     'Post_AssignAndMergeToBranch'};
+
+DROP_PRE_SUFFIXES = {'_RawAlign', '_ClusterResults', '_tiltGeometry'};
 
 if ~isstruct(subTomoMeta)
   error('BH_trimCycleGeometry:InvalidInput', ...
@@ -43,31 +49,44 @@ end
 
 droppedFields = {};
 
-% Names are constructed, not parsed: sprintf built them in the first place, so
-% there is nothing to recover by matching against fieldnames.
 for iCycle = 0:keepFromCycle - 1
   cycleName = sprintf('cycle%0.3u', iCycle);
   if ~isfield(subTomoMeta, cycleName)
     continue;
   end
 
-  kept = struct();
-  for iField = 1:numel(PRESERVE_FIELDS)
-    fieldName = PRESERVE_FIELDS{iField};
-    if isfield(subTomoMeta.(cycleName), fieldName)
-      kept.(fieldName) = subTomoMeta.(cycleName).(fieldName);
+  cycleFields = fieldnames(subTomoMeta.(cycleName));
+  for iField = 1:numel(cycleFields)
+    fieldName = cycleFields{iField};
+    if ismember(fieldName, DROP_FIELDS_EXACT) || is_pre_backup(fieldName, DROP_PRE_SUFFIXES)
+      subTomoMeta.(cycleName) = rmfield(subTomoMeta.(cycleName), fieldName);
+      droppedFields{end+1} = fieldName; %#ok<AGROW>
     end
   end
-
-  droppedFields = [droppedFields; ...
-                   setdiff(fieldnames(subTomoMeta.(cycleName)), fieldnames(kept))]; %#ok<AGROW>
-
-  % Whole-value replacement. Assigning the field discards the previous struct
-  % outright -- MATLAB does not merge -- which is the rmfield-then-readd result
-  % without moving cycleName to the end of the parent's field order.
-  subTomoMeta.(cycleName) = kept;
 end
 
 droppedFields = unique(droppedFields);
+
+end
+
+function tf = is_pre_backup(fieldName, suffixes)
+%is_pre_backup True if fieldName is a Pre_<OPERATION>_<suffix> backup name.
+%   The Pre_ prefix is required to distinguish these from live fields that
+%   happen to end in one of the suffixes (RawAlign itself, for example, ends
+%   in _RawAlign but must not match this test).
+
+if ~startsWith(fieldName, 'Pre_')
+  tf = false;
+  return;
+end
+
+for iSuffix = 1:numel(suffixes)
+  if endsWith(fieldName, suffixes{iSuffix})
+    tf = true;
+    return;
+  end
+end
+
+tf = false;
 
 end
