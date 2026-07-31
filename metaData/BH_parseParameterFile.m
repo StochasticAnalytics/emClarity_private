@@ -421,6 +421,15 @@ else
 end
 emc.('n_scale_spaces') = numel(emc.pca_scale_spaces);
 
+% Scale-space band selector in BH_pcaPub. Element 2 is the high-cut, but it is IGNORED
+% when the notch filter is used: on that branch both cutoffs are derived from
+% pca_scale_spaces(iScale) so each scale space keeps its own band.
+if isfield(emc, 'PcaScale_highpass')
+  EMC_assert_numeric(emc.PcaScale_highpass, 2);
+else
+  emc.PcaScale_highpass = [0.95, 1200];
+end
+
 if isfield(emc, 'Pca_maxEigs')
   EMC_assert_numeric(emc.Pca_maxEigs, 1, [1, 1000]);
 else
@@ -915,10 +924,26 @@ else
   emc.tmp_scan = [1,1,0];
 end
 
+% ---------------------------------------------------------------------------------
+% *_bandpass parameters. This is the central documentation for all of them; the
+% per-program blocks below say only what each filter is doing for its program.
+%
+% Element 1 is HIGH_THRESH, the filter's value at DC. Element 2 is the resolution in
+% Angstrom where the high-pass reaches 1. Element 3, where present, is the low-pass.
+% BH_bandpass3d derives the roll width from element 1 and rejects a ramp from DC up to 1
+% steeper than 1/7 per voxel, so element 1 is the value to raise on a small box.
+%
+% The two below are 3-element.
+% ---------------------------------------------------------------------------------
+
+% Template matching: sets the band for the template (element 2 scaled to 0.3x, filter
+% applied squared, at the unbinned pixel size -- alignment/BH_templateSearch3d_2.m:212)
+% and for each tomogram chunk (element 2 as written, at the binned pixel size -- :459).
+% The two are deliberately not identical; element 3 is the shared low-pass.
 if isfield(emc, 'Tmp_bandpass')
   EMC_assert_numeric(emc.Tmp_bandpass, 3);
 else
-  emc.Tmp_bandpass = [0.001, 1200, 28];
+  emc.Tmp_bandpass = [0.9, 1200, 28];
 end
 
 if isfield(emc, 'Tmp_half_precision')
@@ -927,10 +952,51 @@ else
   emc.Tmp_half_precision = false;
 end
 
+% Decomposition / classification: band-limits each particle and the wedge that goes
+% with it before the difference map that feeds the eigen-decomposition.
 if isfield(emc, 'Pca_bandpass')
   EMC_assert_numeric(emc.Pca_bandpass, 3);
 else
-  emc.Pca_bandpass = [0.001, 1200, 28];
+  emc.Pca_bandpass = [0.9, 1200, 28];
+end
+
+% The four below are 2-element: the low-pass at these sites is already set by the sampling
+% interval or by its own parameter. Their element-1 defaults are not harmonised.
+
+% Transfer-function refinement: the power-spectrum correlator the defocus search scores
+% against.
+if isfield(emc, 'Ctf_bandpass')
+  EMC_assert_numeric(emc.Ctf_bandpass, 2);
+else
+  emc.Ctf_bandpass = [1e-6, 40];
+end
+
+% NOTE: the filter inside BH_ctfCalc's SNR branch is deliberately NOT parameterised. It is
+% one term of a hand-tuned Wiener filter, tuned against the SNR expression beside it
+% rather than chosen as a roll-off. Do not add a field for it.
+
+% Tilt-series alignment: removes the gradient across a whole frame before the correlation
+% that drives the fit.
+if isfield(emc, 'Ali_bandpass')
+  EMC_assert_numeric(emc.Ali_bandpass, 2);
+else
+  emc.Ali_bandpass = [1e-6, 800];
+end
+
+% Gradient prefilter on each projection as the aligned tilt-series is written. 600 A keeps
+% the ramp slope legal on the smallest frames in use (2048 px at 2.1 A/pixel).
+if isfield(emc, 'AliStack_highpass')
+  EMC_assert_numeric(emc.AliStack_highpass, 2);
+else
+  emc.AliStack_highpass = [1e-6, 600];
+end
+
+% tomoCPR / mapBack: the filter on the projection tiles and their references before the
+% per-fiducial correlation that measures the residual shift.
+if isfield(emc, 'TomoCpr_bandpass')
+  EMC_assert_numeric(emc.TomoCpr_bandpass, 2);
+else
+  emc.TomoCpr_bandpass = [0.9, 400];
 end
 
 if isfield(emc, 'autoAli_switchAxes')

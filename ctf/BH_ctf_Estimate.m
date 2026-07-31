@@ -368,7 +368,7 @@ if ( flgEraseBeads )
   STACK = BH_eraseBeads(STACK,eraseRadius, fileName, scalePixelsBy,0,sortrows(TLT,1));
 end
 samplingMaskStack = gpuArray(OPEN_IMG('single',sprintf('%s.samplingMask',outputStackName)));
-[ STACK ] = BH_multi_loadAndMaskStack(STACK,TLT,'',100,emc.pixel_size_si*10^10,samplingMaskStack);
+[ STACK ] = BH_multi_loadAndMaskStack(STACK,TLT,'',100,emc.pixel_size_si*10^10,emc.AliStack_highpass,samplingMaskStack);
 
 STACK = gather(STACK);
 samplingMaskStack = gather(samplingMaskStack);

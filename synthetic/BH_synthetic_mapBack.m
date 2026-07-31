@@ -1548,11 +1548,14 @@ for iTiltSeries = tiltStart:nTiltSeries
       dfA = wrkPar(iFid,6);
       
 
-      dataFT = bhF.swapPhase(bhF.fwdFFT(dataTile,1,1,[1e-5,400,lowPassCutoff,pixel_size]),'fwd');
+      % Projection-shift correlator bandpass. The low-pass is not taken from this field --
+      % it is lowPassCutoff, from emc.tomoCprLowPass clamped to Nyquist above, which is why
+      % TomoCpr_bandpass is only 2 elements.
+      dataFT = bhF.swapPhase(bhF.fwdFFT(dataTile,1,1,[emc.TomoCpr_bandpass(1),emc.TomoCpr_bandpass(2),lowPassCutoff,pixel_size]),'fwd');
 
       dataFT = dataFT ./ sqrt(2.*sum(abs(dataFT(1:end-bhF.invTrim,:)).^2,'all'));
 
-      refFT  = conj(bhF.fwdFFT(refTile,1,1,[1e-5,400,lowPassCutoff,pixel_size]));
+      refFT  = conj(bhF.fwdFFT(refTile,1,1,[emc.TomoCpr_bandpass(1),emc.TomoCpr_bandpass(2),lowPassCutoff,pixel_size]));
     
 
       iRefCTF = refFT .* ...
@@ -1590,7 +1593,7 @@ for iTiltSeries = tiltStart:nTiltSeries
       end
       
       % Re-calculate the scores with the shifted data    
-      dataFT = bhF.swapPhase(bhF.fwdFFT(dataTile,1,1,[1e-5,400,lowPassCutoff,pixel_size]),'fwd');
+      dataFT = bhF.swapPhase(bhF.fwdFFT(dataTile,1,1,[emc.TomoCpr_bandpass(1),emc.TomoCpr_bandpass(2),lowPassCutoff,pixel_size]),'fwd');
       dataFT = bhF.shiftStretch(dataFT, -1.*particle_shift, 1.0, false);
       dataFT = dataFT ./ sqrt(2.*sum(abs(dataFT(1:end-bhF.invTrim,:)).^2,'all'));
 
@@ -1606,6 +1609,12 @@ for iTiltSeries = tiltStart:nTiltSeries
           dXY = [sx,sy] + estimated_global_offset;     
       end
 			if (calcCTF)
+        % Left literal (NOT emc.TomoCpr_bandpass): these two score the DEFOCUS search,
+        % not the projection shift the three calls above measure. Their sharp 1e-8 roll
+        % and 40 A corner sit closer to Ctf_bandpass's [1e-6,40] than to
+        % TomoCpr_bandpass's [0.9,400]; folding them into either field would change
+        % behaviour rather than expose it. The split is deliberate, not a missed
+        % substitution -- routing them needs an explicit decision.
 				refFT  = conj(bhF.fwdFFT(refTile,1,1,[1e-8,40,3.*pixel_size,pixel_size]));
 				dataFT = bhF.swapPhase(bhF.fwdFFT(dataTile,1,1,[1e-8,40,3.*pixel_size,pixel_size]),'fwd');
       

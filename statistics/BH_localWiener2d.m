@@ -45,6 +45,11 @@ else
 end
 
 
+% HIGH_THRESH is literal, not a parameter field: bandPass here is positional and
+% caller-supplied -- (1) high-pass, (2) low-pass, (3) pixel size, (4) particle radius --
+% so a fifth element would renumber it for every caller. On the multi-frame branch this
+% filter also reaches the returned image, not just the statistics: it multiplies the frame
+% sum at :205, :207 and :209, and filtIMG is built from that at :212.
 if ( useGPU )
   bandPassFilt = BH_bandpass3d([d1,d2,1],10^-6,bandPass(1),bandPass(2), ...
     'GPU',pixelSize);

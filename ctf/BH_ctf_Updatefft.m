@@ -225,8 +225,6 @@ parfor iGPU = 1:nWorkers
     
     osX = 1-mod(d1,2); osY = 1-mod(d2,2);
 
-    gradientAliasMask = BH_bandpass3d(1.*[d1-osX,d2-osY,1],0,0,0,'GPU','nyquistHigh');
-    
     TLT = INPUT_CELL{iStack,1};
     pathName = INPUT_CELL{iStack,3};
     fileName = INPUT_CELL{iStack,4};
@@ -431,7 +429,7 @@ parfor iGPU = 1:nWorkers
       
       fprintf('Using an estimated thickenss of %3.3f nm for tilt-series %s\n',THICKNESS, STACK_PRFX);
       samplingMaskStack = gpuArray(OPEN_IMG('single',sprintf('%s.samplingMask',outputStackName)));
-      [ STACK ] = BH_multi_loadAndMaskStack(STACK,TLT,'',THICKNESS,emc.pixel_size_angstroms,gpuArray(samplingMaskStack));
+      [ STACK ] = BH_multi_loadAndMaskStack(STACK,TLT,'',THICKNESS,emc.pixel_size_angstroms,emc.AliStack_highpass,gpuArray(samplingMaskStack));
       SAVE_IMG(STACK,{outputStackName,'half'},iPixelHeader,iOriginHeader);
       
       xShift= []; yShift = []; scale = []; angleShift = [];
@@ -448,7 +446,7 @@ parfor iGPU = 1:nWorkers
       fprintf('Using an estimated thickenss of %3.3f nm for tilt-series %s\n',...
         THICKNESS, STACK_PRFX);
       
-      [ STACK ] = BH_multi_loadAndMaskStack(STACK,TLT,'',THICKNESS,emc.pixel_size_angstroms,gpuArray(samplingMaskStack));
+      [ STACK ] = BH_multi_loadAndMaskStack(STACK,TLT,'',THICKNESS,emc.pixel_size_angstroms,emc.AliStack_highpass,gpuArray(samplingMaskStack));
       SAVE_IMG(MRCImage(STACK),outputStackName,iPixelHeader,iOriginHeader);
       SAVE_IMG(MRCImage(samplingMaskStack),sprintf('%s.samplingMask',outputStackName),iPixelHeader,iOriginHeader);
       

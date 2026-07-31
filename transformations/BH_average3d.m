@@ -1304,8 +1304,6 @@ subTomoMeta.(cycleNumber).(sprintf('newIgnored_Avg%s',fieldPrefix)) = ...
 classStorage = cell(maxClasses,2);
 if (doNotTrim) && (emc.classification)
   filteredClass= cell(maxClasses,2);
-  % low-pass to see class averages more clearly.
-  % %   [ bandpassFilt ] = BH_bandpass3d( sizeMask, 0.2, 300, 30, 'GPU',emc.pixel_size_angstroms);
 end
 
 for iClass = 1:maxClasses
@@ -1316,8 +1314,7 @@ end
 if (eachTomo)
   system('mkdir -p initialTomoAvgs');
   % sizeWeight mask is sizeMask or 128^3 whichever is larger
-  %   bandpassFiltTomo = BH_bandpass3d( sizeCalc, lpTomo(1), lpTomo(2), lpTomo(3), 'GPU',emc.pixel_size_angstroms);
-  
+
   for iParProc = 1:nParProcesses
     nTomos = 1;
     

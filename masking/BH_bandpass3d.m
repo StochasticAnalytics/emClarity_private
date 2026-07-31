@@ -63,16 +63,10 @@ if isnumeric(PIXEL_SIZE)
   [bSize, highRoll, lowRoll, highCut, lowCut] = calc_frequencies( ...
     SIZE, HIGH_THRESH, HIGH_CUT, LOW_CUT, PIXEL_SIZE );
 else
-  bSize = SIZE;
-  if strcmpi(PIXEL_SIZE,'nyquistHigh')
-    highCut = 7/min(bSize(bSize>1));
-    highThresh = 1e-6;
-    highRoll = sqrt((-1.*highCut.^2)./(2.*log(highThresh)));
-  else
-    highCut = 0; highThresh = 0; highRoll = 0;
-  end
-  lowRoll = 1.5 .* (1.0./min(bSize(bSize>1)));
-  lowCut = 0.485+LOW_CUT;
+  % nyquistHigh set the high-pass from the box (7/N voxels) rather than from a
+  % resolution, so the same call removed a different band at every box size.
+  error(['nyquistHigh is removed: pass HIGH_THRESH, HIGH_CUT and LOW_CUT with a ', ...
+         'numeric PIXEL_SIZE. Got PIXEL_SIZE = %s'], PIXEL_SIZE);
 end
 
 gaussian = @(x,m,s) exp( -1.*(x-m).^2 ./ (2.*s.^2) );
@@ -155,6 +149,26 @@ end
 % high pass filter.
 if HIGH_CUT ~= 0
   highCut = PIXEL_SIZE ./ HIGH_CUT;
+
+  % The high-pass ramps from HIGH_THRESH at DC up to 1 at HIGH_CUT. Its slope must stay
+  % under 1/7 per voxel or the transition acts as a hard cut -- 1/7 is the gentle bound
+  % for normally distributed data, and would be wrong for data ranging to 10^6. Where the
+  % ramp ends is the caller's resolution, so the value to move is HIGH_THRESH. min() takes
+  % the axis with the fewest voxels across the ramp, since each is normalised by its own
+  % length in BH_multi_gridCoordinates.
+  %
+  % A ramp shorter than one voxel is exempt: it ends before the first sample off DC, so
+  % nothing is left to be steep between and the filter reduces to scaling DC, the same
+  % operation as subtracting the mean.
+  nSmallest = min(bSize(bSize > 1));
+  rampVoxels = nSmallest .* highCut;
+  if ( rampVoxels >= 1 && (1 - HIGH_THRESH) ./ rampVoxels > 1/7 )
+    error(['A high-pass reaching 1 at %g A on a %d pixel axis at %g A/pixel ramps up ', ...
+           'from HIGH_THRESH = %g over %.2f voxels, a slope of %.4f per voxel against ', ...
+           'a limit of %.4f. Raise HIGH_THRESH to at least %.4f.'], ...
+          HIGH_CUT, nSmallest, PIXEL_SIZE, HIGH_THRESH, rampVoxels, ...
+          (1 - HIGH_THRESH) ./ rampVoxels, 1/7, 1 - rampVoxels./7);
+  end
 else
   highCut = 0;
 end

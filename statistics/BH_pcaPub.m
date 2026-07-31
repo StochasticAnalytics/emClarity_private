@@ -522,7 +522,9 @@ if ~(test_multi_ref_diffmap)
   for iScale = 1:emc.n_scale_spaces
     
     if (use_notch_filter)
-      masks.('scaleMask').(sprintf('s%d',iScale)) = gather(BH_bandpass3d(sizeMask,0.95, emc.pca_scale_spaces(iScale)*1.1, emc.pca_scale_spaces(iScale)*0.9,'GPU',pixelSize));
+      % Narrow band selecting one scale-space wavelength. Both cutoffs come from
+      % pca_scale_spaces(iScale), so PcaScale_highpass(2) is ignored on this branch.
+      masks.('scaleMask').(sprintf('s%d',iScale)) = gather(BH_bandpass3d(sizeMask,emc.PcaScale_highpass(1), emc.pca_scale_spaces(iScale)*1.05, emc.pca_scale_spaces(iScale)*0.95,'GPU',pixelSize));
     else
       kernelSize = ceil(threeSigma(iScale).*3) + 3;
       kernelSize = kernelSize + (1-mod(kernelSize,2));
@@ -538,7 +540,11 @@ if ~(test_multi_ref_diffmap)
   end
 end
 
-default_highpass = [0.1,1200,2.0*pixelSize];
+% Elements 1 and 2 come from emc.Pca_bandpass. Element 3 deliberately does not: the
+% low-pass here is Nyquist of the decimated data (2*pixelSize), a property of the sampling
+% rather than a band the user chooses, so the field's fixed 28 A would decouple it from
+% Cls_samplingRate.
+pca_highpass = [emc.Pca_bandpass(1), emc.Pca_bandpass(2), 2.0*pixelSize];
 avgMotif_FT = cell(1+flgGold,emc.n_scale_spaces);
 avgFiltered = cell(1+flgGold,emc.n_scale_spaces);
 % Here always read in both, combine if flgGold = 0
@@ -557,7 +563,7 @@ for iGold = 1:1+flgGold
       % when we have multiple references, and hence, no length scale blurring.
       bp_vals = emc.Pca_bandpass;
     else
-      bp_vals = default_highpass;
+      bp_vals = pca_highpass;
     end
     
     masks.('highPass').(sprintf('s%d',iScale)) = gather(BH_bandpass3d(sizeMask,bp_vals(1), bp_vals(2), bp_vals(3),'GPU',pixelSize));
@@ -573,9 +579,12 @@ for iGold = 1:1+flgGold
         tmp_avg = EMC_convn(single(gpuArray(tmp_avg)) , single(gpuArray(masks.('scaleMask').(sprintf('s%d',iScale))) ));
       end
     end
+    % The filter below uses pca_highpass rather than bp_vals so it keeps the Nyquist-derived
+    % low-pass on both branches; bp_vals carries emc.Pca_bandpass(3) (a fixed Angstrom value)
+    % on the multi-reference branch. Elements 1-2 are emc.Pca_bandpass either way.
     avgMotif_FT{iGold, iScale} = ...
       BH_bandLimitCenterNormalize(tmp_avg,...
-      BH_bandpass3d(sizeMask,default_highpass(1),default_highpass(2),default_highpass(3),'GPU',pixelSize), ...
+      BH_bandpass3d(sizeMask,pca_highpass(1),pca_highpass(2),pca_highpass(3),'GPU',pixelSize), ...
       masks.('binaryApply').(sprintf('h%d',iGold)).(sprintf('s%d',iScale)),...
       [0,0,0;0,0,0],'single');
 

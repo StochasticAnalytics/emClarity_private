@@ -100,6 +100,10 @@ for i = 1:n_particles
     data_fourier_transforms{i} = data_fourier_transforms{i} ./ ...
         sqrt(2 * sum(abs(data_fourier_transforms{i}(1:end-fourier_handle.invTrim,:)).^2, 'all'));
 
+    % HIGH_THRESH is literal while both cutoffs come from the options struct. This is the
+    % defocus correlator, the same role as Ctf_bandpass, but the function takes an options
+    % struct rather than emc so it is not on that path. If it is put there, route
+    % element 1, not the cutoffs.
     reference_fourier_transforms{i} = conj( ...
         fourier_handle.fwdFFT(ref_tiles{i}, 1, 1, [1e-5, highpass_cutoff, lowpass_cutoff, pixel_size_angstroms]));
 end

@@ -462,7 +462,7 @@ fprintf(fid, 'print_alignment_stats=1\n\n');
 fprintf(fid, '%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n');
 fprintf(fid, '%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%    Template matching parameters    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n');
 fprintf(fid, '%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n\n');
-fprintf(fid, 'Tmp_bandpass=[0.01,1200,25]\n');
+fprintf(fid, 'Tmp_bandpass=[0.9,1200,25]\n');
 fprintf(fid, 'Tmp_samplingRate=5\n');
 fprintf(fid, 'Tmp_threshold=1500\n');
 fprintf(fid, 'Tmp_angleSearch=[180,12,180,12]\n');
@@ -492,7 +492,7 @@ fprintf(fid, 'Pca_clusters=[2,4]\n');
 fprintf(fid, 'Pca_maxEigs=64\n');
 fprintf(fid, 'pcaScaleSpace=[18,32,64]\n');
 fprintf(fid, 'Pca_coeffs=[3:48;3:48;3:48;3:48]\n');
-fprintf(fid, 'Pca_bandpass=[0.01,1200,18]\n');
+fprintf(fid, 'Pca_bandpass=[0.9,1200,18]\n');
 fprintf(fid, 'PcaGpuPull=5000\n');
 fprintf(fid, 'Pca_randSubset=0\n\n');
 

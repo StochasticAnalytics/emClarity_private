@@ -92,7 +92,9 @@ end
 
 
 
-LOW_RES_CUTOFF=800;
+% Gradient-removal filter for the whole-frame correlation.
+HIGH_THRESH=emc.Ali_bandpass(1);
+HIGH_CUT=emc.Ali_bandpass(2);
 CLEAN_UP_RESULTS=false;
 MAG_OPTION=5;
 tiltAngleOffset=0.0;
@@ -227,9 +229,9 @@ rotMat = [cosd(imgRotation),-1*sind(imgRotation),sind(imgRotation),cosd(imgRotat
 
 fprintf('Preprocessing tilt-series\n');
 
-%gradientAliasFilter = BH_bandpass3d([nX,nY,1],1e-6,LOW_RES_CUTOFF,RESOLUTION_CUTOFF,'GPU',emc.pixel_size_angstroms);
-gradientAliasFilter = {BH_bandpass3d(1.*[nX,nY,1],0,0,0,'GPU','nyquistHigh'),...
-  BH_bandpass3d([nX,nY,1],1e-6,LOW_RES_CUTOFF,RESOLUTION_CUTOFF,'GPU',emc.pixel_size_angstroms)};
+% Gradient prefilter, same field as the aligned-stack writers. low-pass = Nyquist
+gradientAliasFilter = {BH_bandpass3d(1.*[nX,nY,1],emc.AliStack_highpass(1),emc.AliStack_highpass(2),2.*emc.pixel_size_angstroms,'GPU',emc.pixel_size_angstroms),...
+  BH_bandpass3d([nX,nY,1],HIGH_THRESH,HIGH_CUT,RESOLUTION_CUTOFF,'GPU',emc.pixel_size_angstroms)};
 if emc.pixel_size_angstroms < 2
   medianFilter = 5;
 else

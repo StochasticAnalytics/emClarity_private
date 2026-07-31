@@ -119,7 +119,7 @@ print_alignment_stats=1
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
-Tmp_bandpass=[0.01,1200,25]
+Tmp_bandpass=[0.9,1200,25]
 Tmp_samplingRate=5
 Tmp_threshold=1500
 Tmp_angleSearch=[180,12,180,12]
@@ -193,7 +193,7 @@ pcaScaleSpace=[21,42,84];
 
 % NOTE: if using multi_refalignment, this must match the number of references
 Pca_coeffs=[3:48;3:48;3:48;3:48];
-Pca_bandpass=[0.01,1200,20];
+Pca_bandpass=[0.9,1200,20];
 
 
 

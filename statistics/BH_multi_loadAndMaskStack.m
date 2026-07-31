@@ -1,4 +1,4 @@
-function [ STACK ] = BH_multi_loadAndMaskStack(STACK,TLT,mapBackIter,THICKNESS,PIXEL_SIZE,varargin)
+function [ STACK ] = BH_multi_loadAndMaskStack(STACK,TLT,mapBackIter,THICKNESS,PIXEL_SIZE,HIGH_PASS,varargin)
 %Relative weighting of a tilt-series
 %   Weight projections after normalizing stats (mean and unit var)
 %   1) For best expected signal, which is assumed to be the fraction of
@@ -26,6 +26,7 @@ function [ STACK ] = BH_multi_loadAndMaskStack(STACK,TLT,mapBackIter,THICKNESS,P
 %     % TLT - loaded tilt geometry
 %     % THICKNESS - estimate for thickness
 %     % PIXEL_SIZE - angstrom
+%     % HIGH_PASS - [HIGH_THRESH, resolution in angstrom] for the gradient prefilter
 %     %
 %     % STACK - Modified stack in mem, or on disk
 
@@ -35,13 +36,14 @@ if (THICKNESS < 10 || THICKNESS > 1000)
   error('Your sample thickness is likely incorrect, it should be between 10 and 1000 nm, not %d \n',THICKNESS);
 end
 
+% A negative PIXEL_SIZE used to select a filter-only path that skipped the normalization
+% and dose weighting below. No caller has taken it, and the prefilter it selected now runs
+% on every projection regardless, so the flag has nothing left to switch.
 if (PIXEL_SIZE < 0)
-  justHighPass = 1;
-else
-  justHighPass = 0;
+  error('PIXEL_SIZE must be positive, not %g. The filter-only path it selected is gone.', PIXEL_SIZE);
 end
 
-if nargin > 5
+if nargin > 6
   useMask = 1;
 else
   useMask = 0;
@@ -64,9 +66,12 @@ end
 
 meanVariance = 0;
 
-if (justHighPass)
-  bandNyquist = BH_bandpass3d([d1,d2,1],0,0,1,'GPU','nyquistHigh');
-end
+% Gradient prefilter. The mean subtraction below is commented "Remove gradients" but
+% subtracts a scalar, so a real gradient across the projection survives it into the
+% aligned stack, which is the only pixel source for everything built afterwards.
+% low-pass = Nyquist
+gradientPrefilter = BH_bandpass3d([d1,d2,1],HIGH_PASS(1),HIGH_PASS(2), ...
+                                  2.*PIXEL_SIZE,'GPU',PIXEL_SIZE);
 
 fractionOfDose = TLT(:,14)/mean(TLT(:,14));
 fractionOfElastics = exp(-1.*THICKNESS./( cosd(TLT(:,4)).*400 ));
@@ -74,20 +79,18 @@ fractionOfElastics = fractionOfElastics ./ max(fractionOfElastics(:));
 
 for iPrj = 1:d3
   
-  if (justHighPass)
-    iProjection = STACK(:,:,iPrj);
-    iProjection = BH_padZeros3d(iProjection,[0,0],[0,0],'gpuArray','singleTaper',mean(iProjection(:)));
-    iProjection  = real(ifftn(fftn(iProjection).*bandNyquist));
-    STACK(:,:,iPrj) = gather(iProjection);
-    continue
+  if (flgOnDevice)
+    iProjection = STACK(:,:,TLT(iPrj,1));
   else
-    if (flgOnDevice)
-      iProjection = STACK(:,:,TLT(iPrj,1));
-    else
-      iProjection = gpuArray(STACK(:,:,TLT(iPrj,1)));
-    end
+    iProjection = gpuArray(STACK(:,:,TLT(iPrj,1)));
   end
-  
+
+  % Roll the outer 7 pixels toward the projection mean before transforming, so
+  % the frame edges do not ring into the low frequencies the prefilter shapes.
+  % The [0,0],[0,0] extents add no pixels -- this tapers in place.
+  iProjection = BH_padZeros3d(iProjection,[0,0],[0,0],'gpuArray','singleTaper',mean(iProjection(:)));
+  iProjection = real(ifftn(fftn(iProjection).*gradientPrefilter));
+
   if (useMask)
     iProjection = iProjection - mean2(iProjection(varargin{1}(:,:,TLT(iPrj,1))>0));
     iProjection = iProjection ./ rms(rms(iProjection(varargin{1}(:,:,TLT(iPrj,1))>0)));
