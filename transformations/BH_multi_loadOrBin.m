@@ -86,6 +86,17 @@ if samplingRate > 1
             bhF = fourierTransformer(iProjection,'OddSizeOversampled');
           end
           
+          % This path is believed unreachable in production: resampling moved out to
+          % newstack, so it was left out of the sweep in 64d1380 that routed the other
+          % low-frequency suppression sites to parameter fields. The 600 A high-pass below
+          % is untouched by that work and has no recorded justification -- it arrived in
+          % a09ceef alongside the gridding correction, in a commit about something else,
+          % under a "not sure this is quite right" note. Binning needs the anti-alias
+          % low-pass; it does not need a high-pass.
+          error(['BH_multi_loadOrBin reached its binning branch, which was assumed dead. ', ...
+                 'Its 600 A high-pass was not updated by 64d1380 and would be applied to ', ...
+                 'data that goes on to be reconstructed. Decide what belongs here before ', ...
+                 'removing this error.']);
           iProjection = bhF.invFFT(bhF.fwdFFT(R.*iProjection,0,0,[1e-6,600,samplingRate*pixelSize,pixelSize]),2);
           
           iProjection = BH_resample2d(iProjection,[0,0,0],binShift,'Bah','GPU','forward',1/samplingRate,binSize(1:2),bhF);
