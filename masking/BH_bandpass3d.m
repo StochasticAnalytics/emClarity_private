@@ -63,10 +63,13 @@ if isnumeric(PIXEL_SIZE)
   [bSize, highRoll, lowRoll, highCut, lowCut] = calc_frequencies( ...
     SIZE, HIGH_THRESH, HIGH_CUT, LOW_CUT, PIXEL_SIZE );
 else
-  % nyquistHigh set the high-pass from the box (7/N voxels) rather than from a
-  % resolution, so the same call removed a different band at every box size.
-  error(['nyquistHigh is removed: pass HIGH_THRESH, HIGH_CUT and LOW_CUT with a ', ...
-         'numeric PIXEL_SIZE. Got PIXEL_SIZE = %s'], PIXEL_SIZE);
+  % This branch took ANY non-numeric PIXEL_SIZE, not only 'nyquistHigh'. Under that
+  % sentinel it set the high-pass from the box, at 7/N voxels, so the same call removed a
+  % different band at every box size. Any OTHER string reached its else path, meaning no
+  % high-pass and a low-pass at 0.485 cycles/pixel; write that as HIGH_CUT of 0 with a
+  % unit PIXEL_SIZE and LOW_CUT of 1/0.485, since only their ratio sets the corner.
+  error(['A non-numeric PIXEL_SIZE is no longer accepted: pass HIGH_THRESH, HIGH_CUT ', ...
+         'and LOW_CUT with a numeric PIXEL_SIZE. Got PIXEL_SIZE = %s'], PIXEL_SIZE);
 end
 
 gaussian = @(x,m,s) exp( -1.*(x-m).^2 ./ (2.*s.^2) );

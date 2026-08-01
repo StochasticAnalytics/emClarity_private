@@ -225,8 +225,11 @@ peakMask{1} = gather(BH_multi_randomizeTaper(tmpMask));
 peakMask{2} = gather(BH_multi_randomizeTaper(tmpMask)); clear tmpMask
 
 bandpassFilt = cell(2,1);
-bandpassFilt{1} = BH_bandpass3d(sizeCalc,0,0,0,'cpu','nyquist');
-bandpassFilt{2} = BH_bandpass3d(sizeCalc,0,0,0,'cpu','nyquist');
+% No high-pass, low-pass starting at 0.485 cycles/pixel. No pixel size is in scope here
+% and none is needed: the corner is PIXEL_SIZE/LOW_CUT, so a unit pixel size with
+% LOW_CUT = 1/0.485 places it without one, the same idiom as BH_reScale3d.
+bandpassFilt{1} = BH_bandpass3d(sizeCalc,0,0,1/0.485,'cpu',1);
+bandpassFilt{2} = BH_bandpass3d(sizeCalc,0,0,1/0.485,'cpu',1);
 
 clear radialGrid
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
