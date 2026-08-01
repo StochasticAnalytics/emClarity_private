@@ -1611,7 +1611,7 @@ for iTiltSeries = tiltStart:nTiltSeries
 			if (calcCTF)
         % Left literal (NOT emc.TomoCpr_bandpass): these two score the DEFOCUS search,
         % not the projection shift the three calls above measure. Their sharp 1e-8 roll
-        % and 40 A corner sit closer to Ctf_bandpass's [1e-6,40] than to
+        % and 40 A roll-off sit closer to Ctf_bandpass's [1e-6,40] than to
         % TomoCpr_bandpass's [0.9,400]; folding them into either field would change
         % behaviour rather than expose it. The split is deliberate, not a missed
         % substitution -- routing them needs an explicit decision.

@@ -242,7 +242,7 @@ for iStack = 1%stacksFound
     SAVE_IMG(MRCImage(gather(psTile)),sprintf('fixedStacks/ctf/%s-PS.mrc',fileName),pixelSize);
     bpLog = fftshift(BH_bandpass3d([size(psTile(:,:,1)),1],0,0,2.2.*pixelSize,'GPU',pixelSize));
     bpLog = bpLog > 0.99;
-    % bp stays literal (not Ctf_bandpass): its corner is max(8,2*pixelSize) -- Nyquist, floored at a
+    % bp stays literal (not Ctf_bandpass): it rolls off from 1 at max(8,2*pixelSize) -- Nyquist, floored at a
     % fixed 8 A -- and bp multiplies with bp2 at :252/:266, so a knob here would fight Ctf_bandpass.
     bp  = fftshift(BH_bandpass3d([size(psTile(:,:,1)),1],0.0314,max(8,2.*pixelSize),2.*pixelSize,'GPU',pixelSize));
     bp2 = fftshift(BH_bandpass3d([size(psTile(:,:,1)),1],emc.Ctf_bandpass(1),emc.Ctf_bandpass(2),2.*pixelSize,'GPU',pixelSize));

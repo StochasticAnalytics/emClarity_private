@@ -67,7 +67,7 @@ else
   % sentinel it set the high-pass from the box, at 7/N voxels, so the same call removed a
   % different band at every box size. Any OTHER string reached its else path, meaning no
   % high-pass and a low-pass at 0.485 cycles/pixel; write that as HIGH_CUT of 0 with a
-  % unit PIXEL_SIZE and LOW_CUT of 1/0.485, since only their ratio sets the corner.
+  % unit PIXEL_SIZE and LOW_CUT of 1/0.485, since only their ratio sets where it rolls.
   error(['A non-numeric PIXEL_SIZE is no longer accepted: pass HIGH_THRESH, HIGH_CUT ', ...
          'and LOW_CUT with a numeric PIXEL_SIZE. Got PIXEL_SIZE = %s'], PIXEL_SIZE);
 end
