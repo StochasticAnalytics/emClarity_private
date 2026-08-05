@@ -86,18 +86,17 @@ if samplingRate > 1
             bhF = fourierTransformer(iProjection,'OddSizeOversampled');
           end
           
-          % This path is believed unreachable in production: resampling moved out to
-          % newstack, so it was left out of the sweep in 64d1380 that routed the other
-          % low-frequency suppression sites to parameter fields. The 600 A high-pass below
-          % is untouched by that work and has no recorded justification -- it arrived in
-          % a09ceef alongside the gridding correction, in a commit about something else,
-          % under a "not sure this is quite right" note. Binning needs the anti-alias
-          % low-pass; it does not need a high-pass.
-          error(['BH_multi_loadOrBin reached its binning branch, which was assumed dead. ', ...
-                 'Its 600 A high-pass was not updated by 64d1380 and would be applied to ', ...
-                 'data that goes on to be reconstructed. Decide what belongs here before ', ...
-                 'removing this error.']);
-          iProjection = bhF.invFFT(bhF.fwdFFT(R.*iProjection,0,0,[1e-6,600,samplingRate*pixelSize,pixelSize]),2);
+          % The 600 A high-pass that used to sit here has been dropped: the aliStack read
+          % above is already high-passed, so applying it a second time was redundant.
+          % Binning needs only the anti-alias low-pass at the new Nyquist, which is the
+          % samplingRate*pixelSize term. A HIGH_CUT of 0 is how BH_bandpass3d is told to
+          % skip the high-pass (its line 153, and the note at its line 69).
+          %
+          % The transform pair stays regardless of the filter: BH_resample2d below is
+          % handed bhF, so the magnification is done by interpolating on the half-grid
+          % FFT rather than in real space, and the sinc^-2 gridding correction in R is
+          % the real-space pre-compensation for that Fourier-domain interpolation.
+          iProjection = bhF.invFFT(bhF.fwdFFT(R.*iProjection,0,0,[0,0,samplingRate*pixelSize,pixelSize]),2);
           
           iProjection = BH_resample2d(iProjection,[0,0,0],binShift,'Bah','GPU','forward',1/samplingRate,binSize(1:2),bhF);
           
