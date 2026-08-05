@@ -12,8 +12,12 @@ export EMC_SOURCE_ROOT=/sa_shared/git/emClarity_private
 
 export MATLABPATH=$EMC_SOURCE_ROOT:$MATLABPATH
 
-# Where to install the compiled version
-EMC_COMPILED_ROOT=/sa_shared/software/
+# Where to install the compiled version. Overridable from the environment so a build
+# can target a path that is not this machine's install root -- e.g. building a wrapper
+# for inside a container, where the tree lands at /opt/emClarity:
+#   EMC_COMPILED_DIRNAME=/opt/emClarity ./mCompile.sh emClarity.m
+# Unset, both fall back to the values that have always been here.
+EMC_COMPILED_ROOT=${EMC_COMPILED_ROOT:-/sa_shared/software/}
 
 # This is the version of matlab you will end up compiling with.
 MATLAB_FOR_COMPILING=matlab
@@ -43,15 +47,15 @@ outName="$(basename ${mFile} .m)${post}"
 # For naming. If you are compiling your own version, use something descriptive in the
 # bugs line. e.g. bugs=5testingFeature
 major=1
-minor=9
+minor=8
 bugs=8
-nightly=4
+nightly=5
 binaryOutName="${major}_${minor}_${bugs}_${nightly}"
 scriptOutName="${major}_${minor}_${bugs}_${nightly}_v23a"
 
 EMC_VERSION=emClarity_${major}.${minor}.${bugs}.${nightly}
 
-EMC_COMPILED_DIRNAME=${EMC_COMPILED_ROOT}/${EMC_VERSION}
+EMC_COMPILED_DIRNAME=${EMC_COMPILED_DIRNAME:-${EMC_COMPILED_ROOT}/${EMC_VERSION}}
 
 # The final binary, run script and docs folder will be zipped and put in this location
 # unless it is NONE then it will be left in the bin dir.
