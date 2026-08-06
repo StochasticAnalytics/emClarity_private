@@ -20,9 +20,15 @@ EMC_CACHE_MEM=''
 
 while read target; do
 
-  if [ -w $target ] ; then 
+  # -d as well as -w. findmnt -t tmpfs also lists bind-mounted *files* that happen to sit
+  # on a tmpfs: the nvidia persistenced socket (bound in by nvidia-container-cli when
+  # apptainer is run with --nv), /etc/resolv.conf, /etc/passwd, /etc/group. All of those
+  # pass -w, and df reports the free space of the filesystem *containing* them, so one
+  # can win this comparison outright -- after which mkdir -p fails with "Not a directory"
+  # and MCR_CACHE_ROOT points at nothing.
+  if [ -d "$target" ] && [ -w "$target" ] ; then
 
-    this_mem=$(df --output=avail ${target} | tail -n -1)
+    this_mem=$(df --output=avail "${target}" | tail -n -1)
     if [[ $this_mem && $this_mem -gt $MAX_MEM ]] ; then 
       MAX_MEM=${this_mem}
       MAX_FS=${target}
@@ -31,7 +37,7 @@ while read target; do
 
   fi
 
-done <<< "$(findmnt -t tmpfs --output=TARGET )"
+done <<< "$(findmnt -n -t tmpfs --output=TARGET )"
 
 if [ $MAX_FS ] ; then
   echo "Found tmpfs $MAX_FS with max mem $MAX_MEM bytes"
