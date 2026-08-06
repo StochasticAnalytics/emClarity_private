@@ -31,9 +31,27 @@ flgEraseBeads_aferCTF = emc.erase_beads_after_ctf;
 super_sample = emc.('super_sample');
 if (super_sample > 0)
   [~,v] = system('cat $IMOD_DIR/VERSION');
-  v = split(v,'.');
-  if (EMC_str2double(v{1}) < 4 || (EMC_str2double(v{2}) <= 10 && EMC_str2double(v{3}) < 42))
-    fprintf('Warning: imod version is too old for supersampling\n');
+  v = split(strtrim(v),'.');
+  imod_version = [EMC_str2double(v{1}), EMC_str2double(v{2}), EMC_str2double(v{3})];
+  min_version = [4, 10, 42];
+
+  % Compare the fields in order, stopping at the first that differs. The previous test
+  % checked the major against 4 in its first clause and then ignored it entirely in the
+  % second, so any 5.x with minor <= 10 and patch < 42 was called too old: 5.1.9 gave
+  % minor 1 <= 10 and patch 9 < 42 and failed, while 4.12.49 passed on minor 12 > 10.
+  imod_too_old = false;
+  for iVersionField = 1:3
+    if (imod_version(iVersionField) < min_version(iVersionField))
+      imod_too_old = true;
+      break
+    elseif (imod_version(iVersionField) > min_version(iVersionField))
+      break
+    end
+  end
+
+  if (imod_too_old)
+    fprintf('Warning: imod version %d.%d.%d is too old for supersampling, need %d.%d.%d\n', ...
+            imod_version, min_version);
     super_sample = '';
   else
     super_sample = sprintf(' -SuperSampleFactor %d',super_sample);
